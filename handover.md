@@ -70,16 +70,18 @@
 - Designed a sidebar containing AI parameters (Fidelity Weight ($w$), Mask Blending Softness, Face Detector model, Background Upscale Factor).
 - Built a side-by-side Before (Original) vs. After (AI Restored) comparison section displaying image stats (dimensions, duration) and a high-speed download button.
 - Custom styled the UI using HTML/CSS markdown injection for a radial dark theme, gradient headers, and glassmorphic cards.
-- **Hugging Face Spaces Optimization**:
-  - Modified [pipeline.py](file:///C:/Users/admin/.gemini/antigravity-ide/scratch/custom-ai-enhancer/pipeline.py) to automatically download model weights at runtime if they are missing. This makes the deployment process zero-configuration on Hugging Face.
-  - Created [README.md](file:///C:/Users/admin/.gemini/antigravity-ide/scratch/custom-ai-enhancer/README.md) containing YAML frontmatter metadata to declare the Streamlit SDK, title, and entry point (`app.py`), enabling direct deployability upon pushing to Hugging Face Spaces.
+- **Hugging Face Spaces Optimization (Docker SDK)**:
+  - Modified [pipeline.py](file:///C:/Users/admin/.gemini/antigravity-ide/scratch/custom-ai-enhancer/pipeline.py) to automatically download model weights at runtime if they are missing.
+  - Created [README.md](file:///C:/Users/admin/.gemini/antigravity-ide/scratch/custom-ai-enhancer/README.md) containing setup instructions.
+  - Added [Dockerfile](file:///C:/Users/admin/.gemini/antigravity-ide/scratch/custom-ai-enhancer/Dockerfile) pre-configured with a CPU-only PyTorch setup to build fast, bypass size limits, and start the Streamlit server on port `7860`. This enables direct deployment via the Hugging Face **Docker SDK**.
 
 ### Code Changes
 - [NEW] [app.py](file:///C:/Users/admin/.gemini/antigravity-ide/scratch/custom-ai-enhancer/app.py) (Streamlit User Interface script)
 - [MODIFY] [pipeline.py](file:///C:/Users/admin/.gemini/antigravity-ide/scratch/custom-ai-enhancer/pipeline.py) (Added automatic weight download triggers)
-- [NEW] [README.md](file:///C:/Users/admin/.gemini/antigravity-ide/scratch/custom-ai-enhancer/README.md) (Hugging Face Spaces configuration & instructions)
+- [NEW] [README.md](file:///C:/Users/admin/.gemini/antigravity-ide/scratch/custom-ai-enhancer/README.md) (Project documentation)
+- [NEW] [Dockerfile](file:///C:/Users/admin/.gemini/antigravity-ide/scratch/custom-ai-enhancer/Dockerfile) (Docker container environment setup)
 
 ### Git Commit & Push Status
-- **Files Staged:** `app.py`, `pipeline.py`, `README.md`, `handover.md`
-- **Commit Message:** "chore: configure repository for Hugging Face Spaces Streamlit deployment"
+- **Files Staged:** `Dockerfile`, `handover.md`
+- **Commit Message:** "chore: add Dockerfile for Hugging Face Spaces Docker SDK deployment"
 - **Remote Push:** Scheduled for execution.
