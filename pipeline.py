@@ -54,7 +54,7 @@ class LocalAIEnhancerPipeline:
         self.net.eval()
         print("[Pipeline] CodeFormer model loaded successfully.")
 
-    def process_image(self, img, w=0.5, detection_model='retinaface_resnet50', upscale=2, blend_softness=0.5, bg_upsampler=None, det_threshold=0.5):
+    def process_image(self, img, w=0.5, detection_model='retinaface_resnet50', upscale=2, blend_softness=0.5, bg_upsampler=None, det_threshold=0.5, sharpen_amount=0.0):
         """
         Enhance an image using the local CodeFormer pipeline.
         
@@ -191,11 +191,12 @@ class LocalAIEnhancerPipeline:
             face_helper, 
             upscale=upscale, 
             blend_softness=blend_softness,
-            bg_img=bg_img
+            bg_img=bg_img,
+            sharpen_amount=sharpen_amount
         )
         return enhanced_img
 
-    def paste_faces_custom_blend(self, face_helper, upscale, blend_softness, bg_img=None):
+    def paste_faces_custom_blend(self, face_helper, upscale, blend_softness, bg_img=None, sharpen_amount=0.0):
         """Custom implementation of face pasting with adjustable soft blending mask."""
         h, w, _ = face_helper.input_img.shape
         h_up, w_up = int(h * upscale), int(w * upscale)
@@ -298,4 +299,13 @@ class LocalAIEnhancerPipeline:
             upsample_img = inv_soft_mask * pasted_face + (1 - inv_soft_mask) * upsample_img
             
         upsample_img = np.clip(upsample_img, 0, 255).astype(np.uint8)
+        
+        # Apply Post-Processing Sharpening Filter (Unsharp Masking) if requested
+        if sharpen_amount > 0.0:
+            # Gaussian blur for detail isolation
+            blurred = cv2.GaussianBlur(upsample_img, (0, 0), 3.0)
+            # Unsharp masking formula: sharpened = original + amount * (original - blurred)
+            upsample_img = cv2.addWeighted(upsample_img, 1.0 + sharpen_amount, blurred, -sharpen_amount, 0)
+            upsample_img = np.clip(upsample_img, 0, 255).astype(np.uint8)
+            
         return upsample_img

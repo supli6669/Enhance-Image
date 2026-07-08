@@ -190,6 +190,15 @@ det_threshold = st.sidebar.slider(
     help="Confidence threshold for face detection. Lower values find more/blurry faces, higher values reduce false detections."
 )
 
+sharpen_amount = st.sidebar.slider(
+    "Post-Processing Sharpness",
+    min_value=0.0,
+    max_value=1.0,
+    value=0.0,
+    step=0.05,
+    help="Enhance edge sharpness using a post-processing unsharp mask filter. 0.0 is disabled, higher values give an Ultra HD look."
+)
+
 # Tip card in sidebar
 st.sidebar.markdown("""
 <div style='margin-top: 20px; padding: 12px; background: rgba(167, 139, 250, 0.05); border-radius: 8px; border: 1px solid rgba(167, 139, 250, 0.15);'>
@@ -275,7 +284,8 @@ if uploaded_file is not None or use_sample:
                 upscale=upscale_factor,
                 blend_softness=blend_softness,
                 bg_upsampler='realesrgan' if bg_upscale_toggle else None,
-                det_threshold=det_threshold
+                det_threshold=det_threshold,
+                sharpen_amount=sharpen_amount
             )
             process_duration = time.time() - start_time
         except Exception as e:
