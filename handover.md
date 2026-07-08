@@ -57,6 +57,31 @@
 - [NEW] [test_pipeline.py](file:///C:/Users/admin/.gemini/antigravity-ide/scratch/custom-ai-enhancer/test_pipeline.py) (Verification test for the custom pipeline)
 
 ### Git Commit & Push Status
-- **Files Staged:** `pipeline.py`, `test_pipeline.py`, `handover.md`
 - **Commit Message:** "feat: implement custom enhancement pipeline with adjustable soft blending"
+- **Remote Push:** Completed.
+
+---
+
+## Task 4: Advanced Streamlit UI for Model Control
+
+### Completed Operations
+- Created `app.py` containing the Streamlit web application.
+- Caching initialized `LocalAIEnhancerPipeline` resources via `@st.cache_resource` to avoid loading 370MB weights on every page rerun.
+- Designed a sidebar containing AI parameters:
+  - **Fidelity Weight ($w$)**: Slider from 0.0 to 1.0 (fine-tuning quality/hallucination vs likeness).
+  - **Mask Blending Softness**: Slider from 0.0 to 1.0 (manually controlling feather/blur of edges).
+  - **Face Detector Model**: Dropdown (`retinaface_resnet50`, `retinaface_mobile0.25`, `YOLOv5l`, `YOLOv5n`).
+  - **Background Upscale Factor**: Slider to set scaling size.
+- Configured a file uploader for portrait images and added a "Use Sample Portrait Image" button to load `00.jpg` locally for demonstration.
+- Built a side-by-side Before (Original) vs. After (AI Restored) comparison section displaying image stats (dimensions, duration).
+- Added a high-speed download button to retrieve the restored image as a PNG file.
+- Custom styled the UI using HTML/CSS markdown injection for a radial dark theme, gradient headers, and glassmorphic cards.
+- Verified successful bytecode compilation of the Streamlit script.
+
+### Code Changes
+- [NEW] [app.py](file:///C:/Users/admin/.gemini/antigravity-ide/scratch/custom-ai-enhancer/app.py) (Streamlit User Interface script)
+
+### Git Commit & Push Status
+- **Files Staged:** `app.py`, `handover.md`
+- **Commit Message:** "feat: build premium Streamlit UI for local AI enhancement control"
 - **Remote Push:** Scheduled for execution.
