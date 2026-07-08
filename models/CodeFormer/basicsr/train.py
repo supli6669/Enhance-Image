@@ -172,7 +172,8 @@ def train_pipeline(root_path):
     data_time, iter_time = time.time(), time.time()
     start_time = time.time()
 
-    for epoch in range(start_epoch, total_epochs + 1):
+    epoch = start_epoch
+    while current_iter < total_iters:
         train_sampler.set_epoch(epoch)
         prefetcher.reset()
         train_data = prefetcher.next()
@@ -211,6 +212,8 @@ def train_pipeline(root_path):
             iter_time = time.time()
             train_data = prefetcher.next()
         # end of iter
+        epoch += 1
+    # end of epoch
 
     # end of epoch
 
