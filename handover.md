@@ -37,6 +37,26 @@
 - [NEW] [verify_imports.py](file:///C:/Users/admin/.gemini/antigravity-ide/scratch/custom-ai-enhancer/verify_imports.py) (Path and import verification test)
 
 ### Git Commit & Push Status
-- **Files Staged:** CodeFormer setup and model weights downloader files.
 - **Commit Message:** "feat: clone CodeFormer, download pretrained weights, and verify imports"
+- **Remote Push:** Completed.
+
+---
+
+## Task 3: Build Custom Hybrid Pipeline
+
+### Completed Operations
+- Created `pipeline.py` implementing the `LocalAIEnhancerPipeline` class.
+- Configured OpenCV image reading, loading `FaceRestoreHelper` for face landmarks detection and warping/cropping.
+- Passed warped face crops through the local CodeFormer model with customizable fidelity parameter ($w$) using PyTorch.
+- Designed a custom face pasting function (`paste_faces_custom_blend`) that exposes a `blend_softness` (0.0 to 1.0) parameter. This dynamically modifies the erosion radius and Gaussian blur size applied to the face boundary mask for seamless blending back into the upscaled background image.
+- Combined the soft edge boundary mask with CodeFormer's PyTorch face features parsing segmentation mask to prevent blending artifacts.
+- Created `test_pipeline.py` which runs the entire pipeline on a local sample image, verifies the upscaled dimensions, and saves the output to `test_output.png`. Tested successfully.
+
+### Code Changes
+- [NEW] [pipeline.py](file:///C:/Users/admin/.gemini/antigravity-ide/scratch/custom-ai-enhancer/pipeline.py) (Main processing pipeline with customizable fidelity and soft blending mask)
+- [NEW] [test_pipeline.py](file:///C:/Users/admin/.gemini/antigravity-ide/scratch/custom-ai-enhancer/test_pipeline.py) (Verification test for the custom pipeline)
+
+### Git Commit & Push Status
+- **Files Staged:** `pipeline.py`, `test_pipeline.py`, `handover.md`
+- **Commit Message:** "feat: implement custom enhancement pipeline with adjustable soft blending"
 - **Remote Push:** Scheduled for execution.
