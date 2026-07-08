@@ -6,6 +6,8 @@ import time
 from io import BytesIO
 from pipeline import LocalAIEnhancerPipeline
 
+project_dir = os.path.dirname(os.path.abspath(__file__))
+
 # 1. Page Configuration and Styling
 st.set_page_config(
     page_title="Custom AI Face Enhancer",
