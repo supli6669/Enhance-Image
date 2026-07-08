@@ -190,6 +190,17 @@ det_threshold = st.sidebar.slider(
     help="Confidence threshold for face detection. Lower values find more/blurry faces, higher values reduce false detections."
 )
 
+# Tip card in sidebar
+st.sidebar.markdown("""
+<div style='margin-top: 20px; padding: 12px; background: rgba(167, 139, 250, 0.05); border-radius: 8px; border: 1px solid rgba(167, 139, 250, 0.15);'>
+    <span style='color: #c084fc; font-weight: 600; font-size: 0.85rem;'>💡 KHÔNG THẤY KHÁC BIỆT?</span><br/>
+    <span style='color: #9ca3af; font-size: 0.8rem; line-height: 1.4;'>
+        - Hãy <b>giảm Fidelity Weight (w)</b> xuống (ví dụ: 0.3 - 0.5) để AI tự tạo thêm chi tiết nét hơn.<br/>
+        - Đảm bảo <b>Face Detection Threshold</b> đủ thấp để AI nhận diện được mặt trong ảnh mờ.
+    </span>
+</div>
+""", unsafe_allow_html=True)
+
 # Display active hardware device
 if pipeline is not None:
     device_str = "NVIDIA GPU (CUDA)" if "cuda" in str(pipeline.device) else "CPU"
@@ -283,33 +294,72 @@ if uploaded_file is not None or use_sample:
     </div>
     """, unsafe_allow_html=True)
     
-    # 7. Before / After Visualizations
-    col_before, col_after = st.columns(2)
+    # 7. Visual Comparison View Mode
+    view_mode = st.radio(
+        "Select Comparison Mode:",
+        ["👥 Side-by-Side (2 Columns)", "🌗 Split-Screen (50/50 Split)"],
+        horizontal=True
+    )
     
-    with col_before:
-        st.markdown("<h4 style='text-align: center; color: #9ca3af;'>Before (Original)</h4>", unsafe_allow_html=True)
-        # Convert BGR to RGB for Streamlit display
-        img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-        st.image(img_rgb, use_container_width=True)
+    # Pre-render images
+    h_enh, w_enh, _ = enhanced_img.shape
+    img_resized = cv2.resize(img, (w_enh, h_enh), interpolation=cv2.INTER_LANCZOS4)
+    mid_x = w_enh // 2
+    
+    if "Side-by-Side" in view_mode:
+        col_before, col_after = st.columns(2)
+        with col_before:
+            st.markdown("<h4 style='text-align: center; color: #9ca3af;'>Before (Original)</h4>", unsafe_allow_html=True)
+            img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+            st.image(img_rgb, use_container_width=True)
+            
+        with col_after:
+            st.markdown("<h4 style='text-align: center; color: #a78bfa;'>After (AI Restored)</h4>", unsafe_allow_html=True)
+            enhanced_rgb = cv2.cvtColor(enhanced_img, cv2.COLOR_BGR2RGB)
+            st.image(enhanced_rgb, use_container_width=True)
+    else:
+        st.markdown("<h4 style='text-align: center; color: #a78bfa;'>🌗 Split-Screen Comparison (Left: Before | Right: After)</h4>", unsafe_allow_html=True)
+        # Create split image
+        split_img = np.copy(enhanced_img)
+        split_img[:, :mid_x] = img_resized[:, :mid_x]
+        # Draw vertical line separating them
+        cv2.line(split_img, (mid_x, 0), (mid_x, h_enh), (255, 255, 255), max(2, w_enh // 300))
         
-    with col_after:
-        st.markdown("<h4 style='text-align: center; color: #a78bfa;'>After (AI Restored)</h4>", unsafe_allow_html=True)
-        enhanced_rgb = cv2.cvtColor(enhanced_img, cv2.COLOR_BGR2RGB)
-        st.image(enhanced_rgb, use_container_width=True)
+        split_rgb = cv2.cvtColor(split_img, cv2.COLOR_BGR2RGB)
+        st.image(split_rgb, use_container_width=True)
         
-    # 8. Download Result
-    # Encode BGR image to PNG bytes for download
-    is_success, buffer = cv2.imencode(".png", enhanced_img)
-    if is_success:
-        png_bytes = BytesIO(buffer).getvalue()
+    # 8. Download Results
+    st.markdown("<div style='height: 10px;'></div>", unsafe_allow_html=True)
+    col_dl1, col_dl2 = st.columns(2)
+    
+    with col_dl1:
+        is_success, buffer = cv2.imencode(".png", enhanced_img)
+        if is_success:
+            png_bytes = BytesIO(buffer).getvalue()
+            st.download_button(
+                label="📥 Download Enhanced Image Only",
+                data=png_bytes,
+                file_name=f"enhanced_{os.path.splitext(img_name)[0]}.png",
+                mime="image/png",
+                use_container_width=True
+            )
+            
+    with col_dl2:
+        # Create split comparison image for download
+        split_img_dl = np.copy(enhanced_img)
+        split_img_dl[:, :mid_x] = img_resized[:, :mid_x]
+        cv2.line(split_img_dl, (mid_x, 0), (mid_x, h_enh), (255, 255, 255), max(2, w_enh // 300))
         
-        st.markdown("<div style='height: 20px;'></div>", unsafe_allow_html=True)
-        st.download_button(
-            label="📥 Download Restored PNG",
-            data=png_bytes,
-            file_name=f"enhanced_{os.path.splitext(img_name)[0]}.png",
-            mime="image/png"
-        )
+        is_success_split, buffer_split = cv2.imencode(".png", split_img_dl)
+        if is_success_split:
+            split_png_bytes = BytesIO(buffer_split).getvalue()
+            st.download_button(
+                label="🌗 Download Split Comparison Image",
+                data=split_png_bytes,
+                file_name=f"split_comparison_{os.path.splitext(img_name)[0]}.png",
+                mime="image/png",
+                use_container_width=True
+            )
 else:
     # 9. Clean Welcome/Intro layout
     st.markdown("""
