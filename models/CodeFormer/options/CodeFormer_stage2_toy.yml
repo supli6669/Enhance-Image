@@ -1,0 +1,128 @@
+name: CodeFormer_stage2
+model_type: CodeFormerIdxModel
+num_gpu: 0
+manual_seed: 0
+datasets:
+  train:
+    name: FFHQ
+    type: FFHQBlindDataset
+    dataroot_gt: datasets/ffhq/ffhq_512
+    filename_tmpl: '{}'
+    io_backend:
+      type: disk
+    in_size: 512
+    gt_size: 512
+    mean:
+    - 0.5
+    - 0.5
+    - 0.5
+    std:
+    - 0.5
+    - 0.5
+    - 0.5
+    use_hflip: true
+    use_corrupt: true
+    blur_kernel_size: 41
+    use_motion_kernel: false
+    motion_kernel_prob: 0.001
+    kernel_list:
+    - iso
+    - aniso
+    kernel_prob:
+    - 0.5
+    - 0.5
+    blur_sigma:
+    - 1
+    - 15
+    downsample_range:
+    - 4
+    - 30
+    noise_range:
+    - 0
+    - 20
+    jpeg_range:
+    - 30
+    - 80
+    latent_gt_path: null
+    num_worker_per_gpu: 0
+    batch_size_per_gpu: 1
+    dataset_enlarge_ratio: 1
+    prefetch_mode: cpu
+network_g:
+  type: CodeFormer
+  dim_embd: 512
+  n_head: 8
+  n_layers: 9
+  codebook_size: 1024
+  connect_list:
+  - '32'
+  - '64'
+  - '128'
+  - '256'
+  fix_modules:
+  - quantize
+  - generator
+  vqgan_path: ./experiments/pretrained_models/vqgan/vqgan_code1024.pth
+network_vqgan:
+  type: VQAutoEncoder
+  img_size: 512
+  nf: 64
+  ch_mult:
+  - 1
+  - 2
+  - 2
+  - 4
+  - 4
+  - 8
+  quantizer: nearest
+  codebook_size: 1024
+path:
+  pretrain_network_g: null
+  param_key_g: params_ema
+  strict_load_g: false
+  pretrain_network_d: null
+  strict_load_d: true
+  resume_state: null
+train:
+  use_hq_feat_loss: true
+  feat_loss_weight: 1.0
+  cross_entropy_loss: true
+  entropy_loss_weight: 0.5
+  fidelity_weight: 0
+  optim_g:
+    type: Adam
+    lr: 0.0001
+    weight_decay: 0
+    betas:
+    - 0.9
+    - 0.99
+  scheduler:
+    type: MultiStepLR
+    milestones:
+    - 400000
+    - 450000
+    gamma: 0.5
+  total_iter: 5
+  warmup_iter: -1
+  ema_decay: 0.995
+  use_adaptive_weight: true
+  net_g_start_iter: 0
+  net_d_iters: 1
+  net_d_start_iter: 0
+  manual_seed: 0
+val:
+  val_freq: 50000000000.0
+  save_img: true
+  metrics:
+    psnr:
+      type: calculate_psnr
+      crop_border: 4
+      test_y_channel: false
+logger:
+  print_freq: 1
+  save_checkpoint_freq: 5
+  use_tb_logger: false
+  wandb: null
+dist_params: null
+find_unused_parameters: true
+dist: false

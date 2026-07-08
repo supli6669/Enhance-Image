@@ -172,7 +172,7 @@ class CodeFormerJointModel(SRModel):
 
         if self.hq_feat_loss:
             # quant_feats
-            quant_feat_gt = self.net_g.module.quantize.get_codebook_feat(self.idx_gt, shape=[self.b,16,16,256])
+            quant_feat_gt = self.get_bare_model(self.net_g).quantize.get_codebook_feat(self.idx_gt, shape=[self.b,16,16,256])
 
         l_g_total = 0
         loss_dict = OrderedDict()
@@ -210,11 +210,11 @@ class CodeFormerJointModel(SRModel):
                     l_g_gan = self.cri_gan(fake_g_pred, True, is_disc=False)
                     recon_loss = l_g_pix + l_g_percep
                     if not self.fix_generator:
-                        last_layer = self.net_g.module.generator.blocks[-1].weight
+                        last_layer = self.get_bare_model(self.net_g).generator.blocks[-1].weight
                         d_weight = self.calculate_adaptive_weight(recon_loss, l_g_gan, last_layer, disc_weight_max=1.0)
                     else:
                         largest_fuse_size = self.opt['network_g']['connect_list'][-1]
-                        last_layer = self.net_g.module.fuse_convs_dict[largest_fuse_size].shift[-1].weight
+                        last_layer = self.get_bare_model(self.net_g).fuse_convs_dict[largest_fuse_size].shift[-1].weight
                         d_weight = self.calculate_adaptive_weight(recon_loss, l_g_gan, last_layer, disc_weight_max=1.0)
                     
                     d_weight *= self.scale_adaptive_gan_weight # 0.8

@@ -116,9 +116,13 @@ def train_pipeline(root_path):
 
     # load resume states if necessary
     if opt['path'].get('resume_state'):
-        device_id = torch.cuda.current_device()
-        resume_state = torch.load(
-            opt['path']['resume_state'], map_location=lambda storage, loc: storage.cuda(device_id))
+        if torch.cuda.is_available():
+            device_id = torch.cuda.current_device()
+            resume_state = torch.load(
+                opt['path']['resume_state'], map_location=lambda storage, loc: storage.cuda(device_id))
+        else:
+            resume_state = torch.load(
+                opt['path']['resume_state'], map_location='cpu')
     else:
         resume_state = None
 

@@ -48,7 +48,7 @@ def parse(opt_path, root_path, is_train=True):
     # opt['name'] = f"{get_time_str()}_{opt['name']}"
     if opt['path'].get('resume_state', None): # Shangchen added
         resume_state_path = opt['path'].get('resume_state')
-        opt['name'] = resume_state_path.split("/")[-3]
+        opt['name'] = resume_state_path.replace("\\", "/").split("/")[-3]
     else:
         opt['name'] = f"{get_time_str()}_{opt['name']}"
 

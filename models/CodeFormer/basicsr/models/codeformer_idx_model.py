@@ -96,7 +96,7 @@ class CodeFormerIdxModel(SRModel):
         
         if self.hq_feat_loss:
             # quant_feats
-            quant_feat_gt = self.net_g.module.quantize.get_codebook_feat(self.idx_gt, shape=[self.b,16,16,256])
+            quant_feat_gt = self.get_bare_model(self.net_g).quantize.get_codebook_feat(self.idx_gt, shape=[self.b,16,16,256])
 
         logits, lq_feat = self.net_g(self.input, w=0, code_only=True)
 

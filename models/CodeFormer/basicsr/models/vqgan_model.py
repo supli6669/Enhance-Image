@@ -118,9 +118,9 @@ class VQGANModel(SRModel):
         logger = get_root_logger()
         loss_dict = OrderedDict()
         if self.opt['network_g']['quantizer'] == 'gumbel':
-            self.net_g.module.quantize.temperature = max(1/16, ((-1/160000) * current_iter) + 1)
+            self.get_bare_model(self.net_g).quantize.temperature = max(1/16, ((-1/160000) * current_iter) + 1)
             if current_iter%1000 == 0:
-                logger.info(f'temperature: {self.net_g.module.quantize.temperature}')
+                logger.info(f'temperature: {self.get_bare_model(self.net_g).quantize.temperature}')
 
         # optimize net_g
         for p in self.net_d.parameters():
@@ -150,7 +150,7 @@ class VQGANModel(SRModel):
                 fake_g_pred = self.net_d(self.output)
                 l_g_gan = self.cri_gan(fake_g_pred, True, is_disc=False)
                 recon_loss = l_g_total
-                last_layer = self.net_g.module.generator.blocks[-1].weight
+                last_layer = self.get_bare_model(self.net_g).generator.blocks[-1].weight
                 d_weight = self.calculate_adaptive_weight(recon_loss, l_g_gan, last_layer, disc_weight_max=1.0)
                 d_weight *= self.adopt_weight(1, current_iter, self.net_d_start_iter)
                 d_weight *= self.disc_weight # tamming setting 0.8
