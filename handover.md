@@ -67,21 +67,28 @@
 ### Completed Operations
 - Created `app.py` containing the Streamlit web application.
 - Caching initialized `LocalAIEnhancerPipeline` resources via `@st.cache_resource` to avoid loading 370MB weights on every page rerun.
-- Designed a sidebar containing AI parameters (Fidelity Weight ($w$), Mask Blending Softness, Face Detector model, Background Upscale Factor).
+- Designed a sidebar containing AI parameters:
+  - **Fidelity Weight ($w$)**: Slider from 0.0 to 1.0 (fine-tuning quality/hallucination vs likeness).
+  - **Mask Blending Softness**: Slider from 0.0 to 1.0 (manually controlling feather/blur of edges).
+  - **Face Detector Model**: Dropdown (`retinaface_resnet50`, `retinaface_mobile0.25`, `YOLOv5l`, `YOLOv5n`).
+  - **Background Upscale Factor**: Slider to set scaling size.
+  - **Real-ESRGAN Background Upscale**: Checkbox to toggle AI-based super-resolution for the background.
+  - **Face Detection Threshold**: Slider from 0.1 to 1.0 (controls the confidence threshold of RetinaFace/YOLOv5 dynamically).
 - Built a side-by-side Before (Original) vs. After (AI Restored) comparison section displaying image stats (dimensions, duration) and a high-speed download button.
 - Custom styled the UI using HTML/CSS markdown injection for a radial dark theme, gradient headers, and glassmorphic cards.
 - **Hugging Face Spaces Optimization (Docker SDK)**:
-  - Modified [pipeline.py](file:///C:/Users/admin/.gemini/antigravity-ide/scratch/custom-ai-enhancer/pipeline.py) to automatically download model weights at runtime if they are missing.
+  - Modified [pipeline.py](file:///C:/Users/admin/.gemini/antigravity-ide/scratch/custom-ai-enhancer/pipeline.py) to automatically download model weights (including Real-ESRGAN weights) at runtime if they are missing.
   - Created [README.md](file:///C:/Users/admin/.gemini/antigravity-ide/scratch/custom-ai-enhancer/README.md) containing setup instructions.
   - Added [Dockerfile](file:///C:/Users/admin/.gemini/antigravity-ide/scratch/custom-ai-enhancer/Dockerfile) pre-configured with a CPU-only PyTorch setup to build fast, bypass size limits, and start the Streamlit server on port `7860`. This enables direct deployment via the Hugging Face **Docker SDK**.
 
 ### Code Changes
 - [NEW] [app.py](file:///C:/Users/admin/.gemini/antigravity-ide/scratch/custom-ai-enhancer/app.py) (Streamlit User Interface script)
-- [MODIFY] [pipeline.py](file:///C:/Users/admin/.gemini/antigravity-ide/scratch/custom-ai-enhancer/pipeline.py) (Added automatic weight download triggers)
+- [MODIFY] [pipeline.py](file:///C:/Users/admin/.gemini/antigravity-ide/scratch/custom-ai-enhancer/pipeline.py) (Added automatic weight download triggers and Real-ESRGAN & threshold handling)
 - [NEW] [README.md](file:///C:/Users/admin/.gemini/antigravity-ide/scratch/custom-ai-enhancer/README.md) (Project documentation)
 - [NEW] [Dockerfile](file:///C:/Users/admin/.gemini/antigravity-ide/scratch/custom-ai-enhancer/Dockerfile) (Docker container environment setup)
+- [MODIFY] [download_weights.py](file:///C:/Users/admin/.gemini/antigravity-ide/scratch/custom-ai-enhancer/download_weights.py) (Added RealESRGAN model weights to downloader)
 
 ### Git Commit & Push Status
-- **Files Staged:** `Dockerfile`, `handover.md`
-- **Commit Message:** "chore: add Dockerfile for Hugging Face Spaces Docker SDK deployment"
+- **Files Staged:** `app.py`, `pipeline.py`, `download_weights.py`, `handover.md`
+- **Commit Message:** "feat: integrate Real-ESRGAN background upscaling and face detection threshold"
 - **Remote Push:** Scheduled for execution.

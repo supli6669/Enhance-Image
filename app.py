@@ -173,6 +173,21 @@ upscale_factor = st.sidebar.slider(
     help="Scale factor for the output background image."
 )
 
+bg_upscale_toggle = st.sidebar.checkbox(
+    "Real-ESRGAN Background Upscale",
+    value=False,
+    help="Enable AI-based super-resolution for the background using Real-ESRGAN. If unchecked, standard bilinear resizing is used."
+)
+
+det_threshold = st.sidebar.slider(
+    "Face Detection Threshold",
+    min_value=0.1,
+    max_value=1.0,
+    value=0.5,
+    step=0.05,
+    help="Confidence threshold for face detection. Lower values find more/blurry faces, higher values reduce false detections."
+)
+
 # Display active hardware device
 if pipeline is not None:
     device_str = "NVIDIA GPU (CUDA)" if "cuda" in str(pipeline.device) else "CPU"
@@ -245,7 +260,9 @@ if uploaded_file is not None or use_sample:
                 w=fidelity_weight,
                 detection_model=face_detector,
                 upscale=upscale_factor,
-                blend_softness=blend_softness
+                blend_softness=blend_softness,
+                bg_upsampler='realesrgan' if bg_upscale_toggle else None,
+                det_threshold=det_threshold
             )
             process_duration = time.time() - start_time
         except Exception as e:

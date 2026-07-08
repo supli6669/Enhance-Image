@@ -54,7 +54,7 @@ class LocalAIEnhancerPipeline:
         self.net.eval()
         print("[Pipeline] CodeFormer model loaded successfully.")
 
-    def process_image(self, img, w=0.5, detection_model='retinaface_resnet50', upscale=2, blend_softness=0.5):
+    def process_image(self, img, w=0.5, detection_model='retinaface_resnet50', upscale=2, blend_softness=0.5, bg_upsampler=None, det_threshold=0.5):
         """
         Enhance an image using the local CodeFormer pipeline.
         
@@ -64,6 +64,8 @@ class LocalAIEnhancerPipeline:
             detection_model (str): Face detector model ('retinaface_resnet50', 'YOLOv5l', etc.).
             upscale (int): Upscale factor for output image.
             blend_softness (float): Blending mask softness (0.0 to 1.0).
+            bg_upsampler (str): 'realesrgan' or None.
+            det_threshold (float): Face detection confidence threshold.
             
         Returns:
             numpy.ndarray: Enhanced output image in BGR format.
@@ -82,11 +84,25 @@ class LocalAIEnhancerPipeline:
             device=self.device
         )
         
+        # Modify confidence threshold dynamically on the underlying detector
+        if hasattr(face_helper, 'face_detector'):
+            detector = face_helper.face_detector
+            if hasattr(detector, 'detect_faces'):
+                original_detect_faces = detector.detect_faces
+                def custom_detect_faces(image, *args, **kwargs):
+                    detector_class = detector.__class__.__name__
+                    if "Yolo" in detector_class:
+                        kwargs['conf_thres'] = det_threshold
+                    else:
+                        kwargs['conf_threshold'] = det_threshold
+                    return original_detect_faces(image, *args, **kwargs)
+                detector.detect_faces = custom_detect_faces
+
         face_helper.clean_all()
         face_helper.read_image(img)
         
         # 1. Detect face landmarks and align/crop faces
-        print(f"[Pipeline] Running face detection model: {detection_model}...")
+        print(f"[Pipeline] Running face detection model: {detection_model} with threshold: {det_threshold}...")
         num_det_faces = face_helper.get_face_landmarks_5(
             only_center_face=False, 
             resize=640, 
@@ -94,8 +110,55 @@ class LocalAIEnhancerPipeline:
         )
         print(f"[Pipeline] Detected {num_det_faces} faces.")
         
+        # Handle background upsampling first
+        bg_img = None
+        if bg_upsampler == 'realesrgan':
+            if not hasattr(self, 'bg_upsampler_instance') or self.bg_upsampler_instance is None:
+                print("[Pipeline] Loading Real-ESRGAN background upsampler...")
+                realesrgan_path = os.path.join(project_dir, "weights", "realesrgan", "RealESRGAN_x2plus.pth")
+                if not os.path.exists(realesrgan_path):
+                    print("[Pipeline] Real-ESRGAN weights not found. Automatically downloading...")
+                    try:
+                        import download_weights
+                        download_weights.download_file("https://github.com/sczhou/CodeFormer/releases/download/v0.1.0/RealESRGAN_x2plus.pth", realesrgan_path)
+                    except Exception as e:
+                        print(f"[Pipeline] Error downloading Real-ESRGAN weights: {e}")
+                        raise FileNotFoundError(f"Real-ESRGAN weights not found at {realesrgan_path} and auto-download failed.")
+                
+                from basicsr.archs.rrdbnet_arch import RRDBNet
+                from basicsr.utils.realesrgan_utils import RealESRGANer
+                
+                use_half = False
+                if self.device.type == 'cuda':
+                    no_half_gpu_list = ['1650', '1660']
+                    if not any(gpu in torch.cuda.get_device_name(0) for gpu in no_half_gpu_list):
+                        use_half = True
+                        
+                model = RRDBNet(
+                    num_in_ch=3,
+                    num_out_ch=3,
+                    num_feat=64,
+                    num_block=23,
+                    num_grow_ch=32,
+                    scale=2
+                )
+                self.bg_upsampler_instance = RealESRGANer(
+                    scale=2,
+                    model_path=realesrgan_path,
+                    model=model,
+                    tile=400,
+                    tile_pad=40,
+                    pre_pad=0,
+                    half=use_half
+                )
+            
+            print("[Pipeline] Running Real-ESRGAN background super-resolution...")
+            bg_img = self.bg_upsampler_instance.enhance(img, outscale=upscale)[0]
+
         if num_det_faces == 0:
-            # Return resized background if no faces are detected
+            if bg_img is not None:
+                return bg_img
+            # Return resized background if no faces are detected and no AI upscaler used
             h, w_img, _ = img.shape
             return cv2.resize(img, (w_img * upscale, h * upscale), interpolation=cv2.INTER_LINEAR)
             
@@ -127,17 +190,21 @@ class LocalAIEnhancerPipeline:
         enhanced_img = self.paste_faces_custom_blend(
             face_helper, 
             upscale=upscale, 
-            blend_softness=blend_softness
+            blend_softness=blend_softness,
+            bg_img=bg_img
         )
         return enhanced_img
 
-    def paste_faces_custom_blend(self, face_helper, upscale, blend_softness):
+    def paste_faces_custom_blend(self, face_helper, upscale, blend_softness, bg_img=None):
         """Custom implementation of face pasting with adjustable soft blending mask."""
         h, w, _ = face_helper.input_img.shape
         h_up, w_up = int(h * upscale), int(w * upscale)
         
         # Initialize background image (upsampled background)
-        upsample_img = cv2.resize(face_helper.input_img, (w_up, h_up), interpolation=cv2.INTER_LINEAR)
+        if bg_img is None:
+            upsample_img = cv2.resize(face_helper.input_img, (w_up, h_up), interpolation=cv2.INTER_LINEAR)
+        else:
+            upsample_img = cv2.resize(bg_img, (w_up, h_up), interpolation=cv2.INTER_LANCZOS4)
         
         for restored_face, inverse_affine in zip(face_helper.restored_faces, face_helper.inverse_affine_matrices):
             # Alignment offset
