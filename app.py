@@ -177,7 +177,7 @@ upscale_factor = st.sidebar.slider(
 
 bg_upscale_toggle = st.sidebar.checkbox(
     "Real-ESRGAN Background Upscale",
-    value=False,
+    value=True,
     help="Enable AI-based super-resolution for the background using Real-ESRGAN. If unchecked, standard bilinear resizing is used."
 )
 
