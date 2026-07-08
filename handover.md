@@ -92,3 +92,83 @@
 - **Files Staged:** `app.py`, `pipeline.py`, `download_weights.py`, `handover.md`
 - **Commit Message:** "feat: integrate Real-ESRGAN background upscaling and face detection threshold"
 - **Remote Push:** Scheduled for execution.
+
+---
+
+## Task 5: Peak End-to-End Model Improvement Plan
+
+### Overview
+This plan describes the comprehensive, peak end-to-end strategy to improve and fine-tune the CodeFormer face restoration model on custom target domain datasets, covering data preparation, degradation pipeline adjustment, advanced loss selection, distributed training, validation, and integration.
+
+---
+
+### Step 1: Data Preparation & Preprocessing Pipeline
+To fine-tune the model, you need a high-quality (HQ) training dataset. If you have low-quality (LQ) images, you also need to align them.
+1. **Acquire HQ Face Dataset:** Prepare 2,000 - 10,000 high-quality face images (e.g. from your target domain or high-res portraits).
+2. **Crop & Align Faces:**
+   Run the face detection and alignment helper to crop faces to $512 \times 512$ pixels:
+   ```bash
+   python models/CodeFormer/scripts/crop_align_face.py -i <input_raw_images_dir> -o <output_aligned_faces_dir>
+   ```
+3. **Data Splitting:** Divide aligned faces into training (90%), validation (5%), and test (5%) splits. Store them under `models/CodeFormer/datasets/custom_dataset/`.
+
+---
+
+### Step 2: Degradation Modeling Customization
+Modify the blind dataset configurations in your custom training option file (e.g. `CodeFormer_stage3_custom.yml`) to represent target real-world degradations:
+- **Motion Blur:** Set `motion_kernel_prob` and add motion blur kernels to model camera movement.
+- **Gaussian Blur:** Modify `blur_kernel_size` and `blur_sigma` to match degradation level.
+- **Noise:** Add Poisson and Gaussian noise with custom parameters (`noise_range` or `noise_range_large`).
+- **JPEG Compression:** Decrease the minimum of `jpeg_range` if dealing with high compression blockiness.
+
+---
+
+### Step 3: Architecture & Fine-Tuning Scenarios
+Depending on your project's goals, select one of the following training pathways:
+- **Scenario A: CFT Module Fine-Tuning (Stage III) - Recommended First Step**
+  - Keeps Stage 1 (VQGAN) and Stage 2 (Transformer) frozen. Fine-tunes the controllable feature transformation layers to balance likeness (fidelity) and quality.
+  - Very stable, relatively fast, and requires less GPU memory.
+- **Scenario B: Transformer & CFT Fine-Tuning (Stage II & III)**
+  - Fine-tunes the lookup transformer to map distorted inputs to the clean codebook indices.
+  - Useful if the degradations are highly non-linear or stylized (e.g. cartoons, oil paintings).
+- **Scenario C: Full VQGAN + Transformer Retraining (Stage I, II & III)**
+  - Re-trains the VQGAN codebook representation from scratch.
+  - Necessary only if restoring non-human faces (e.g., animal faces, fictional creatures).
+
+---
+
+### Step 4: Advanced Loss Function Adjustments
+To enhance qualitative results and identity preservation:
+1. **Identity Preservation (ArcFace Loss):** Integrate an ArcFace feature extractor to compute Cosine Similarity between restored and original faces:
+   $$\mathcal{L}_{id} = 1 - \cos(\text{ArcFace}(I_{rec}), \text{ArcFace}(I_{HQ}))$$
+2. **Structural & Detail Control:**
+   - **Perceptual (LPIPS) Loss:** Retain at weight `1.0` for natural textures.
+   - **GAN Loss:** Use Hinge GAN Loss (`loss_weight: 0.1`) to generate sharp details without artifacts.
+   - **Pixel (L1) Loss:** Retain at weight `1.0` to avoid drift in color/lighting.
+
+---
+
+### Step 5: Distributed GPU Training Setup
+For official training, use GPU(s) with CUDA:
+1. **Create Option File:** Save configuration to [CodeFormer_stage3_custom.yml](file:///c:/Users/admin/.gemini/antigravity-ide/scratch/custom-ai-enhancer/models/CodeFormer/options/CodeFormer_stage3_custom.yml). Set `num_gpu: 1` (or more).
+2. **Execute Training via torchrun (Distributed):**
+   ```bash
+   torchrun --nproc_per_node=gpu_num models/CodeFormer/basicsr/train.py -opt models/CodeFormer/options/CodeFormer_stage3_custom.yml --launcher pytorch
+   ```
+3. **Mixed Precision (AMP):** Enable AMP to save memory and speed up computation.
+
+---
+
+### Step 6: Evaluation & Metrics Validation
+Validate checkpoints quantitatively and qualitatively:
+- **PSNR / SSIM:** Measure reconstruction fidelity.
+- **LPIPS:** Measure perceptual closeness to human vision.
+- **FID:** Measure distribution quality of generated faces.
+- **ArcFace Cosine similarity:** Validate face identity preservation.
+
+---
+
+### Step 7: Streamlit Integration
+1. Export the best trained checkpoint (`params_ema` key) from `experiments/` to `weights/CodeFormer/codeformer_custom.pth`.
+2. Update [pipeline.py](file:///c:/Users/admin/.gemini/antigravity-ide/scratch/custom-ai-enhancer/pipeline.py) to point to the new model weights.
+3. Update [app.py](file:///c:/Users/admin/.gemini/antigravity-ide/scratch/custom-ai-enhancer/app.py) to add a model-selection dropdown or toggle, letting users compare the vanilla CodeFormer against your custom fine-tuned model.
