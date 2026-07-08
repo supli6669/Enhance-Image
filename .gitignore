@@ -1,0 +1,41 @@
+# Virtual Environment
+.venv/
+venv/
+ENV/
+
+# PyTorch weights and checkpoints
+*.pth
+*.ckpt
+weights/
+models/CodeFormer/weights/
+models/CodeFormer/inputs/
+models/CodeFormer/results/
+
+# Python caching
+**/__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.ipynb_checkpoints/
+
+# System and IDE
+.idea/
+.vscode/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.swp
+Thumbs.db
+ehthumbs.db
+
+# User inputs and output results
+results/
+output/
+input/
+temp/
+*.png
+*.jpg
+*.jpeg
+*.webp
