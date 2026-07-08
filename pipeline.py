@@ -37,7 +37,13 @@ class LocalAIEnhancerPipeline:
         # Load weights
         weights_path = os.path.join(project_dir, "weights", "CodeFormer", "codeformer.pth")
         if not os.path.exists(weights_path):
-            raise FileNotFoundError(f"CodeFormer weights not found at {weights_path}. Please run download_weights.py first.")
+            print("[Pipeline] Pretrained weights not found. Automatically downloading models...")
+            try:
+                import download_weights
+                download_weights.main()
+            except Exception as e:
+                print(f"[Pipeline] Error during automatic weight download: {e}")
+                raise FileNotFoundError(f"CodeFormer weights not found at {weights_path} and auto-download failed. Please run download_weights.py manually.")
             
         print(f"[Pipeline] Loading weights from {weights_path}...")
         checkpoint = torch.load(weights_path, map_location=self.device)

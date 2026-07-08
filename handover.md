@@ -62,26 +62,24 @@
 
 ---
 
-## Task 4: Advanced Streamlit UI for Model Control
+## Task 4: Advanced Streamlit UI & Hugging Face Spaces Deployment
 
 ### Completed Operations
 - Created `app.py` containing the Streamlit web application.
 - Caching initialized `LocalAIEnhancerPipeline` resources via `@st.cache_resource` to avoid loading 370MB weights on every page rerun.
-- Designed a sidebar containing AI parameters:
-  - **Fidelity Weight ($w$)**: Slider from 0.0 to 1.0 (fine-tuning quality/hallucination vs likeness).
-  - **Mask Blending Softness**: Slider from 0.0 to 1.0 (manually controlling feather/blur of edges).
-  - **Face Detector Model**: Dropdown (`retinaface_resnet50`, `retinaface_mobile0.25`, `YOLOv5l`, `YOLOv5n`).
-  - **Background Upscale Factor**: Slider to set scaling size.
-- Configured a file uploader for portrait images and added a "Use Sample Portrait Image" button to load `00.jpg` locally for demonstration.
-- Built a side-by-side Before (Original) vs. After (AI Restored) comparison section displaying image stats (dimensions, duration).
-- Added a high-speed download button to retrieve the restored image as a PNG file.
+- Designed a sidebar containing AI parameters (Fidelity Weight ($w$), Mask Blending Softness, Face Detector model, Background Upscale Factor).
+- Built a side-by-side Before (Original) vs. After (AI Restored) comparison section displaying image stats (dimensions, duration) and a high-speed download button.
 - Custom styled the UI using HTML/CSS markdown injection for a radial dark theme, gradient headers, and glassmorphic cards.
-- Verified successful bytecode compilation of the Streamlit script.
+- **Hugging Face Spaces Optimization**:
+  - Modified [pipeline.py](file:///C:/Users/admin/.gemini/antigravity-ide/scratch/custom-ai-enhancer/pipeline.py) to automatically download model weights at runtime if they are missing. This makes the deployment process zero-configuration on Hugging Face.
+  - Created [README.md](file:///C:/Users/admin/.gemini/antigravity-ide/scratch/custom-ai-enhancer/README.md) containing YAML frontmatter metadata to declare the Streamlit SDK, title, and entry point (`app.py`), enabling direct deployability upon pushing to Hugging Face Spaces.
 
 ### Code Changes
 - [NEW] [app.py](file:///C:/Users/admin/.gemini/antigravity-ide/scratch/custom-ai-enhancer/app.py) (Streamlit User Interface script)
+- [MODIFY] [pipeline.py](file:///C:/Users/admin/.gemini/antigravity-ide/scratch/custom-ai-enhancer/pipeline.py) (Added automatic weight download triggers)
+- [NEW] [README.md](file:///C:/Users/admin/.gemini/antigravity-ide/scratch/custom-ai-enhancer/README.md) (Hugging Face Spaces configuration & instructions)
 
 ### Git Commit & Push Status
-- **Files Staged:** `app.py`, `handover.md`
-- **Commit Message:** "feat: build premium Streamlit UI for local AI enhancement control"
+- **Files Staged:** `app.py`, `pipeline.py`, `README.md`, `handover.md`
+- **Commit Message:** "chore: configure repository for Hugging Face Spaces Streamlit deployment"
 - **Remote Push:** Scheduled for execution.
