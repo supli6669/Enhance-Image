@@ -123,6 +123,34 @@ def create_training_config(num_images: int) -> str:
         "scale": 4,
         "num_gpu": 0,
         "manual_seed": 0,
+
+        # Top-level options for synthesizing training data in RealESRGANModel
+        "l1_gt_usm": True,
+        "percep_gt_usm": True,
+        "gan_gt_usm": False,
+
+        # the first degradation process
+        "resize_prob": [0.2, 0.7, 0.1],
+        "resize_range": [0.15, 1.5],
+        "gaussian_noise_prob": 0.5,
+        "noise_range": [1, 30],
+        "poisson_scale_range": [0.05, 3.0],
+        "gray_noise_prob": 0.4,
+        "jpeg_range": [30, 95],
+
+        # the second degradation process
+        "second_blur_prob": 0.8,
+        "resize_prob2": [0.3, 0.4, 0.3],
+        "resize_range2": [0.3, 1.2],
+        "gaussian_noise_prob2": 0.5,
+        "noise_range2": [1, 25],
+        "poisson_scale_range2": [0.05, 2.5],
+        "gray_noise_prob2": 0.4,
+        "jpeg_range2": [30, 95],
+
+        "gt_size": 256,
+        "queue_size": 20,  # small queue size for CPU/single worker
+
         "datasets": {
             "train": {
                 "name": "CustomMixedDataset",
@@ -150,24 +178,8 @@ def create_training_config(num_images: int) -> str:
                 "betag_range2": [0.5, 4.0],
                 "betap_range2": [1, 2.0],
                 "final_sinc_prob": 0.8,
-                "resize_prob": [0.2, 0.7, 0.1],
-                "resize_range": [0.15, 1.5],
-                "gaussian_noise_prob": 0.5,
-                "noise_range": [1, 30],
-                "poisson_scale_range": [0.05, 3.0],
-                "gray_noise_prob": 0.4,
-                "jpeg_range": [30, 95],
-                "resize_prob2": [0.3, 0.4, 0.3],
-                "resize_range2": [0.3, 1.2],
-                "gaussian_noise_prob2": 0.5,
-                "noise_range2": [1, 25],
-                "poisson_scale_range2": [0.05, 2.5],
-                "gray_noise_prob2": 0.4,
-                "jpeg_range2": [30, 95],
-                "gt_size_h": 256,
-                "gt_size_w": 256,
-                "batch_size_per_gpu": 4,
                 "num_worker_per_gpu": 0,
+                "batch_size_per_gpu": 2,
                 "dataset_enlarge_ratio": 1,
                 "prefetch_mode": "cpu",
                 "num_prefetch_queue": 1,
