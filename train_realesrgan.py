@@ -47,18 +47,20 @@ def clone_realesrgan():
 def install_realesrgan_deps():
     """Install Real-ESRGAN dependencies."""
     print("Installing Real-ESRGAN dependencies...")
-    requirements_file = os.path.join(REALESRGAN_DIR, "requirements.txt")
-    if os.path.exists(requirements_file):
-        subprocess.run(
-            [sys.executable, "-m", "pip", "install", "-r", requirements_file],
-            check=True,
+    # Skip the repo's requirements.txt — it pins an old basicsr that fails to
+    # build on Python 3.13.  We already have a working basicsr installed via
+    # the CodeFormer setup, so only install the extras Real-ESRGAN needs.
+    extras = ["facexlib", "gfpgan"]
+    for pkg in extras:
+        result = subprocess.run(
+            [sys.executable, "-m", "pip", "install", pkg],
+            capture_output=True, text=True
         )
-    # Also install basicsr for Real-ESRGAN
-    subprocess.run(
-        [sys.executable, "-m", "pip", "install", "basicsr", "facexlib", "gfpgan"],
-        check=True,
-    )
-    print("[OK] Dependencies installed.")
+        if result.returncode == 0:
+            print(f"  [OK] {pkg} installed.")
+        else:
+            print(f"  [warn] {pkg} install failed (may already be present): {result.stderr[-200:]}")
+    print("[OK] Dependencies ready.")
 
 
 def prepare_gt_dataset():
@@ -95,6 +97,14 @@ def prepare_gt_dataset():
 
     total = len([f for f in os.listdir(REALESRGAN_GT_DIR) if f.endswith(".png")])
     print(f"[OK] GT dataset ready: {total} images (copied {total_copied} new)")
+
+    # Generate meta_info.txt  (format: "filename.png 1" per line)
+    meta_info_path = os.path.join(REALESRGAN_GT_DIR, "meta_info.txt")
+    all_pngs = sorted([f for f in os.listdir(REALESRGAN_GT_DIR) if f.endswith(".png")])
+    with open(meta_info_path, "w", encoding="utf-8") as mf:
+        for fname in all_pngs:
+            mf.write(f"{fname} 1\n")
+    print(f"[OK] meta_info.txt written: {len(all_pngs)} entries -> {meta_info_path}")
     return total
 
 
@@ -118,7 +128,7 @@ def create_training_config(num_images: int) -> str:
                 "name": "CustomMixedDataset",
                 "type": "RealESRGANDataset",
                 "dataroot_gt": gt_path_rel,
-                "meta_info": None,
+                "meta_info": os.path.join(REALESRGAN_GT_DIR, "meta_info.txt").replace("\\", "/"),
                 "io_backend": {"type": "disk"},
                 "gt_size": 256,
                 "use_hflip": True,
@@ -306,7 +316,7 @@ def main():
         print("\n>>> FRESH START: No previous checkpoint. Starting from scratch.")
 
     # 6. Run training
-    train_script = os.path.join("basicsr", "train.py")
+    train_script = os.path.join("realesrgan", "train.py")
     cmd = [
         sys.executable,
         train_script,
@@ -315,7 +325,17 @@ def main():
     ]
 
     env = os.environ.copy()
-    env["PYTHONPATH"] = os.path.pathsep.join([REALESRGAN_DIR, env.get("PYTHONPATH", "")])
+    # Real-ESRGAN's train.py imports from basicsr.
+    # CodeFormer's basicsr lacks degradations module, so we use the full
+    # BasicSR source cloned at D:\Temp\BasicSR_src (no install needed).
+    basicsr_src = r"D:\Temp\BasicSR_src"
+    codeformer_dir = os.path.join(PROJECT_DIR, "models", "CodeFormer")
+    env["PYTHONPATH"] = os.path.pathsep.join([
+        REALESRGAN_DIR,
+        basicsr_src,       # full BasicSR with degradations
+        codeformer_dir,    # fallback
+        env.get("PYTHONPATH", ""),
+    ])
 
     print(f"\nStarting Real-ESRGAN training...")
     print(f"Working directory: {REALESRGAN_DIR}")
