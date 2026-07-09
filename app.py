@@ -1,4 +1,4 @@
-import streamlit as st
+﻿import streamlit as st
 import cv2
 import numpy as np
 import os
@@ -8,126 +8,183 @@ from pipeline import LocalAIEnhancerPipeline
 
 project_dir = os.path.dirname(os.path.abspath(__file__))
 
-# 1. Page Configuration and Styling
+# ── Page Config ────────────────────────────────────────────────────────────────
 st.set_page_config(
-    page_title="Custom AI Face Enhancer",
+    page_title="AI Image Enhancer",
     page_icon="✨",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# Inject custom CSS for premium dark aesthetics, glassmorphism, and custom typography
+# ── Premium CSS ────────────────────────────────────────────────────────────────
 st.markdown("""
 <style>
-    @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap');
-    
-    /* Global Styles */
-    html, body, [class*="css"] {
-        font-family: 'Outfit', sans-serif;
-    }
-    
-    /* Background Gradient */
-    .stApp {
-        background: radial-gradient(circle at top right, #1f1235 0%, #0d0b14 100%);
-        color: #f1ecf7;
-    }
-    
-    /* Header Gradient Text */
-    .header-title {
-        background: linear-gradient(135deg, #a78bfa 0%, #f472b6 100%);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-        font-weight: 800;
-        font-size: 3rem;
-        margin-bottom: 0.2rem;
-        text-align: center;
-    }
-    
-    .header-subtitle {
-        color: #9ca3af;
-        font-size: 1.1rem;
-        text-align: center;
-        margin-bottom: 2rem;
-        font-weight: 300;
-    }
-    
-    /* Cards and Glassmorphism */
-    .glass-card {
-        background: rgba(255, 255, 255, 0.03);
-        border: 1px solid rgba(255, 255, 255, 0.05);
-        border-radius: 16px;
-        padding: 24px;
-        backdrop-filter: blur(12px);
-        margin-bottom: 20px;
-    }
-    
-    /* Sidebar styling */
-    section[data-testid="stSidebar"] {
-        background-color: #0b090f !important;
-        border-right: 1px solid rgba(255, 255, 255, 0.05);
-    }
-    
-    /* Button Customization */
-    div.stButton > button {
-        background: linear-gradient(135deg, #7c3aed 0%, #db2777 100%);
-        color: white !important;
-        border: none;
-        border-radius: 8px;
-        padding: 10px 24px;
-        font-weight: 600;
-        transition: all 0.3s ease;
-        box-shadow: 0 4px 15px rgba(124, 58, 237, 0.3);
-    }
-    
-    div.stButton > button:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 6px 20px rgba(124, 58, 237, 0.5);
-    }
-    
-    /* Download Button */
-    div.stDownloadButton > button {
-        background: linear-gradient(135deg, #10b981 0%, #059669 100%);
-        color: white !important;
-        border: none;
-        border-radius: 8px;
-        padding: 10px 24px;
-        font-weight: 600;
-        transition: all 0.3s ease;
-        box-shadow: 0 4px 15px rgba(16, 185, 129, 0.3);
-        width: 100%;
-    }
-    
-    div.stDownloadButton > button:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 6px 20px rgba(16, 185, 129, 0.5);
-    }
-    
-    /* File Uploader styling */
-    section[data-testid="stFileUploader"] {
-        border: 2px dashed rgba(167, 139, 250, 0.3);
-        background: rgba(255, 255, 255, 0.01);
-        border-radius: 12px;
-        padding: 20px;
-    }
-    
-    /* Stat Badge */
-    .stat-badge {
-        display: inline-block;
-        padding: 6px 12px;
-        background: rgba(124, 58, 237, 0.1);
-        border: 1px solid rgba(124, 58, 237, 0.2);
-        color: #c084fc;
-        border-radius: 8px;
-        font-weight: 600;
-        margin-right: 10px;
-    }
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&display=swap');
+
+html, body, [class*="css"] { font-family: 'Outfit', sans-serif !important; }
+
+.stApp {
+    background:
+        radial-gradient(ellipse 80% 60% at 20% -10%, rgba(120,40,255,0.22) 0%, transparent 60%),
+        radial-gradient(ellipse 60% 50% at 80% 110%, rgba(240,60,150,0.18) 0%, transparent 60%),
+        radial-gradient(ellipse 100% 80% at 50% 50%, #080612 0%, #06040f 100%);
+    color: #ede9fe;
+    min-height: 100vh;
+}
+
+section[data-testid="stSidebar"] {
+    background: linear-gradient(180deg, #0b0818 0%, #100d20 100%) !important;
+    border-right: 1px solid rgba(139,92,246,0.15) !important;
+    padding-top: 0 !important;
+}
+section[data-testid="stSidebar"] > div:first-child { padding-top: 0; }
+
+.sidebar-brand {
+    background: linear-gradient(135deg, #7c3aed 0%, #db2777 100%);
+    padding: 20px 16px; margin: 0 -1rem 24px -1rem;
+    text-align: center; border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+.sidebar-brand h2 {
+    margin: 0; font-size: 1.1rem; font-weight: 700;
+    color: white; letter-spacing: 1px; text-transform: uppercase;
+}
+.sidebar-brand span { font-size: 1.6rem; }
+
+.sidebar-section {
+    font-size: 0.68rem; font-weight: 700; letter-spacing: 2px;
+    text-transform: uppercase; color: #6d28d9; margin: 20px 0 8px 0; padding-left: 2px;
+}
+
+.hero-wrap {
+    position: relative; text-align: center;
+    padding: 54px 20px 44px; margin-bottom: 8px; overflow: hidden;
+}
+.hero-glow {
+    position: absolute; top: 50%; left: 50%;
+    transform: translate(-50%, -60%); width: 600px; height: 300px;
+    background: radial-gradient(ellipse, rgba(139,92,246,0.28) 0%, transparent 70%);
+    pointer-events: none;
+}
+.hero-tag {
+    display: inline-block;
+    background: rgba(139,92,246,0.12); border: 1px solid rgba(139,92,246,0.35);
+    color: #c4b5fd; font-size: 0.72rem; font-weight: 700;
+    letter-spacing: 2.5px; text-transform: uppercase;
+    padding: 5px 16px; border-radius: 100px; margin-bottom: 18px;
+}
+.hero-title {
+    font-size: 3.6rem; font-weight: 900; line-height: 1.1;
+    background: linear-gradient(135deg, #e9d5ff 0%, #a78bfa 35%, #f472b6 70%, #fb923c 100%);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    background-clip: text; margin-bottom: 14px; letter-spacing: -1px;
+}
+.hero-sub {
+    font-size: 1.05rem; color: #7c6f9c; font-weight: 400;
+    max-width: 520px; margin: 0 auto; line-height: 1.6;
+}
+
+section[data-testid="stFileUploader"] {
+    background: rgba(139,92,246,0.03);
+    border: 2px dashed rgba(139,92,246,0.3);
+    border-radius: 16px; padding: 10px; transition: border-color 0.3s;
+}
+section[data-testid="stFileUploader"]:hover { border-color: rgba(139,92,246,0.55); }
+
+div.stButton > button {
+    background: linear-gradient(135deg, #7c3aed 0%, #db2777 100%);
+    color: white !important; border: none; border-radius: 10px;
+    padding: 12px 28px; font-weight: 700; font-size: 0.95rem;
+    letter-spacing: 0.3px; transition: all 0.25s ease;
+    box-shadow: 0 4px 20px rgba(124,58,237,0.35); width: 100%;
+}
+div.stButton > button:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 28px rgba(124,58,237,0.5), 0 0 30px rgba(124,58,237,0.15);
+}
+div.stButton > button:active { transform: translateY(0); }
+
+div.stDownloadButton > button {
+    background: linear-gradient(135deg, #059669 0%, #0d9488 100%);
+    color: white !important; border: none; border-radius: 10px;
+    padding: 12px 28px; font-weight: 700; font-size: 0.92rem;
+    transition: all 0.25s ease; box-shadow: 0 4px 20px rgba(5,150,105,0.3); width: 100%;
+}
+div.stDownloadButton > button:hover {
+    transform: translateY(-2px); box-shadow: 0 8px 28px rgba(5,150,105,0.45);
+}
+
+.glass-card {
+    background: rgba(255,255,255,0.025); border: 1px solid rgba(255,255,255,0.065);
+    border-radius: 20px; padding: 28px 32px; backdrop-filter: blur(16px);
+    margin-bottom: 20px; position: relative; overflow: hidden;
+}
+.glass-card::before {
+    content: ''; position: absolute; top: 0; left: 0; right: 0; height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(167,139,250,0.4), transparent);
+}
+
+.stats-row { display: flex; gap: 12px; flex-wrap: wrap; margin: 20px 0; }
+.stat-pill {
+    display: flex; align-items: center; gap: 8px; padding: 8px 16px;
+    background: rgba(109,40,217,0.1); border: 1px solid rgba(109,40,217,0.25);
+    border-radius: 100px; font-size: 0.85rem; font-weight: 600; color: #c4b5fd;
+}
+
+.section-header { display: flex; align-items: center; gap: 10px; margin: 28px 0 16px 0; }
+.section-header .dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: linear-gradient(135deg, #7c3aed, #db2777);
+    box-shadow: 0 0 10px rgba(124,58,237,0.7); flex-shrink: 0;
+}
+.section-header h3 { font-size: 1.05rem; font-weight: 700; color: #ddd6fe; margin: 0; }
+
+.img-label {
+    text-align: center; padding: 6px 0 10px;
+    font-size: 0.82rem; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase;
+}
+.img-label.before { color: #6b7280; }
+.img-label.after  { color: #a78bfa; }
+
+.step-list { counter-reset: steps; list-style: none; padding: 0; margin: 0; }
+.step-list li {
+    counter-increment: steps; display: flex; align-items: flex-start;
+    gap: 14px; margin-bottom: 18px; color: #c4b5fd; line-height: 1.6; font-size: 0.95rem;
+}
+.step-list li::before {
+    content: counter(steps); flex-shrink: 0; width: 28px; height: 28px;
+    border-radius: 50%; background: linear-gradient(135deg, #7c3aed, #db2777);
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 800; font-size: 0.8rem; color: white;
+    box-shadow: 0 0 14px rgba(124,58,237,0.5);
+}
+
+.device-badge {
+    display: flex; align-items: center; gap: 8px; padding: 10px 14px;
+    background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 10px; margin-top: 24px;
+}
+.device-badge .label { font-size: 0.7rem; letter-spacing: 1.5px; text-transform: uppercase; color: #6b7280; }
+.device-badge .value { font-size: 0.9rem; font-weight: 700; }
+.device-badge .value.online  { color: #34d399; }
+.device-badge .value.offline { color: #f87171; }
+
+.tip-box {
+    margin-top: 20px; padding: 14px 16px;
+    background: rgba(167,139,250,0.05); border: 1px solid rgba(167,139,250,0.15);
+    border-left: 3px solid #7c3aed; border-radius: 8px;
+}
+.tip-title { color: #c084fc; font-weight: 700; font-size: 0.78rem; letter-spacing: 1.5px; text-transform: uppercase; margin-bottom: 6px; }
+.tip-body  { color: #9ca3af; font-size: 0.82rem; line-height: 1.6; }
+
+hr { border: none; border-top: 1px solid rgba(255,255,255,0.06); margin: 24px 0; }
+
+#MainMenu, footer, header { visibility: hidden; }
 </style>
 """, unsafe_allow_html=True)
 
-# 2. Cache the Pipeline Initialization
-@st.cache_resource(show_spinner=True)
+# ── Pipeline ───────────────────────────────────────────────────────────────────
+@st.cache_resource(show_spinner=False)
 def get_pipeline():
-    """Initializes and caches the CodeFormer restoration pipeline."""
     try:
         return LocalAIEnhancerPipeline()
     except Exception as e:
@@ -136,146 +193,112 @@ def get_pipeline():
 
 pipeline = get_pipeline()
 
-# 3. Sidebar Configuration
-st.sidebar.markdown("<h2 style='text-align: center; color: #a78bfa;'>✨ AI Parameters</h2>", unsafe_allow_html=True)
-st.sidebar.write("Configure details for the local AI models.")
+# ── Sidebar ────────────────────────────────────────────────────────────────────
+with st.sidebar:
+    st.markdown("""
+    <div class="sidebar-brand">
+        <span>✨</span>
+        <h2>AI Enhancer</h2>
+    </div>
+    """, unsafe_allow_html=True)
 
-# Advanced tuning sliders
-fidelity_weight = st.sidebar.slider(
-    "Fidelity Weight (w)",
-    min_value=0.0,
-    max_value=1.0,
-    value=0.5,
-    step=0.05,
-    help="0.0: Max quality (generates realistic details). 1.0: Max fidelity (closely resembles input)."
-)
+    st.markdown("<div class='sidebar-section'>🎯 Face Restoration</div>", unsafe_allow_html=True)
+    fidelity_weight = st.slider("Fidelity Weight (w)", 0.0, 1.0, 0.5, 0.05,
+        help="0.0 = Max AI detail. 1.0 = Max likeness to original.")
+    blend_softness  = st.slider("Mask Blending Softness", 0.0, 1.0, 0.5, 0.05,
+        help="How softly the restored face blends into the background.")
+    det_threshold   = st.slider("Detection Threshold", 0.1, 1.0, 0.5, 0.05,
+        help="Lower = detect blurry faces too. Higher = reduce false positives.")
 
-blend_softness = st.sidebar.slider(
-    "Mask Blending Softness",
-    min_value=0.0,
-    max_value=1.0,
-    value=0.5,
-    step=0.05,
-    help="Control how smoothly the restored face is blended back onto the background. High values remove harsh crop boundaries."
-)
+    st.markdown("<div class='sidebar-section'>🖼️ Background Upscaling</div>", unsafe_allow_html=True)
+    face_detector    = st.selectbox("Face Detector",
+        ["retinaface_resnet50", "retinaface_mobile0.25", "YOLOv5l", "YOLOv5n"],
+        help="RetinaFace = accurate. YOLOv5 = fast.")
+    upscale_factor   = st.select_slider("Upscale Factor", [1, 2, 3, 4], value=2)
+    bg_upscale_toggle = st.toggle("Real-ESRGAN Background Upscale", value=True)
 
-face_detector = st.sidebar.selectbox(
-    "Face Detector Model",
-    options=["retinaface_resnet50", "retinaface_mobile0.25", "YOLOv5l", "YOLOv5n"],
-    index=0,
-    help="RetinaFace is highly accurate but slower. YOLOv5 is faster for smaller/crowded faces."
-)
+    st.markdown("<div class='sidebar-section'>🔬 Post-Processing</div>", unsafe_allow_html=True)
+    sharpen_amount = st.slider("Sharpness Boost", 0.0, 1.0, 0.0, 0.05,
+        help="Unsharp mask filter. 0.0 = disabled.")
 
-upscale_factor = st.sidebar.slider(
-    "Background Upscale Factor",
-    min_value=1,
-    max_value=4,
-    value=2,
-    step=1,
-    help="Scale factor for the output background image."
-)
+    st.markdown("""
+    <div class="tip-box">
+        <div class="tip-title">💡 Pro Tip</div>
+        <div class="tip-body">
+            Lower <b>Fidelity Weight</b> (0.3–0.5) for richer AI-generated detail.<br>
+            Lower <b>Detection Threshold</b> if faces in blurry images go undetected.
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
 
-bg_upscale_toggle = st.sidebar.checkbox(
-    "Real-ESRGAN Background Upscale",
-    value=True,
-    help="Enable AI-based super-resolution for the background using Real-ESRGAN. If unchecked, standard bilinear resizing is used."
-)
+    if pipeline is not None:
+        dstr = "NVIDIA GPU (CUDA)" if "cuda" in str(pipeline.device) else "CPU"
+        st.markdown(f"""
+        <div class="device-badge">
+            <div><div class="label">Active Device</div>
+            <div class="value online">🟢 {dstr}</div></div>
+        </div>""", unsafe_allow_html=True)
+    else:
+        st.markdown("""
+        <div class="device-badge">
+            <div><div class="label">Active Device</div>
+            <div class="value offline">🔴 Offline / Load Failed</div></div>
+        </div>""", unsafe_allow_html=True)
 
-det_threshold = st.sidebar.slider(
-    "Face Detection Threshold",
-    min_value=0.1,
-    max_value=1.0,
-    value=0.5,
-    step=0.05,
-    help="Confidence threshold for face detection. Lower values find more/blurry faces, higher values reduce false detections."
-)
-
-sharpen_amount = st.sidebar.slider(
-    "Post-Processing Sharpness",
-    min_value=0.0,
-    max_value=1.0,
-    value=0.0,
-    step=0.05,
-    help="Enhance edge sharpness using a post-processing unsharp mask filter. 0.0 is disabled, higher values give an Ultra HD look."
-)
-
-# Tip card in sidebar
-st.sidebar.markdown("""
-<div style='margin-top: 20px; padding: 12px; background: rgba(167, 139, 250, 0.05); border-radius: 8px; border: 1px solid rgba(167, 139, 250, 0.15);'>
-    <span style='color: #c084fc; font-weight: 600; font-size: 0.85rem;'>💡 KHÔNG THẤY KHÁC BIỆT?</span><br/>
-    <span style='color: #9ca3af; font-size: 0.8rem; line-height: 1.4;'>
-        - Hãy <b>giảm Fidelity Weight (w)</b> xuống (ví dụ: 0.3 - 0.5) để AI tự tạo thêm chi tiết nét hơn.<br/>
-        - Đảm bảo <b>Face Detection Threshold</b> đủ thấp để AI nhận diện được mặt trong ảnh mờ.
-    </span>
+# ── Hero ───────────────────────────────────────────────────────────────────────
+st.markdown("""
+<div class="hero-wrap">
+    <div class="hero-glow"></div>
+    <div class="hero-tag">✦ Self-Hosted · Local AI · Zero Cloud</div>
+    <div class="hero-title">AI Image Enhancer</div>
+    <div class="hero-sub">
+        Restore blurry portraits and upscale images with CodeFormer + Real-ESRGAN —
+        running entirely on your machine.
+    </div>
 </div>
 """, unsafe_allow_html=True)
 
-# Display active hardware device
-if pipeline is not None:
-    device_str = "NVIDIA GPU (CUDA)" if "cuda" in str(pipeline.device) else "CPU"
-    st.sidebar.markdown(f"""
-    <div style='margin-top: 30px; padding: 12px; background: rgba(255, 255, 255, 0.05); border-radius: 8px; border: 1px solid rgba(255,255,255,0.1);'>
-        <span style='color: #9ca3af; font-size: 0.85rem;'>ACTIVE DEVICE:</span><br/>
-        <strong style='color: #10b981; font-size: 0.95rem;'>🟢 {device_str}</strong>
-    </div>
-    """, unsafe_allow_html=True)
-else:
-    st.sidebar.markdown("""
-    <div style='margin-top: 30px; padding: 12px; background: rgba(255, 255, 255, 0.05); border-radius: 8px; border: 1px solid rgba(255,255,255,0.1);'>
-        <span style='color: #9ca3af; font-size: 0.85rem;'>ACTIVE DEVICE:</span><br/>
-        <strong style='color: #ef4444; font-size: 0.95rem;'>🔴 Offline / Load Failed</strong>
-    </div>
-    """, unsafe_allow_html=True)
-
-# 4. Main Page Header
-st.markdown("<h1 class='header-title'>Custom AI Face Enhancer</h1>", unsafe_allow_html=True)
-st.markdown("<p class='header-subtitle'>Self-Hosted Local AI Image Restoration Pipeline</p>", unsafe_allow_html=True)
-
-# 5. Core Interface
-col_upload, col_sample = st.columns([2, 1])
-
+# ── Upload ─────────────────────────────────────────────────────────────────────
+col_upload, col_sample = st.columns([3, 1], gap="large")
 uploaded_file = None
-use_sample = False
+use_sample    = False
 
 with col_upload:
-    uploaded_file = st.file_uploader("Upload an Image", type=["png", "jpg", "jpeg", "webp"])
-
+    uploaded_file = st.file_uploader(
+        "Drop your image here, or click to browse",
+        type=["png", "jpg", "jpeg", "webp"]
+    )
 with col_sample:
-    st.markdown("<div style='height: 28px;'></div>", unsafe_allow_html=True)
-    if st.button("Use Sample Portrait Image"):
+    st.markdown("<div style='height:32px'></div>", unsafe_allow_html=True)
+    if st.button("🖼️ Use Sample Portrait"):
         use_sample = True
 
-# Process sample image path if selected
 sample_image_path = os.path.join(project_dir, "models", "CodeFormer", "inputs", "whole_imgs", "00.jpg")
 
-# 6. Pipeline Execution
+# ── Pipeline Execution ─────────────────────────────────────────────────────────
 if uploaded_file is not None or use_sample:
-    # Load input image
     if use_sample:
         if not os.path.exists(sample_image_path):
-            st.error(f"Sample image not found at {sample_image_path}")
+            st.error(f"Sample image not found: `{sample_image_path}`")
             st.stop()
-        img = cv2.imread(sample_image_path)
+        img      = cv2.imread(sample_image_path)
         img_name = "sample_portrait.jpg"
     else:
         file_bytes = np.asarray(bytearray(uploaded_file.read()), dtype=np.uint8)
-        img = cv2.imdecode(file_bytes, 1)
-        img_name = uploaded_file.name
+        img        = cv2.imdecode(file_bytes, 1)
+        img_name   = uploaded_file.name
 
     if img is None:
-        st.error("Failed to decode image. Please upload a valid image file.")
+        st.error("Could not decode image. Please upload a valid PNG / JPG / WEBP file.")
         st.stop()
-        
-    st.markdown("### ⚡ Enhancement Status")
-    
-    # Run pipeline with timing
+
+    st.markdown("<hr>", unsafe_allow_html=True)
+
     start_time = time.time()
-    with st.spinner("Executing Local AI Restoration Pipeline..."):
+    with st.spinner("⚡ Running AI restoration pipeline…"):
         if pipeline is None:
-            st.error("AI pipeline is not loaded. Cannot process image.")
+            st.error("AI pipeline failed to load. Check device status in sidebar.")
             st.stop()
-            
-        # Process the image through the custom pipeline
         try:
             enhanced_img = pipeline.process_image(
                 img,
@@ -289,103 +312,92 @@ if uploaded_file is not None or use_sample:
             )
             process_duration = time.time() - start_time
         except Exception as e:
-            st.error(f"An error occurred during pipeline execution: {e}")
+            st.error(f"Pipeline error: {e}")
             st.stop()
-            
-    # Display statistics
-    h_orig, w_orig, _ = img.shape
-    h_enh, w_enh, _ = enhanced_img.shape
-    
+
+    h_orig, w_orig = img.shape[:2]
+    h_enh,  w_enh  = enhanced_img.shape[:2]
+    mid_x          = w_enh // 2
+    img_resized    = cv2.resize(img, (w_enh, h_enh), interpolation=cv2.INTER_LANCZOS4)
+
     st.markdown(f"""
-    <div style='margin-bottom: 20px;'>
-        <span class='stat-badge'>⏱️ Time: {process_duration:.2f}s</span>
-        <span class='stat-badge'>📐 Original Size: {w_orig}x{h_orig}</span>
-        <span class='stat-badge'>🚀 Enhanced Size: {w_enh}x{h_enh}</span>
+    <div class="stats-row">
+        <div class="stat-pill">⏱️ {process_duration:.2f}s</div>
+        <div class="stat-pill">📐 Original: {w_orig}×{h_orig}</div>
+        <div class="stat-pill">🚀 Enhanced: {w_enh}×{h_enh}</div>
+        <div class="stat-pill">⬆️ {upscale_factor}× upscale</div>
     </div>
     """, unsafe_allow_html=True)
-    
-    # 7. Visual Comparison View Mode
-    view_mode = st.radio(
-        "Select Comparison Mode:",
-        ["👥 Side-by-Side (2 Columns)", "🌗 Split-Screen (50/50 Split)"],
-        horizontal=True
-    )
-    
-    # Pre-render images
-    h_enh, w_enh, _ = enhanced_img.shape
-    img_resized = cv2.resize(img, (w_enh, h_enh), interpolation=cv2.INTER_LANCZOS4)
-    mid_x = w_enh // 2
-    
+
+    st.markdown("""
+    <div class="section-header">
+        <div class="dot"></div><h3>Comparison View</h3>
+    </div>""", unsafe_allow_html=True)
+
+    view_mode = st.radio("Mode", ["👥 Side-by-Side", "🌗 Split Screen"],
+                         horizontal=True, label_visibility="collapsed")
+
     if "Side-by-Side" in view_mode:
-        col_before, col_after = st.columns(2)
-        with col_before:
-            st.markdown("<h4 style='text-align: center; color: #9ca3af;'>Before (Original)</h4>", unsafe_allow_html=True)
-            img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-            st.image(img_rgb, use_container_width=True)
-            
-        with col_after:
-            st.markdown("<h4 style='text-align: center; color: #a78bfa;'>After (AI Restored)</h4>", unsafe_allow_html=True)
-            enhanced_rgb = cv2.cvtColor(enhanced_img, cv2.COLOR_BGR2RGB)
-            st.image(enhanced_rgb, use_container_width=True)
+        col_b, col_a = st.columns(2, gap="medium")
+        with col_b:
+            st.markdown("<div class='img-label before'>◀ Before (Original)</div>", unsafe_allow_html=True)
+            st.image(cv2.cvtColor(img, cv2.COLOR_BGR2RGB), use_container_width=True)
+        with col_a:
+            st.markdown("<div class='img-label after'>After (AI Enhanced) ▶</div>", unsafe_allow_html=True)
+            st.image(cv2.cvtColor(enhanced_img, cv2.COLOR_BGR2RGB), use_container_width=True)
     else:
-        st.markdown("<h4 style='text-align: center; color: #a78bfa;'>🌗 Split-Screen Comparison (Left: Before | Right: After)</h4>", unsafe_allow_html=True)
-        # Create split image
+        st.markdown("<div class='img-label after'>◀ Original &nbsp;|&nbsp; Enhanced ▶</div>",
+                    unsafe_allow_html=True)
         split_img = np.copy(enhanced_img)
         split_img[:, :mid_x] = img_resized[:, :mid_x]
-        # Draw vertical line separating them
         cv2.line(split_img, (mid_x, 0), (mid_x, h_enh), (255, 255, 255), max(2, w_enh // 300))
-        
-        split_rgb = cv2.cvtColor(split_img, cv2.COLOR_BGR2RGB)
-        st.image(split_rgb, use_container_width=True)
-        
-    # 8. Download Results
-    st.markdown("<div style='height: 10px;'></div>", unsafe_allow_html=True)
-    col_dl1, col_dl2 = st.columns(2)
-    
-    with col_dl1:
-        is_success, buffer = cv2.imencode(".png", enhanced_img)
-        if is_success:
-            png_bytes = BytesIO(buffer).getvalue()
-            st.download_button(
-                label="📥 Download Enhanced Image Only",
-                data=png_bytes,
-                file_name=f"enhanced_{os.path.splitext(img_name)[0]}.png",
-                mime="image/png",
-                use_container_width=True
-            )
-            
-    with col_dl2:
-        # Create split comparison image for download
-        split_img_dl = np.copy(enhanced_img)
-        split_img_dl[:, :mid_x] = img_resized[:, :mid_x]
-        cv2.line(split_img_dl, (mid_x, 0), (mid_x, h_enh), (255, 255, 255), max(2, w_enh // 300))
-        
-        is_success_split, buffer_split = cv2.imencode(".png", split_img_dl)
-        if is_success_split:
-            split_png_bytes = BytesIO(buffer_split).getvalue()
-            st.download_button(
-                label="🌗 Download Split Comparison Image",
-                data=split_png_bytes,
-                file_name=f"split_comparison_{os.path.splitext(img_name)[0]}.png",
-                mime="image/png",
-                use_container_width=True
-            )
-else:
-    # 9. Clean Welcome/Intro layout
+        st.image(cv2.cvtColor(split_img, cv2.COLOR_BGR2RGB), use_container_width=True)
+
     st.markdown("""
-    <div class='glass-card' style='margin-top: 40px;'>
-        <h3 style='color: #a78bfa;'>How to Use:</h3>
-        <ol style='color: #d1d5db; line-height: 1.8;'>
-            <li>Upload a low-quality, blurry, or old portrait photo using the box above.</li>
-            <li>Alternatively, click <strong>"Use Sample Portrait Image"</strong> to run a demo with a built-in portrait immediately.</li>
-            <li>Use the sliders in the left sidebar to fine-tune the AI:
-                <ul>
-                    <li><strong>Fidelity Weight</strong> balances natural quality (hallucination) vs resemblance to the original.</li>
-                    <li><strong>Mask Blending Softness</strong> controls how smoothly the cropped face borders dissolve into the background.</li>
-                    <li><strong>Face Detector Model</strong> adapts detection speed and accuracy for single or multiple faces.</li>
-                </ul>
-            </li>
-            <li>Once processed, review the side-by-side comparison and download the upscaled, crystal-clear PNG image.</li>
+    <div class="section-header">
+        <div class="dot"></div><h3>Download Results</h3>
+    </div>""", unsafe_allow_html=True)
+
+    col_dl1, col_dl2 = st.columns(2, gap="medium")
+    with col_dl1:
+        ok, buf = cv2.imencode(".png", enhanced_img)
+        if ok:
+            st.download_button("📥 Download Enhanced Image",
+                BytesIO(buf).getvalue(),
+                f"enhanced_{os.path.splitext(img_name)[0]}.png",
+                "image/png", use_container_width=True)
+    with col_dl2:
+        split_dl = np.copy(enhanced_img)
+        split_dl[:, :mid_x] = img_resized[:, :mid_x]
+        cv2.line(split_dl, (mid_x, 0), (mid_x, h_enh), (255, 255, 255), max(2, w_enh // 300))
+        ok2, buf2 = cv2.imencode(".png", split_dl)
+        if ok2:
+            st.download_button("🌗 Download Split Comparison",
+                BytesIO(buf2).getvalue(),
+                f"comparison_{os.path.splitext(img_name)[0]}.png",
+                "image/png", use_container_width=True)
+
+else:
+    st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
+    st.markdown("""
+    <div class="glass-card">
+        <div class="section-header" style="margin-top:0">
+            <div class="dot"></div><h3>How to Get Started</h3>
+        </div>
+        <ol class="step-list">
+            <li><span>Upload a low-quality, blurry, or old portrait photo above. Supports PNG, JPG, and WEBP.</span></li>
+            <li><span>Or click <b>"Use Sample Portrait"</b> to run the pipeline on a built-in demo — no upload needed.</span></li>
+            <li><span>Fine-tune the AI with sidebar sliders. <b>Fidelity Weight</b> controls creativity vs. likeness. <b>Mask Softness</b> controls face blending.</span></li>
+            <li><span>Review the before/after comparison and download your crystal-clear PNG result.</span></li>
         </ol>
+    </div>
+    """, unsafe_allow_html=True)
+
+    st.markdown("""
+    <div style="display:flex; gap:12px; flex-wrap:wrap; justify-content:center; margin-top:8px;">
+        <div class="stat-pill">🤖 CodeFormer Face Restoration</div>
+        <div class="stat-pill">🖼️ Real-ESRGAN Super-Resolution</div>
+        <div class="stat-pill">🔒 100% Local · No Cloud</div>
+        <div class="stat-pill">📦 Custom-Trained Weights</div>
     </div>
     """, unsafe_allow_html=True)
