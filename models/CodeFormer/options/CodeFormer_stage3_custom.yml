@@ -97,7 +97,7 @@ path:
   param_key_g: params_ema
   strict_load_g: false
   pretrain_network_d: null
-  resume_state: D:\.gemini-scratch\custom-ai-enhancer\models\CodeFormer\experiments\20260708_201102_CodeFormer_stage3_custom\training_states\600.state
+  resume_state: D:\.gemini-scratch\custom-ai-enhancer\models\CodeFormer\experiments\20260708_201102_CodeFormer_stage3_custom\training_states\915.state
 train:
   use_hq_feat_loss: true
   feat_loss_weight: 1.0
@@ -156,7 +156,7 @@ val:
       test_y_channel: false
 logger:
   print_freq: 1
-  save_checkpoint_freq: 5
+  save_checkpoint_freq: 50
   use_tb_logger: false
   wandb:
     project: null
