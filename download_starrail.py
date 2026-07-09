@@ -364,7 +364,21 @@ def main():
     print("\n" + "#" * 60)
     print("  3. PROCESSING ANIME LANDSCAPES")
     print("#" * 60)
-    download_from_safebooru("landscape_background", landscapes_dir, "anime_land", 250)
+    # Use multiple popular anime scenery tags for better coverage
+    landscape_tags = [
+        ("scenery",             "anime_scenery",    200),
+        ("no_humans",           "anime_nohuman",    100),
+        ("sky",                 "anime_sky",         80),
+        ("fantasy",             "anime_fantasy",     80),
+        ("nature",              "anime_nature",      80),
+        ("city",                "anime_city",        60),
+        ("night_sky",           "anime_nightsky",    60),
+        ("cherry_blossoms",     "anime_sakura",      60),
+        ("ocean",               "anime_ocean",       60),
+        ("forest",              "anime_forest",      60),
+    ]
+    for tag, prefix, max_img in landscape_tags:
+        download_from_safebooru(tag, landscapes_dir, prefix, max_img)
 
     # Cleanup
     if os.path.exists(temp_dir):
