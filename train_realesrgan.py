@@ -22,6 +22,8 @@ DATASET_BASE = os.path.join(
 LANDSCAPE_DIR = os.path.join(DATASET_BASE, "landscapes")
 ANIME_DIR = os.path.join(DATASET_BASE, "anime")
 FACE_DIR = os.path.join(DATASET_BASE, "faces")
+STARRAIL_DIR = os.path.join(DATASET_BASE, "starrail")
+BLUEARCHIVE_DIR = os.path.join(DATASET_BASE, "bluearchive")
 
 # Combined GT (high-quality) folder for Real-ESRGAN training
 REALESRGAN_GT_DIR = os.path.join(PROJECT_DIR, "datasets", "realesrgan_gt")
@@ -72,6 +74,8 @@ def prepare_gt_dataset():
         "landscape": LANDSCAPE_DIR,
         "anime": ANIME_DIR,
         "face": FACE_DIR,
+        "starrail": STARRAIL_DIR,
+        "bluearchive": BLUEARCHIVE_DIR,
     }
 
     for category, src_dir in sources.items():
