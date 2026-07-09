@@ -62,6 +62,8 @@ NEW_CHARACTERS_TAGS = {
     "jiaoqiu": "jiaoqiu_(honkai:_star_rail)",
     "cerydra": "cerydra_(honkai:_star_rail)",
     "hysilens": "hysilens_(honkai:_star_rail)",
+    "sparxie": "sparxie_(honkai:_star_rail)",
+    "yaoguang": "yaoguang_(honkai:_star_rail)",
     "general_hsr": "honkai:_star_rail"  # General wallpapers/illustrations
 }
 
@@ -78,6 +80,18 @@ def download_and_extract_cyberharem(char_name: str, target_dir: str, temp_dir: s
     extract_temp = os.path.join(temp_dir, char_name)
 
     print(f"\n[+] CyberHarem: {char_name}")
+
+    # Check if we already have these images
+    already_have = True
+    for saved_count in range(IMAGES_PER_CHARACTER):
+        dest_filename = f"starrail_ch_{char_name}_{saved_count:05d}.png"
+        dest_path = os.path.join(target_dir, dest_filename)
+        if not os.path.exists(dest_path):
+            already_have = False
+            break
+    if already_have:
+        print(f"    [OK] Already fully downloaded, skipping.")
+        return IMAGES_PER_CHARACTER
     
     try:
         response = requests.get(url, headers=HEADERS, stream=True, timeout=30)
@@ -174,15 +188,18 @@ def download_official_skins(target_dir: str):
                 if img_filename.startswith('.') or "chibi" in img_filename.lower():
                     continue
 
+                dest_filename = f"starrail_skin_{char_name}_{img_idx:03d}.png"
+                dest_path = os.path.join(target_dir, dest_filename)
+                if os.path.exists(dest_path):
+                    total_downloaded += 1
+                    continue
+
                 resolve_url = f"{SKINS_RESOLVE_ROOT}/{img_path}"
                 try:
                     ir = requests.get(resolve_url, headers=HEADERS, timeout=30)
                     if ir.status_code == 200:
                         img = Image.open(io.BytesIO(ir.content)).convert("RGB")
                         img = img.resize((512, 512), Image.Resampling.LANCZOS)
-                        
-                        dest_filename = f"starrail_skin_{char_name}_{img_idx:03d}.png"
-                        dest_path = os.path.join(target_dir, dest_filename)
                         img.save(dest_path, "PNG")
                         total_downloaded += 1
                 except Exception as e:
@@ -237,15 +254,19 @@ def download_from_safebooru(target_dir: str):
                     if not file_url.startswith("http"):
                         file_url = "https:" + file_url
                     
+                    dest_filename = f"starrail_sb_{nickname}_{post['id']}.png"
+                    dest_path = os.path.join(target_dir, dest_filename)
+                    if os.path.exists(dest_path):
+                        saved_tag_count += 1
+                        total_downloaded += 1
+                        continue
+
                     try:
                         # Download image
                         ir = requests.get(file_url, headers=HEADERS, timeout=15)
                         if ir.status_code == 200:
                             img = Image.open(io.BytesIO(ir.content)).convert("RGB")
                             img = img.resize((512, 512), Image.Resampling.LANCZOS)
-                            
-                            dest_filename = f"starrail_sb_{nickname}_{post['id']}.png"
-                            dest_path = os.path.join(target_dir, dest_filename)
                             img.save(dest_path, "PNG")
                             saved_tag_count += 1
                             total_downloaded += 1
