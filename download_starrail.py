@@ -39,40 +39,13 @@ CYBERHAREM_CHARS = [
 IMAGES_PER_CHARACTER = 30  # 30 cropped portraits per character
 
 # ─────────────────────────────────────────────────────────────
-# 2. Official High-Resolution Skins (44 Characters)
+# 2. Official High-Resolution Skins (HF Database)
 # ─────────────────────────────────────────────────────────────
-SKINS_API_ROOT = "https://huggingface.co/api/datasets/deepghs/game_character_skins/tree/main/starrail"
 SKINS_RESOLVE_ROOT = "https://huggingface.co/datasets/deepghs/game_character_skins/resolve/main"
 
 # ─────────────────────────────────────────────────────────────
-# 3. Safebooru Crawler (For New Releases & All Characters)
+# 3. Safebooru Crawler Configuration
 # ─────────────────────────────────────────────────────────────
-NEW_CHARACTERS_TAGS = {
-    "acheron": "acheron_(honkai:_star_rail)",
-    "firefly": "firefly_(honkai:_star_rail)",
-    "robin": "robin_(honkai:_star_rail)",
-    "sparkle": "sparkle_(honkai:_star_rail)",
-    "sunday": "sunday_(honkai:_star_rail)",
-    "aventurine": "aventurine_(honkai:_star_rail)",
-    "boothill": "boothill_(honkai:_star_rail)",
-    "feixiao": "feixiao_(honkai:_star_rail)",
-    "yunli": "yunli_(honkai:_star_rail)",
-    "lingsha": "lingsha_(honkai:_star_rail)",
-    "rappa": "rappa_(honkai:_star_rail)",
-    "jiaoqiu": "jiaoqiu_(honkai:_star_rail)",
-    "cerydra": "cerydra_(honkai:_star_rail)",
-    "hysilens": "hysilens_(honkai:_star_rail)",
-    "sparxie": "sparxie_(honkai:_star_rail)",
-    "yaoguang": "yaoguang_(honkai:_star_rail)",
-    "castorice": "castorice_(honkai:_star_rail)",
-    "evernight": "evernight_(honkai:_star_rail)",
-    "hyancine": "hyancine_(honkai:_star_rail)",
-    "cyrene": "cyrene_(honkai:_star_rail)",
-    "general_hsr": "honkai:_star_rail"  # General wallpapers/illustrations
-}
-
-IMAGES_PER_TAG = 40  # Download 40 images per specific tag
-
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 }
@@ -146,40 +119,44 @@ def download_and_extract_cyberharem(char_name: str, target_dir: str, temp_dir: s
         print(f"    [FAIL] Exception occurred for {char_name}: {e}")
         return 0
     finally:
-        # Cleanup temp zip and extracted folders
-        if os.path.exists(zip_path):
-            os.remove(zip_path)
-        if os.path.exists(extract_temp):
-            shutil.rmtree(extract_temp)
+        # Wrap cleanup in try-except to avoid WinError 32 locks on Windows
+        try:
+            if os.path.exists(zip_path):
+                os.remove(zip_path)
+        except Exception:
+            pass
+        try:
+            if os.path.exists(extract_temp):
+                shutil.rmtree(extract_temp)
+        except Exception:
+            pass
 
-def download_official_skins(target_dir: str):
-    """Download official skins/artworks dynamically from deepghs/game_character_skins."""
+def download_official_skins(game_name: str, target_dir: str):
+    """Download official skins/artworks dynamically from deepghs/game_character_skins for a specific game."""
     print("\n" + "=" * 60)
-    print("  DOWNLOADING OFFICIAL HIGH-RES ARTWORKS")
+    print(f"  DOWNLOADING OFFICIAL HIGH-RES ARTWORKS: {game_name.upper()}")
     print("=" * 60)
 
+    api_root = f"https://huggingface.co/api/datasets/deepghs/game_character_skins/tree/main/{game_name}"
     try:
-        r = requests.get(SKINS_API_ROOT, headers=HEADERS, timeout=30)
+        r = requests.get(api_root, headers=HEADERS, timeout=30)
         if r.status_code != 200:
-            print(f"[FAIL] Unable to query skins tree API: {r.status_code}")
+            print(f"[FAIL] Unable to query {game_name} skins tree API: {r.status_code}")
             return 0
         
         items = r.json()
         characters = [item for item in items if item["type"] == "directory"]
-        print(f"Found {len(characters)} characters in Star Rail skins database.")
+        print(f"Found {len(characters)} characters in {game_name} skins database.")
 
         total_downloaded = 0
         for idx, char_dir in enumerate(characters):
             char_path = char_dir["path"]
             char_name = os.path.basename(char_path)
 
-            print(f"[+] Skins: {char_name} ({idx+1}/{len(characters)})")
-            
             # Query files in character folder
             files_api = f"https://huggingface.co/api/datasets/deepghs/game_character_skins/tree/main/{char_path}"
             fr = requests.get(files_api, headers=HEADERS, timeout=30)
             if fr.status_code != 200:
-                print(f"    [FAIL] Unable to query files API for {char_name}")
                 continue
 
             file_items = fr.json()
@@ -192,8 +169,10 @@ def download_official_skins(target_dir: str):
                 if img_filename.startswith('.') or "chibi" in img_filename.lower():
                     continue
 
-                dest_filename = f"starrail_skin_{char_name}_{img_idx:03d}.png"
+                dest_filename = f"{game_name}_skin_{char_name}_{img_idx:03d}.png"
                 dest_path = os.path.join(target_dir, dest_filename)
+                
+                # Caching/skipping
                 if os.path.exists(dest_path):
                     total_downloaded += 1
                     continue
@@ -206,136 +185,169 @@ def download_official_skins(target_dir: str):
                         img = img.resize((512, 512), Image.Resampling.LANCZOS)
                         img.save(dest_path, "PNG")
                         total_downloaded += 1
-                except Exception as e:
+                except Exception:
                     pass
-        print(f"[OK] Downloaded {total_downloaded} official character skins/artworks.")
+        print(f"[OK] Total skins checked/downloaded for {game_name}: {total_downloaded}")
         return total_downloaded
     except Exception as e:
-        print(f"[FAIL] Error downloading official skins: {e}")
+        print(f"[FAIL] Error downloading {game_name} skins: {e}")
         return 0
 
-def download_from_safebooru(target_dir: str):
-    """Crawl images from Safebooru for new releases and general HSR tags."""
-    print("\n" + "=" * 60)
-    print("  CRAWLING SAFEBOORU FOR NEW CHARACTER IMAGES & WALLPAPERS")
-    print("=" * 60)
-
+def download_from_safebooru(tag: str, target_dir: str, prefix: str, max_images: int):
+    """Crawl images from Safebooru for a specific tag."""
+    print(f"[+] Safebooru Tag: {tag} -> Prefix: {prefix} (Max: {max_images})")
+    
+    saved_count = 0
+    page = 0
     total_downloaded = 0
-
-    for nickname, tag in NEW_CHARACTERS_TAGS.items():
-        print(f"[+] Safebooru Tag: {tag}")
-        saved_tag_count = 0
-        page = 0
-        
-        while saved_tag_count < IMAGES_PER_TAG:
-            # Query Safebooru DAPI
-            api_url = f"https://safebooru.org/index.php?page=dapi&s=post&q=index&json=1&tags={tag}&limit=50&pid={page}"
+    
+    while saved_count < max_images:
+        api_url = f"https://safebooru.org/index.php?page=dapi&s=post&q=index&json=1&tags={tag}&limit=50&pid={page}"
+        try:
+            r = requests.get(api_url, headers=HEADERS, timeout=20)
+            if r.status_code != 200:
+                break
+            
             try:
-                r = requests.get(api_url, headers=HEADERS, timeout=20)
-                if r.status_code != 200:
-                    print(f"    [FAIL] HTTP status {r.status_code} for tag {nickname}")
-                    break
-                
-                try:
-                    posts = r.json()
-                except Exception:
-                    # If empty or not json, break
-                    break
-                
-                if not posts:
-                    break
-
-                for post in posts:
-                    if saved_tag_count >= IMAGES_PER_TAG:
-                        break
-                    
-                    file_url = post.get("file_url")
-                    if not file_url:
-                        continue
-                    
-                    # Fix escaped slashes in JSON
-                    file_url = file_url.replace("\\/", "/")
-                    if not file_url.startswith("http"):
-                        file_url = "https:" + file_url
-                    
-                    dest_filename = f"starrail_sb_{nickname}_{post['id']}.png"
-                    dest_path = os.path.join(target_dir, dest_filename)
-                    if os.path.exists(dest_path):
-                        saved_tag_count += 1
-                        total_downloaded += 1
-                        continue
-
-                    try:
-                        # Download image
-                        ir = requests.get(file_url, headers=HEADERS, timeout=15)
-                        if ir.status_code == 200:
-                            img = Image.open(io.BytesIO(ir.content)).convert("RGB")
-                            img = img.resize((512, 512), Image.Resampling.LANCZOS)
-                            img.save(dest_path, "PNG")
-                            saved_tag_count += 1
-                            total_downloaded += 1
-                            
-                            # Small delay to avoid hitting rate limits
-                            time.sleep(0.1)
-                    except Exception:
-                        pass
-                
-                page += 1
-                time.sleep(0.5)
-            except Exception as e:
-                print(f"    [FAIL] Connection error for {nickname}: {e}")
+                posts = r.json()
+            except Exception:
+                break
+            
+            if not posts:
                 break
 
-        print(f"    [OK] Saved {saved_tag_count} images for {nickname}.")
-        
-    print(f"[OK] Downloaded {total_downloaded} images from Safebooru.")
+            for post in posts:
+                if saved_count >= max_images:
+                    break
+                
+                file_url = post.get("file_url")
+                if not file_url:
+                    continue
+                
+                file_url = file_url.replace("\\/", "/")
+                if not file_url.startswith("http"):
+                    file_url = "https:" + file_url
+                
+                dest_filename = f"{prefix}_sb_{post['id']}.png"
+                dest_path = os.path.join(target_dir, dest_filename)
+                
+                # Caching/skipping
+                if os.path.exists(dest_path):
+                    saved_count += 1
+                    total_downloaded += 1
+                    continue
+
+                try:
+                    ir = requests.get(file_url, headers=HEADERS, timeout=15)
+                    if ir.status_code == 200:
+                        img = Image.open(io.BytesIO(ir.content)).convert("RGB")
+                        img = img.resize((512, 512), Image.Resampling.LANCZOS)
+                        img.save(dest_path, "PNG")
+                        saved_count += 1
+                        total_downloaded += 1
+                        time.sleep(0.1)
+                except Exception:
+                    pass
+            
+            page += 1
+            time.sleep(0.5)
+        except Exception as e:
+            print(f"    [FAIL] Connection error for tag {tag}: {e}")
+            break
+
+    print(f"    [OK] Saved {saved_count} images.")
     return total_downloaded
 
 def main():
     project_dir = os.path.dirname(os.path.abspath(__file__))
     codeformer_dir = os.path.join(project_dir, "models", "CodeFormer")
+    dataset_base = os.path.join(codeformer_dir, "datasets", "ffhq", "ffhq_512")
     
-    # Target directory for Honkai Star Rail images
-    target_dir = os.path.join(codeformer_dir, "datasets", "ffhq", "ffhq_512", "starrail")
-    os.makedirs(target_dir, exist_ok=True)
+    # ─────────────────────────────────────────────────────────────
+    # Paths Setup
+    # ─────────────────────────────────────────────────────────────
+    starrail_dir = os.path.join(dataset_base, "starrail")
+    bluearchive_dir = os.path.join(dataset_base, "bluearchive")
+    landscapes_dir = os.path.join(dataset_base, "landscapes")
+    
+    os.makedirs(starrail_dir, exist_ok=True)
+    os.makedirs(bluearchive_dir, exist_ok=True)
+    os.makedirs(landscapes_dir, exist_ok=True)
 
-    # Temporary directory for zip files
     temp_dir = os.path.join(project_dir, "temp_downloads")
     os.makedirs(temp_dir, exist_ok=True)
 
     print("=" * 60)
-    print("  HONKAI STAR RAIL MASTER DATASET DOWNLOADER")
-    print(f"  Target directory: {target_dir}")
+    print("  MULTI-DATASET MASTER CRAWLER & DOWNLOADER")
+    print(f"  Workspace: {dataset_base}")
     print("=" * 60)
 
-    # 1. Download official high-res artworks (44 characters)
-    official_count = download_official_skins(target_dir)
-
-    # 2. Crawl Safebooru for new releases and general HSR wallpapers
-    safebooru_count = download_from_safebooru(target_dir)
-
-    # 3. Download CyberHarem cropped portraits (23 characters)
-    print("\n" + "=" * 60)
-    print("  DOWNLOADING CYBERHAREM CHARACTER PORTRAITS")
-    print("=" * 60)
-    
-    cyber_count = 0
+    # ─────────────────────────────────────────────────────────────
+    # 1. HONKAI: STAR RAIL DATASET
+    # ─────────────────────────────────────────────────────────────
+    print("\n" + "#" * 60)
+    print("  1. PROCESSING HONKAI: STAR RAIL")
+    print("#" * 60)
+    # A. Official Skins
+    download_official_skins("starrail", starrail_dir)
+    # B. CyberHarem Waifus
     for char in CYBERHAREM_CHARS:
-        count = download_and_extract_cyberharem(char, target_dir, temp_dir)
-        cyber_count += count
+        download_and_extract_cyberharem(char, starrail_dir, temp_dir)
+    # C. Specific New Characters & General HSR on Safebooru
+    hsr_tags = {
+        "acheron": ("acheron_(honkai:_star_rail)", 40),
+        "firefly": ("firefly_(honkai:_star_rail)", 40),
+        "robin": ("robin_(honkai:_star_rail)", 40),
+        "sparkle": ("sparkle_(honkai:_star_rail)", 40),
+        "sunday": ("sunday_(honkai:_star_rail)", 40),
+        "aventurine": ("aventurine_(honkai:_star_rail)", 40),
+        "boothill": ("boothill_(honkai:_star_rail)", 40),
+        "feixiao": ("feixiao_(honkai:_star_rail)", 40),
+        "yunli": ("yunli_(honkai:_star_rail)", 40),
+        "lingsha": ("lingsha_(honkai:_star_rail)", 40),
+        "rappa": ("rappa_(honkai:_star_rail)", 40),
+        "jiaoqiu": ("jiaoqiu_(honkai:_star_rail)", 40),
+        "cerydra": ("cerydra_(honkai:_star_rail)", 40),
+        "hysilens": ("hysilens_(honkai:_star_rail)", 40),
+        "sparxie": ("sparxie_(honkai:_star_rail)", 40),
+        "yaoguang": ("yaoguang_(honkai:_star_rail)", 40),
+        "castorice": ("castorice_(honkai:_star_rail)", 40),
+        "evernight": ("evernight_(honkai:_star_rail)", 40),
+        "hyancine": ("hyancine_(honkai:_star_rail)", 40),
+        "cyrene": ("cyrene_(honkai:_star_rail)", 40),
+        "general_hsr": ("honkai:_star_rail", 350)  # Mix of all characters
+    }
+    for key, (tag, limit) in hsr_tags.items():
+        download_from_safebooru(tag, starrail_dir, f"hsr_{key}", limit)
 
-    # Cleanup temp directory completely
+    # ─────────────────────────────────────────────────────────────
+    # 2. BLUE ARCHIVE DATASET
+    # ─────────────────────────────────────────────────────────────
+    print("\n" + "#" * 60)
+    print("  2. PROCESSING BLUE ARCHIVE")
+    print("#" * 60)
+    # A. Official Skins (113 characters)
+    download_official_skins("bluearchive", bluearchive_dir)
+    # B. Safebooru Mix
+    download_from_safebooru("blue_archive", bluearchive_dir, "ba_general", 300)
+
+    # ─────────────────────────────────────────────────────────────
+    # 3. ANIME LANDSCAPES / BACKGROUNDS DATASET
+    # ─────────────────────────────────────────────────────────────
+    print("\n" + "#" * 60)
+    print("  3. PROCESSING ANIME LANDSCAPES")
+    print("#" * 60)
+    download_from_safebooru("landscape_background", landscapes_dir, "anime_land", 250)
+
+    # Cleanup
     if os.path.exists(temp_dir):
         shutil.rmtree(temp_dir)
 
-    total_images = official_count + safebooru_count + cyber_count
     print("\n" + "=" * 60)
-    print("  DOWNLOAD COMPLETE")
-    print(f"  Official high-res skins saved  : {official_count}")
-    print(f"  Safebooru images saved         : {safebooru_count}")
-    print(f"  CyberHarem portraits saved     : {cyber_count}")
-    print(f"  Total HSR images in dataset    : {total_images}")
-    print(f"  Dataset path: {target_dir}")
+    print("  ALL DOWNLOADS COMPLETED SUCCESSFULLY!")
+    print(f"  HSR folder: {starrail_dir}")
+    print(f"  Blue Archive folder: {bluearchive_dir}")
+    print(f"  Anime Landscapes folder: {landscapes_dir}")
     print("=" * 60)
 
 if __name__ == "__main__":
