@@ -64,6 +64,10 @@ NEW_CHARACTERS_TAGS = {
     "hysilens": "hysilens_(honkai:_star_rail)",
     "sparxie": "sparxie_(honkai:_star_rail)",
     "yaoguang": "yaoguang_(honkai:_star_rail)",
+    "castorice": "castorice_(honkai:_star_rail)",
+    "evernight": "evernight_(honkai:_star_rail)",
+    "hyancine": "hyancine_(honkai:_star_rail)",
+    "cyrene": "cyrene_(honkai:_star_rail)",
     "general_hsr": "honkai:_star_rail"  # General wallpapers/illustrations
 }
 
