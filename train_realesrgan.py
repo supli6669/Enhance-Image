@@ -229,7 +229,7 @@ def create_training_config(num_images: int) -> str:
                 "milestones": [400000],
                 "gamma": 0.5,
             },
-            "total_iter": 1000,
+            "total_iter": 2000,
             "warmup_iter": -1,
             "pixel_opt": {
                 "type": "L1Loss",
