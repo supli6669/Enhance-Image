@@ -290,9 +290,10 @@ def main():
     print("#" * 60)
     # A. Official Skins
     download_official_skins("starrail", starrail_dir)
-    # B. CyberHarem Waifus
-    for char in CYBERHAREM_CHARS:
-        download_and_extract_cyberharem(char, starrail_dir, temp_dir)
+    # B. CyberHarem Waifus (Commented out to avoid extremely slow zip downloads on Windows)
+    # for char in CYBERHAREM_CHARS:
+    #     download_and_extract_cyberharem(char, starrail_dir, temp_dir)
+    
     # C. Specific New Characters & General HSR on Safebooru
     hsr_tags = {
         "acheron": ("acheron_(honkai:_star_rail)", 40),
@@ -315,6 +316,32 @@ def main():
         "evernight": ("evernight_(honkai:_star_rail)", 40),
         "hyancine": ("hyancine_(honkai:_star_rail)", 40),
         "cyrene": ("cyrene_(honkai:_star_rail)", 40),
+        
+        # CyberHarem waifus ported to Safebooru crawler (runs 100x faster!)
+        "march_7th": ("march_7th_(honkai:_star_rail)", 30),
+        "silver_wolf": ("silver_wolf_(honkai:_star_rail)", 30),
+        "bronya": ("bronya_(honkai:_star_rail)", 30),
+        "herta": ("herta_(honkai:_star_rail)", 30),
+        "seele": ("seele_(honkai:_star_rail)", 30),
+        "clara": ("clara_(honkai:_star_rail)", 30),
+        "tingyun": ("tingyun_(honkai:_star_rail)", 30),
+        "himeko": ("himeko_(honkai:_star_rail)", 30),
+        "asta": ("asta_(honkai:_star_rail)", 30),
+        "qingque": ("qingque_(honkai:_star_rail)", 30),
+        "bailu": ("bailu_(honkai:_star_rail)", 30),
+        "serval": ("serval_(honkai:_star_rail)", 30),
+        "natasha": ("natasha_(honkai:_star_rail)", 30),
+        "sushang": ("sushang_(honkai:_star_rail)", 30),
+        "yukong": ("yukong_(honkai:_star_rail)", 30),
+        "pela": ("pela_(honkai:_star_rail)", 30),
+        "kafka": ("kafka_(honkai:_star_rail)", 30),
+        "fu_xuan": ("fu_xuan_(honkai:_star_rail)", 30),
+        "jingliu": ("jingliu_(honkai:_star_rail)", 30),
+        "huohuo": ("huohuo_(honkai:_star_rail)", 30),
+        "guinaifen": ("guinaifen_(honkai:_star_rail)", 30),
+        "hanya": ("hanya_(honkai:_star_rail)", 30),
+        "hook": ("hook_(honkai:_star_rail)", 30),
+
         "general_hsr": ("honkai:_star_rail", 350)  # Mix of all characters
     }
     for key, (tag, limit) in hsr_tags.items():
