@@ -367,10 +367,10 @@ if uploaded_file is not None or use_sample:
                 f"enhanced_{os.path.splitext(img_name)[0]}.png",
                 "image/png", use_container_width=True)
     with col_dl2:
-        split_dl = np.copy(enhanced_img)
-        split_dl[:, :mid_x] = img_resized[:, :mid_x]
-        cv2.line(split_dl, (mid_x, 0), (mid_x, h_enh), (255, 255, 255), max(2, w_enh // 300))
-        ok2, buf2 = cv2.imencode(".png", split_dl)
+        split_img = np.copy(enhanced_img)
+        split_img[:, :mid_x] = img_resized[:, :mid_x]
+        cv2.line(split_img, (mid_x, 0), (mid_x, h_enh), (255, 255, 255), max(2, w_enh // 300))
+        ok2, buf2 = cv2.imencode(".png", split_img)
         if ok2:
             st.download_button("🌗 Download Split Comparison",
                 BytesIO(buf2).getvalue(),
