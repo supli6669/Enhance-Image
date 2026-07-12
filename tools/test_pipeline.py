@@ -1,10 +1,16 @@
 import os
 import cv2
 import sys
+
+# Add project root to sys.path
+tools_dir = os.path.dirname(os.path.abspath(__file__))
+project_dir = os.path.dirname(tools_dir)
+if project_dir not in sys.path:
+    sys.path.insert(0, project_dir)
+
 from pipeline import LocalAIEnhancerPipeline
 
 def main():
-    project_dir = os.path.dirname(os.path.abspath(__file__))
     input_path = os.path.join(project_dir, "models", "CodeFormer", "inputs", "whole_imgs", "00.jpg")
     output_path = os.path.join(project_dir, "test_output.png")
     

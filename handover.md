@@ -170,5 +170,29 @@ Validate checkpoints quantitatively and qualitatively:
 
 ### Step 7: Streamlit Integration
 1. Export the best trained checkpoint (`params_ema` key) from `experiments/` to `weights/CodeFormer/codeformer_custom.pth`.
-2. Update [pipeline.py](file:///c:/Users/admin/.gemini/antigravity-ide/scratch/custom-ai-enhancer/pipeline.py) to point to the new model weights.
-3. Update [app.py](file:///c:/Users/admin/.gemini/antigravity-ide/scratch/custom-ai-enhancer/app.py) to add a model-selection dropdown or toggle, letting users compare the vanilla CodeFormer against your custom fine-tuned model.
+2. Update [pipeline.py](file:///d:/.gemini-scratch/custom-ai-enhancer/pipeline.py) to point to the new model weights.
+3. Update [app.py](file:///d:/.gemini-scratch/custom-ai-enhancer/app.py) to add a model-selection dropdown or toggle, letting users compare the vanilla CodeFormer against your custom fine-tuned model.
+
+---
+
+## Task 6: Google Colab GPU Setup & ONNX Runtime CPU Inference Optimization
+
+### Completed Operations
+- **Colab GPU Training Notebook**: Created `train_on_colab.ipynb` for GPU-accelerated training. Implemented real-time checkpoint synchronization directly to the user's Google Drive using symbolic links (`ln -s`) to prevent data loss.
+- **ONNX Export Script**: Created `tools/export_onnx.py` supporting dynamic scale selection (`scale=4` for custom checkpoints, `scale=2` for pretrained vanilla weights) and dynamic input shape axes for Real-ESRGAN (`RRDBNet`).
+- **CodeFormer ONNX Compatibility**: Removed dynamic data-dependent control flow (`if w>0`) in `models/CodeFormer/basicsr/archs/codeformer_arch.py` to allow successful graph tracing with dynamic fidelity parameters.
+- **Pipeline ONNX Runtime Integration**: Updated `pipeline.py` to automatically load ONNX Runtime sessions for both CodeFormer and Real-ESRGAN if their respective `.onnx` files are found under `weights/`, bypassing heavy PyTorch model initialization.
+- **Verification Tests**: Verified model exports and end-to-end pipeline execution with ONNX Runtime using `tools/test_pipeline.py` and custom scripts successfully.
+
+### Code Changes
+- [NEW] [train_on_colab.ipynb](file:///d:/.gemini-scratch/custom-ai-enhancer/train_on_colab.ipynb) (Google Colab Setup Notebook)
+- [NEW] [tools/export_onnx.py](file:///d:/.gemini-scratch/custom-ai-enhancer/tools/export_onnx.py) (Model to ONNX exporter)
+- [MODIFY] [pipeline.py](file:///d:/.gemini-scratch/custom-ai-enhancer/pipeline.py) (Added ONNX execution sessions, cleaned up loops)
+- [MODIFY] [requirements.txt](file:///d:/.gemini-scratch/custom-ai-enhancer/requirements.txt) (Added onnx and onnxruntime)
+- [MODIFY] [tools/test_pipeline.py](file:///d:/.gemini-scratch/custom-ai-enhancer/tools/test_pipeline.py) (Fixed workspace paths and search logic)
+- [MODIFY] [models/CodeFormer/basicsr/archs/codeformer_arch.py](file:///d:/.gemini-scratch/custom-ai-enhancer/models/CodeFormer/basicsr/archs/codeformer_arch.py) (Bypassed dynamic w check to support ONNX tracing)
+
+### Git Commit & Push Status
+- **Files Modified/Created**: Ready for commit.
+- **Remote Push**: Pending user review.
+

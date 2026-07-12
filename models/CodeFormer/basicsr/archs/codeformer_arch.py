@@ -273,8 +273,8 @@ class CodeFormer(VQAutoEncoder):
             x = block(x) 
             if i in fuse_list: # fuse after i-th block
                 f_size = str(x.shape[-1])
-                if w>0:
-                    x = self.fuse_convs_dict[f_size](enc_feat_dict[f_size].detach(), x, w)
+                # Always execute to avoid data-dependent control flow in ONNX
+                x = self.fuse_convs_dict[f_size](enc_feat_dict[f_size].detach(), x, w)
         out = x
         # logits doesn't need softmax before cross_entropy loss
         return out, logits, lq_feat

@@ -5,6 +5,12 @@ import numpy as np
 import torch
 from torchvision.transforms.functional import normalize
 
+try:
+    import onnxruntime as ort
+    HAS_ONNX = True
+except ImportError:
+    HAS_ONNX = False
+
 # Ensure CodeFormer directory is on sys.path
 project_dir = os.path.dirname(os.path.abspath(__file__))
 codeformer_dir = os.path.join(project_dir, "models", "CodeFormer")
@@ -25,34 +31,69 @@ class LocalAIEnhancerPipeline:
             
         print(f"[Pipeline] Initializing pipeline on device: {self.device}")
         
-        # Load CodeFormer network architecture
-        self.net = ARCH_REGISTRY.get('CodeFormer')(
-            dim_embd=512, 
-            codebook_size=1024, 
-            n_head=8, 
-            n_layers=9, 
-            connect_list=['32', '64', '128', '256']
-        ).to(self.device)
+        # Check if ONNX models exist and should be used
+        codeformer_onnx_path = os.path.join(project_dir, "weights", "CodeFormer", "codeformer.onnx")
+        self.use_onnx = HAS_ONNX and os.path.exists(codeformer_onnx_path)
         
-        # Load weights
-        weights_path = os.path.join(project_dir, "weights", "CodeFormer", "codeformer.pth")
-        if not os.path.exists(weights_path):
-            print("[Pipeline] Pretrained weights not found. Automatically downloading models...")
-            try:
-                import download_weights
-                download_weights.main()
-            except Exception as e:
-                print(f"[Pipeline] Error during automatic weight download: {e}")
-                raise FileNotFoundError(f"CodeFormer weights not found at {weights_path} and auto-download failed. Please run download_weights.py manually.")
-            
-        print(f"[Pipeline] Loading weights from {weights_path}...")
-        checkpoint = torch.load(weights_path, map_location=self.device)
-        if 'params_ema' in checkpoint:
-            self.net.load_state_dict(checkpoint['params_ema'])
+        if self.use_onnx:
+            print(f"[Pipeline] ONNX models detected! Using ONNX Runtime for CodeFormer inference.")
+            self.ort_session_cf = ort.InferenceSession(codeformer_onnx_path, providers=['CPUExecutionProvider'])
+            self.net = None
+            print("[Pipeline] CodeFormer ONNX model loaded successfully.")
         else:
-            self.net.load_state_dict(checkpoint['params'])
-        self.net.eval()
-        print("[Pipeline] CodeFormer model loaded successfully.")
+            # Load CodeFormer network architecture
+            self.net = ARCH_REGISTRY.get('CodeFormer')(
+                dim_embd=512, 
+                codebook_size=1024, 
+                n_head=8, 
+                n_layers=9, 
+                connect_list=['32', '64', '128', '256']
+            ).to(self.device)
+            
+            # Load weights
+            weights_path = os.path.join(project_dir, "weights", "CodeFormer", "codeformer.pth")
+            if not os.path.exists(weights_path):
+                print("[Pipeline] Pretrained weights not found. Automatically downloading models...")
+                try:
+                    import download_weights
+                    download_weights.main()
+                except Exception as e:
+                    print(f"[Pipeline] Error during automatic weight download: {e}")
+                    raise FileNotFoundError(f"CodeFormer weights not found at {weights_path} and auto-download failed. Please run download_weights.py manually.")
+                
+            print(f"[Pipeline] Loading weights from {weights_path}...")
+            checkpoint = torch.load(weights_path, map_location=self.device)
+            if 'params_ema' in checkpoint:
+                self.net.load_state_dict(checkpoint['params_ema'])
+            else:
+                self.net.load_state_dict(checkpoint['params'])
+            self.net.eval()
+            print("[Pipeline] CodeFormer model loaded successfully.")
+
+    def enhance_realesrgan_onnx(self, img, upscale):
+        # 1. Preprocessing
+        h, w, c = img.shape
+        img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+        img_rgb = img_rgb.astype(np.float32) / 255.0
+        img_input = np.transpose(img_rgb, (2, 0, 1))
+        img_input = np.expand_dims(img_input, axis=0)
+        
+        # 2. Run ONNX Session
+        ort_inputs = {self.ort_session_re.get_inputs()[0].name: img_input}
+        ort_outs = self.ort_session_re.run(None, ort_inputs)
+        output_tensor = ort_outs[0]
+        
+        # 3. Postprocessing
+        output = np.squeeze(output_tensor, axis=0)
+        output = np.clip(output, 0, 1)
+        output = np.transpose(output, (1, 2, 0))
+        output_bgr = cv2.cvtColor(output, cv2.COLOR_RGB2BGR)
+        output_bgr = (output_bgr * 255.0).round().astype(np.uint8)
+        
+        if upscale != 2:
+            output_bgr = cv2.resize(output_bgr, (w * upscale, h * upscale), interpolation=cv2.INTER_LANCZOS4)
+            
+        return output_bgr
 
     def process_image(self, img, w=0.5, detection_model='retinaface_resnet50', upscale=2, blend_softness=0.5, bg_upsampler=None, det_threshold=0.5, sharpen_amount=0.0):
         """
@@ -113,47 +154,57 @@ class LocalAIEnhancerPipeline:
         # Handle background upsampling first
         bg_img = None
         if bg_upsampler == 'realesrgan':
-            if not hasattr(self, 'bg_upsampler_instance') or self.bg_upsampler_instance is None:
-                print("[Pipeline] Loading Real-ESRGAN background upsampler...")
-                realesrgan_path = os.path.join(project_dir, "weights", "realesrgan", "RealESRGAN_x2plus.pth")
-                if not os.path.exists(realesrgan_path):
-                    print("[Pipeline] Real-ESRGAN weights not found. Automatically downloading...")
-                    try:
-                        import download_weights
-                        download_weights.download_file("https://github.com/sczhou/CodeFormer/releases/download/v0.1.0/RealESRGAN_x2plus.pth", realesrgan_path)
-                    except Exception as e:
-                        print(f"[Pipeline] Error downloading Real-ESRGAN weights: {e}")
-                        raise FileNotFoundError(f"Real-ESRGAN weights not found at {realesrgan_path} and auto-download failed.")
-                
-                from basicsr.archs.rrdbnet_arch import RRDBNet
-                from basicsr.utils.realesrgan_utils import RealESRGANer
-                
-                use_half = False
-                if self.device.type == 'cuda':
-                    no_half_gpu_list = ['1650', '1660']
-                    if not any(gpu in torch.cuda.get_device_name(0) for gpu in no_half_gpu_list):
-                        use_half = True
-                        
-                model = RRDBNet(
-                    num_in_ch=3,
-                    num_out_ch=3,
-                    num_feat=64,
-                    num_block=23,
-                    num_grow_ch=32,
-                    scale=2
-                )
-                self.bg_upsampler_instance = RealESRGANer(
-                    scale=2,
-                    model_path=realesrgan_path,
-                    model=model,
-                    tile=400,
-                    tile_pad=40,
-                    pre_pad=0,
-                    half=use_half
-                )
+            realesrgan_onnx_path = os.path.join(project_dir, "weights", "realesrgan", "realesrgan.onnx")
+            self.use_re_onnx = HAS_ONNX and os.path.exists(realesrgan_onnx_path)
             
-            print("[Pipeline] Running Real-ESRGAN background super-resolution...")
-            bg_img = self.bg_upsampler_instance.enhance(img, outscale=upscale)[0]
+            if self.use_re_onnx:
+                if not hasattr(self, 'ort_session_re') or self.ort_session_re is None:
+                    print("[Pipeline] Loading Real-ESRGAN ONNX Runtime Session...")
+                    self.ort_session_re = ort.InferenceSession(realesrgan_onnx_path, providers=['CPUExecutionProvider'])
+                print("[Pipeline] Running Real-ESRGAN background super-resolution using ONNX Runtime...")
+                bg_img = self.enhance_realesrgan_onnx(img, upscale)
+            else:
+                if not hasattr(self, 'bg_upsampler_instance') or self.bg_upsampler_instance is None:
+                    print("[Pipeline] Loading Real-ESRGAN background upsampler...")
+                    realesrgan_path = os.path.join(project_dir, "weights", "realesrgan", "RealESRGAN_x2plus.pth")
+                    if not os.path.exists(realesrgan_path):
+                        print("[Pipeline] Real-ESRGAN weights not found. Automatically downloading...")
+                        try:
+                            import download_weights
+                            download_weights.download_file("https://github.com/sczhou/CodeFormer/releases/download/v0.1.0/RealESRGAN_x2plus.pth", realesrgan_path)
+                        except Exception as e:
+                            print(f"[Pipeline] Error downloading Real-ESRGAN weights: {e}")
+                            raise FileNotFoundError(f"Real-ESRGAN weights not found at {realesrgan_path} and auto-download failed.")
+                    
+                    from basicsr.archs.rrdbnet_arch import RRDBNet
+                    from basicsr.utils.realesrgan_utils import RealESRGANer
+                    
+                    use_half = False
+                    if self.device.type == 'cuda':
+                        no_half_gpu_list = ['1650', '1660']
+                        if not any(gpu in torch.cuda.get_device_name(0) for gpu in no_half_gpu_list):
+                            use_half = True
+                            
+                    model = RRDBNet(
+                        num_in_ch=3,
+                        num_out_ch=3,
+                        num_feat=64,
+                        num_block=23,
+                        num_grow_ch=32,
+                        scale=2
+                    )
+                    self.bg_upsampler_instance = RealESRGANer(
+                        scale=2,
+                        model_path=realesrgan_path,
+                        model=model,
+                        tile=400,
+                        tile_pad=40,
+                        pre_pad=0,
+                        half=use_half
+                    )
+                
+                print("[Pipeline] Running Real-ESRGAN background super-resolution...")
+                bg_img = self.bg_upsampler_instance.enhance(img, outscale=upscale)[0]
 
         if num_det_faces == 0:
             if bg_img is not None:
@@ -166,19 +217,43 @@ class LocalAIEnhancerPipeline:
         
         # 2. Process each cropped face through CodeFormer
         for idx, cropped_face in enumerate(face_helper.cropped_faces):
-            cropped_face_t = img2tensor(cropped_face / 255.0, bgr2rgb=True, float32=True)
-            normalize(cropped_face_t, (0.5, 0.5, 0.5), (0.5, 0.5, 0.5), inplace=True)
-            cropped_face_t = cropped_face_t.unsqueeze(0).to(self.device)
-            
-            try:
-                with torch.no_grad():
-                    # Process with fidelity weight w
-                    output = self.net(cropped_face_t, w=w, adain=True)[0]
-                    restored_face = tensor2img(output, rgb2bgr=True, min_max=(-1, 1))
-                del output
-            except Exception as error:
-                print(f"[Pipeline] Failed CodeFormer inference for face index {idx}: {error}")
-                restored_face = tensor2img(cropped_face_t, rgb2bgr=True, min_max=(-1, 1))
+            if self.use_onnx:
+                try:
+                    # Convert cropped face to tensor format required
+                    cropped_face_t = img2tensor(cropped_face / 255.0, bgr2rgb=True, float32=True)
+                    normalize(cropped_face_t, (0.5, 0.5, 0.5), (0.5, 0.5, 0.5), inplace=True)
+                    cropped_face_np = cropped_face_t.unsqueeze(0).numpy()
+                    
+                    w_np = np.array([w], dtype=np.float32)
+                    ort_inputs = {
+                        self.ort_session_cf.get_inputs()[0].name: cropped_face_np,
+                        self.ort_session_cf.get_inputs()[1].name: w_np
+                    }
+                    ort_outs = self.ort_session_cf.run(None, ort_inputs)
+                    output = ort_outs[0]
+                    
+                    output = np.squeeze(output, axis=0)
+                    output = np.clip(output, -1.0, 1.0)
+                    output = (output + 1.0) / 2.0 * 255.0
+                    output = np.transpose(output, (1, 2, 0))
+                    restored_face = cv2.cvtColor(output.astype(np.uint8), cv2.COLOR_RGB2BGR)
+                except Exception as error:
+                    print(f"[Pipeline] Failed CodeFormer ONNX inference for face index {idx}: {error}")
+                    restored_face = cropped_face.copy()
+            else:
+                cropped_face_t = img2tensor(cropped_face / 255.0, bgr2rgb=True, float32=True)
+                normalize(cropped_face_t, (0.5, 0.5, 0.5), (0.5, 0.5, 0.5), inplace=True)
+                cropped_face_t = cropped_face_t.unsqueeze(0).to(self.device)
+                
+                try:
+                    with torch.no_grad():
+                        # Process with fidelity weight w
+                        output = self.net(cropped_face_t, w=w, adain=True)[0]
+                        restored_face = tensor2img(output, rgb2bgr=True, min_max=(-1, 1))
+                    del output
+                except Exception as error:
+                    print(f"[Pipeline] Failed CodeFormer inference for face index {idx}: {error}")
+                    restored_face = tensor2img(cropped_face_t, rgb2bgr=True, min_max=(-1, 1))
                 
             restored_face = restored_face.astype('uint8')
             face_helper.add_restored_face(restored_face, cropped_face)
