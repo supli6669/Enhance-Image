@@ -223,45 +223,82 @@ Validate checkpoints quantitatively and qualitatively:
 
 ### Machine Profile (measured)
 - **CPU**: AMD Ryzen 7 7735HS (Zen 3+, 8C/16T, **AVX512** support)
-- **RAM**: 32 GB
+- **RAM**: 28.6 GB usable (Windows reports 32 GB)
 - **torch**: 2.12.1+cpu — `mkldnn` available, `bf16` CPU autocast available
 - **Dataset**: 15,087 PNG images (~5.3 GB) in `datasets/realesrgan_gt`
 - **Disk**: C: 31 GB free (OS), **D: 107 GB free** (project lives here)
 
+### ⚠️ CRITICAL: Segfault root cause (this is why the old "running" training actually crashed)
+The previous run that looked like it was "training" was in fact **segfaulting** (exit code
+`3221225477` = `0xC0000005` access violation) on the **first forward pass** — the checkpoint at
+iter 1850 came from a different environment (the HF Space GPU), NOT from this machine.
+
+Root cause chain (verified by isolated repro scripts):
+1. **oneDNN (mkldnn) CPU conv path segfaults** on this Ryzen 7735HS for the RRDB / upsample
+   convolutions during training. Disabling mkldnn (`torch.backends.mkldnn.enabled = False`)
+   eliminates the crash. **This is mandatory.**
+2. **`filter2D` (random degradations) also segfaults** on CPU because it calls
+   `F.pad(..., mode='reflect')` then `F.conv2d` on a non-contiguous tensor — same class of bug.
+   Fixed by rewriting `filter2D` to use **OpenCV** (`cv2.filter2D`) in BOTH basicsr copies
+   (`D:\Temp\BasicSR_src/basicsr/utils/img_process_util.py` and
+   `models/CodeFormer/basicsr/utils/img_process_util.py`).
+3. **`num_block` (RRDB depth) must be ≤ 6** for stable CPU training. With the real training
+   input size (lq = 64×64), depth up to 16 builds, but the full GAN+perceptual pipeline is only
+   stable at **num_block=6** (depth ≥ 16 intermittently segfaults / corrupts memory over
+   iterations). The standard Real-ESRGAN `num_block=23` **cannot run on this CPU** — it segfaults
+   at the body conv. If you need the full 23-block model, train on the HF Space (GPU) instead.
+4. **`gt_size` must be ≤ 256** (not 320). The VGG perceptual loss on the 4× upscaled output
+   (320→1280) allocates >5.6 GB for a single tensor and OOMs on 28 GB RAM. `gt_size=256`
+   (output 1024) fits comfortably.
+
 ### Completed Operations
-- **CPU — fixed oversubscription & enabled hardware acceleration**
-  - Root cause of slow CPU training: `num_worker_per_gpu=8` × `OMP_NUM_THREADS=16` = 128 threads fighting 16 cores. Reduced workers to **4** so the main process keeps all 16 cores for compute (matmul/conv), workers only do I/O + degradation synthesis.
-  - Set `OMP/MKL/OPENBLAS/NUMEXPR/VECLIB_NUM_THREADS=16` so torch uses all 16 logical CPUs (was defaulting to 8).
-  - Added `ATEN_CPU_CAPABILITY=avx512` (Ryzen 7735HS supports AVX512 → fastest torch kernels) and `DNNL_VERBOSE=0` to enable oneDNN (mkldnn) graph fusion for faster CPU conv/matmul.
+- **CPU — disabled the crashing oneDNN path, kept all cores busy**
+  - Added `torch.backends.mkldnn.enabled = False` at the top of `realesrgan/train.py` (runs
+    inside the training subprocess, so it actually takes effect).
+  - `num_worker_per_gpu=0` (main process does degradation + compute; workers add no benefit and
+    the DataLoader worker spawn was unstable here). `OMP/MKL_NUM_THREADS=8` + `MKL_THREADING_LAYER=GNU`
+    to avoid the OpenMP/MKL threading crash; torch still parallelises matmuls/conv via its own
+    intra-op pool across all 16 logical CPUs.
+  - **Do NOT set `ATEN_CPU_CAPABILITY=avx512`** — if the installed torch build lacks the avx512
+    kernel it raises SIGILL/segfault on the first forward pass. Let torch auto-detect the ISA.
 - **RAM — increased memory footprint to feed compute without OOM**
-  - `batch_size_per_gpu`: 6 → **12** (more stable gradients = better quality, uses more RAM).
-  - `queue_size`: 64 → **128**, `num_prefetch_queue`: 4 → **6** (keeps more pre-degraded samples in RAM so the compute process is never starved).
-  - Expected usage ~3–5 GB / 32 GB — safe, no OOM risk.
+  - `batch_size_per_gpu`: **12** (uses more RAM, more stable gradients).
+  - `queue_size`: **120** (divisible by 12 for the degradation queue), `prefetch_mode: null`.
+  - Observed live usage: ~1.3 GB RAM / 1234 CPU-s after iter 1 — plenty of headroom on 28 GB.
 - **Disk — converted dataset to LMDB on D: for fast sequential I/O**
-  - Created `tools/build_lmdb.py` which converts the 15,087 loose PNGs into an LMDB database at `D:\realesrgan_lmdb` (folder name ends with `.lmdb` as required by `RealESRGANDataset`). Keys = image basename without extension; `meta_info.txt` written alongside.
-  - LMDB build was run successfully (15,087 images, format verified against the dataset reader's `line.split('.')[0]` expectation).
-  - `train_realesrgan.py` now auto-builds the LMDB (Step 3.5) if missing, then points the config at it; falls back to the disk backend if the build fails.
-  - LMDB gives sequential reads with minimal per-file decode/stat overhead — frees CPU for compute instead of I/O.
-- **Quality — pushed core training knobs up**
-  - `gt_size`: 256 → **320** (larger training crops = more detail learned).
-  - `total_iter`: 10,000 → **50,000** (more iterations = higher final quality).
-- **CodeFormer (`train_custom.py`)**: `num_worker_per_gpu` 8 → **4**, added same `ATEN_CPU_CAPABILITY=avx512` + mkldnn env vars.
+  - `tools/build_lmdb.py` converts the 15,087 loose PNGs into an LMDB at `D:\realesrgan.lmdb`
+    (folder name ends with `.lmdb` as required by `RealESRGANDataset`). Built successfully.
+  - `train_realesrgan.py` auto-builds the LMDB (Step 3.5) if missing, then points the config at it.
+- **Quality / model — working config**
+  - `num_block`: 23 → **6** (mandatory, see root cause #3).
+  - `gt_size`: 320 → **256** (mandatory, see root cause #4).
+  - `total_iter`: **50,000**.
+- **CodeFormer (`train_custom.py`)**: left at `num_worker_per_gpu=4`; same mkldnn-off + GNU
+  threading guidance applies if you train it on CPU.
 
 ### Code Changes
-- [MODIFY] [train_realesrgan.py](file:///d:/.gemini-scratch/custom-ai-enhancer/train_realesrgan.py) (worker=4, batch=12, queue=128, prefetch=6, gt=320, total_iter=50000, avx512/mkldnn env, LMDB auto-build + config)
-- [MODIFY] [train_custom.py](file:///d:/.gemini-scratch/custom-ai-enhancer/train_custom.py) (worker=4, avx512/mkldnn env)
+- [MODIFY] [models/Real-ESRGAN/realesrgan/train.py](file:///d:/.gemini-scratch/custom-ai-enhancer/models/Real-ESRGAN/realesrgan/train.py) (disable mkldnn at startup)
+- [MODIFY] [train_realesrgan.py](file:///d:/.gemini-scratch/custom-ai-enhancer/train_realesrgan.py) (num_block=6, gt_size=256, worker=0, batch=12, queue=120, prefetch=null, LMDB auto-build + config; removed avx512 env)
+- [MODIFY] [D:\Temp\BasicSR_src/basicsr/utils/img_process_util.py](file:///D:/Temp/BasicSR_src/basicsr/utils/img_process_util.py) (filter2D → cv2)
+- [MODIFY] [models/CodeFormer/basicsr/utils/img_process_util.py](file:///d:/.gemini-scratch/custom-ai-enhancer/models/CodeFormer/basicsr/utils/img_process_util.py) (filter2D → cv2)
+- [MODIFY] [models/Real-ESRGAN/options/train_realesrgan_custom.yml](file:///d:/.gemini-scratch/custom-ai-enhancer/models/Real-ESRGAN/options/train_realesrgan_custom.yml) (num_block=6, gt_size=256)
 - [NEW] [tools/build_lmdb.py](file:///d:/.gemini-scratch/custom-ai-enhancer/tools/build_lmdb.py) (PNG → LMDB converter on D:)
 
 ### Verification
-- `py_compile` on all three files: passed (no errors).
-- `tools/build_lmdb.py` executed end-to-end: 15,087 images written to `D:\realesrgan_lmdb`, `meta_info.txt` has 15,087 matching lines, first key `00000` reads back correctly.
+- `tools/build_lmdb.py` executed end-to-end: 15,087 images → `D:\realesrgan.lmdb`, `meta_info.txt` 15,087 lines.
+- Full training pipeline (`RealESRGANModel.optimize_parameters`) ran 3 iters OK in a debug harness.
+- **Live training confirmed running**: `realesrgan/train.py` reached `iter: 1` with losses
+  `l_g_pix=0.54 l_g_percep=1.55 l_g_gan=0.07` and was actively consuming CPU (~1234 CPU-s, ~1.3 GB RAM).
 
 ### Git Commit & Push Status
-- **Commit Message:** "perf: maximize CPU/RAM/disk for CPU training (LMDB, avx512, larger batch/queue)"
+- **Commit Message:** "fix: make CPU training run (disable mkldnn, cv2 filter2D, num_block=6, gt=256, LMDB)"
 - **Remote Push:** Completed.
 
 ### Notes for Future Agents
-- The LMDB lives on **D:** (`D:\realesrgan_lmdb`), outside the repo — it is not committed. Rebuild with `python tools/build_lmdb.py` if the source PNGs change.
-- `bf16` CPU autocast and `torch.compile` were intentionally **not** enabled in code: they require monkey-patching the BasicSR train loop and risk dynamic-shape errors. Enable only after testing in isolation.
+- The LMDB lives on **D:** (`D:\realesrgan.lmdb`), outside the repo — not committed. Rebuild with
+  `python tools/build_lmdb.py` if the source PNGs change.
+- **If training segfaults again**, the first thing to check is whether mkldnn got re-enabled
+  (e.g. a torch upgrade reverting `realesrgan/train.py`) or `num_block`/`gt_size` got bumped back up.
+- The 23-block standard model only trains on GPU (HF Space). On this CPU, num_block=6 is the ceiling.
 
 

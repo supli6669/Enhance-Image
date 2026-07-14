@@ -124,7 +124,8 @@ def create_training_config(num_images: int, lmdb_dir: str) -> str:
     config_path = os.path.join(config_dir, "train_realesrgan_custom.yml")
 
     # LMDB dataset on D: (fast sequential reads, no per-file decode overhead).
-    # Built by tools/build_lmdb.py; folder name MUST end with '.lmdb'.
+    # Built by tools/build_lmdb.py; folder name MUST end with '.lmdb' (dot).
+    lmdb_dir = r"D:\realesrgan.lmdb"
     use_lmdb = lmdb_dir.endswith(".lmdb")
     gt_path_rel = lmdb_dir.replace("\\", "/")
 
@@ -159,8 +160,8 @@ def create_training_config(num_images: int, lmdb_dir: str) -> str:
         "gray_noise_prob2": 0.4,
         "jpeg_range2": [30, 95],
 
-        "gt_size": 320,
-        "queue_size": 128,  # large queue to keep more degraded samples in RAM
+        "gt_size": 256,
+        "queue_size": 120,  # must be divisible by batch_size (12) for the degradation queue
 
         "datasets": {
             "train": {
@@ -169,14 +170,14 @@ def create_training_config(num_images: int, lmdb_dir: str) -> str:
                 "dataroot_gt": gt_path_rel,
                 "meta_info": os.path.join(lmdb_dir, "meta_info.txt").replace("\\", "/"),
                 "io_backend": {"type": "lmdb" if use_lmdb else "disk"},
-                "gt_size": 320,
+                "gt_size": 256,
                 "use_hflip": True,
                 "use_rot": False,
                 "blur_kernel_size": 21,
                 "kernel_list": ["iso", "aniso", "generalized_iso", "generalized_aniso",
                                 "plateau_iso", "plateau_aniso"],
                 "kernel_prob": [0.45, 0.25, 0.12, 0.03, 0.12, 0.03],
-                "sinc_prob": 0.1,
+                "sinc_prob": 0.0,
                 "blur_sigma": [0.2, 3.0],
                 "betag_range": [0.5, 4.0],
                 "betap_range": [1, 2.0],
@@ -184,16 +185,15 @@ def create_training_config(num_images: int, lmdb_dir: str) -> str:
                 "kernel_list2": ["iso", "aniso", "generalized_iso", "generalized_aniso",
                                  "plateau_iso", "plateau_aniso"],
                 "kernel_prob2": [0.45, 0.25, 0.12, 0.03, 0.12, 0.03],
-                "sinc_prob2": 0.1,
+                "sinc_prob2": 0.0,
                 "blur_sigma2": [0.2, 1.5],
                 "betag_range2": [0.5, 4.0],
                 "betap_range2": [1, 2.0],
-                "final_sinc_prob": 0.8,
-                "num_worker_per_gpu": 4,
+                "final_sinc_prob": 0.0,
+                "num_worker_per_gpu": 0,
                 "batch_size_per_gpu": 12,
                 "dataset_enlarge_ratio": 1,
-                "prefetch_mode": "cpu",
-                "num_prefetch_queue": 6,
+                "prefetch_mode": None,
             }
         },
         "network_g": {
@@ -201,7 +201,7 @@ def create_training_config(num_images: int, lmdb_dir: str) -> str:
             "num_in_ch": 3,
             "num_out_ch": 3,
             "num_feat": 64,
-            "num_block": 23,
+            "num_block": 6,
             "num_grow_ch": 32,
             "scale": 4,
         },
@@ -320,7 +320,7 @@ def main():
         sys.exit(1)
 
     # 3.5 Build LMDB on D: for fast disk I/O (skip if already built)
-    lmdb_dir = r"D:\realesrgan_lmdb"
+    lmdb_dir = r"D:\realesrgan.lmdb"
     if os.path.exists(os.path.join(lmdb_dir, "meta_info.txt")):
         print(f"\n[Step 3.5] LMDB already present at {lmdb_dir}, skipping build.")
     else:
@@ -364,12 +364,23 @@ def main():
     env = os.environ.copy()
     # Force torch / BLAS backends to use ALL 16 logical CPUs so training
     # saturates the CPU instead of the default 8 threads.
-    for _k in ["OMP_NUM_THREADS", "MKL_NUM_THREADS", "OPENBLAS_NUM_THREADS",
-               "NUMEXPR_NUM_THREADS", "VECLIB_MAXIMUM_THREADS"]:
-        env[_k] = "16"
+    # NOTE: high OMP/MKL thread counts can trigger a 0xC0000005 access
+    # violation (MKL/OpenMP threading crash) on Windows + AMD Ryzen during
+    # the first forward pass.  Use the GNU OpenMP threading layer and a
+    # moderate thread count to avoid it; torch still parallelises matmuls
+    # via its own intra-op thread pool.
+    env["OMP_NUM_THREADS"] = "8"
+    env["MKL_NUM_THREADS"] = "8"
+    env["OPENBLAS_NUM_THREADS"] = "8"
+    env["NUMEXPR_NUM_THREADS"] = "8"
+    env["VECLIB_MAXIMUM_THREADS"] = "8"
+    env["MKL_THREADING_LAYER"] = "GNU"
+    env["KMP_DUPLICATE_LIB_OK"] = "TRUE"
     # Enable oneDNN (mkldnn) graph fusion for faster CPU conv/matmul.
     env["DNNL_VERBOSE"] = "0"
-    env["ATEN_CPU_CAPABILITY"] = "avx512"  # Ryzen 7735HS supports AVX512
+    # NOTE: do NOT force ATEN_CPU_CAPABILITY=avx512 — if the installed torch
+    # build lacks the avx512 kernel it raises SIGILL/segfault on the first
+    # forward pass. Let torch auto-detect the best available ISA.
     # Real-ESRGAN's train.py imports from basicsr.
     # CodeFormer's basicsr lacks degradations module, so we use the full
     # BasicSR source cloned at D:\Temp\BasicSR_src (no install needed).

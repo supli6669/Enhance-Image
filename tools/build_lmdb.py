@@ -18,7 +18,7 @@ import lmdb
 
 PROJECT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SRC_DIR = os.path.join(PROJECT_DIR, "datasets", "realesrgan_gt")
-LMDB_DIR = r"D:\realesrgan_lmdb"
+LMDB_DIR = r"D:\realesrgan.lmdb"
 MAP_SIZE = 12 * 1024 * 1024 * 1024  # 12 GB upper bound (dataset is ~5.3 GB)
 
 
@@ -58,8 +58,10 @@ def main():
     env.close()
 
     with open(os.path.join(LMDB_DIR, "meta_info.txt"), "w", encoding="utf-8") as mf:
+        # Write keys WITH a .png suffix so RealESRGANDataset's
+        # `line.split('.')[0]` yields the bare key (no trailing newline).
         for k in meta_lines:
-            mf.write(f"{k}\n")
+            mf.write(f"{k}.png\n")
 
     print(f"[OK] LMDB written: {key_count} images, meta_info.txt -> {LMDB_DIR}")
 
