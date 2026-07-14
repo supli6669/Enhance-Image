@@ -229,7 +229,7 @@ def create_training_config(num_images: int) -> str:
                 "milestones": [400000],
                 "gamma": 0.5,
             },
-            "total_iter": 2000,
+            "total_iter": 10000,
             "warmup_iter": -1,
             "pixel_opt": {
                 "type": "L1Loss",
@@ -243,7 +243,7 @@ def create_training_config(num_images: int) -> str:
                 "vgg_type": "vgg19",
                 "use_input_norm": True,
                 "range_norm": False,
-                "perceptual_weight": 1.0,
+                "perceptual_weight": 0.1,
                 "style_weight": 0.0,
                 "criterion": "l1",
             },
