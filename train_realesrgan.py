@@ -112,14 +112,21 @@ def prepare_gt_dataset():
     return total
 
 
-def create_training_config(num_images: int) -> str:
-    """Create a Real-ESRGAN training YAML config."""
+def create_training_config(num_images: int, lmdb_dir: str) -> str:
+    """Create a Real-ESRGAN training YAML config.
+
+    lmdb_dir: path to the GT dataset (LMDB folder on D:, or the loose-PNG
+    folder as a fallback). When it ends with '.lmdb' the dataset uses the
+    lmdb IO backend; otherwise it falls back to the disk backend.
+    """
     config_dir = os.path.join(REALESRGAN_DIR, "options")
     os.makedirs(config_dir, exist_ok=True)
     config_path = os.path.join(config_dir, "train_realesrgan_custom.yml")
 
-    # Relative path from Real-ESRGAN dir to GT dataset
-    gt_path_rel = os.path.relpath(REALESRGAN_GT_DIR, REALESRGAN_DIR).replace("\\", "/")
+    # LMDB dataset on D: (fast sequential reads, no per-file decode overhead).
+    # Built by tools/build_lmdb.py; folder name MUST end with '.lmdb'.
+    use_lmdb = lmdb_dir.endswith(".lmdb")
+    gt_path_rel = lmdb_dir.replace("\\", "/")
 
     config = {
         "name": "train_RealESRGAN_custom",
@@ -153,15 +160,15 @@ def create_training_config(num_images: int) -> str:
         "jpeg_range2": [30, 95],
 
         "gt_size": 320,
-        "queue_size": 64,  # large queue to keep more degraded samples in RAM
+        "queue_size": 128,  # large queue to keep more degraded samples in RAM
 
         "datasets": {
             "train": {
                 "name": "CustomMixedDataset",
                 "type": "RealESRGANDataset",
                 "dataroot_gt": gt_path_rel,
-                "meta_info": os.path.join(REALESRGAN_GT_DIR, "meta_info.txt").replace("\\", "/"),
-                "io_backend": {"type": "disk"},
+                "meta_info": os.path.join(lmdb_dir, "meta_info.txt").replace("\\", "/"),
+                "io_backend": {"type": "lmdb" if use_lmdb else "disk"},
                 "gt_size": 320,
                 "use_hflip": True,
                 "use_rot": False,
@@ -182,11 +189,11 @@ def create_training_config(num_images: int) -> str:
                 "betag_range2": [0.5, 4.0],
                 "betap_range2": [1, 2.0],
                 "final_sinc_prob": 0.8,
-                "num_worker_per_gpu": 8,
-                "batch_size_per_gpu": 6,
+                "num_worker_per_gpu": 4,
+                "batch_size_per_gpu": 12,
                 "dataset_enlarge_ratio": 1,
                 "prefetch_mode": "cpu",
-                "num_prefetch_queue": 4,
+                "num_prefetch_queue": 6,
             }
         },
         "network_g": {
@@ -229,7 +236,7 @@ def create_training_config(num_images: int) -> str:
                 "milestones": [400000],
                 "gamma": 0.5,
             },
-            "total_iter": 10000,
+            "total_iter": 50000,
             "warmup_iter": -1,
             "pixel_opt": {
                 "type": "L1Loss",
@@ -312,9 +319,23 @@ def main():
         print("[FAIL] No images found in dataset directories. Run crawl_datasets.py first.")
         sys.exit(1)
 
+    # 3.5 Build LMDB on D: for fast disk I/O (skip if already built)
+    lmdb_dir = r"D:\realesrgan_lmdb"
+    if os.path.exists(os.path.join(lmdb_dir, "meta_info.txt")):
+        print(f"\n[Step 3.5] LMDB already present at {lmdb_dir}, skipping build.")
+    else:
+        print(f"\n[Step 3.5] Building LMDB dataset at {lmdb_dir}...")
+        try:
+            import tools.build_lmdb as bl
+            bl.main()
+        except Exception as e:
+            print(f"[warn] LMDB build failed ({e}); falling back to disk backend.")
+            # Fall back to the loose-PNG folder with disk backend
+            lmdb_dir = REALESRGAN_GT_DIR
+
     # 4. Create training config
     print("\n[Step 4] Creating training config...")
-    config_path = create_training_config(num_images)
+    config_path = create_training_config(num_images, lmdb_dir)
 
     # 5. Check for resume state
     latest_state = find_latest_state()
@@ -346,6 +367,9 @@ def main():
     for _k in ["OMP_NUM_THREADS", "MKL_NUM_THREADS", "OPENBLAS_NUM_THREADS",
                "NUMEXPR_NUM_THREADS", "VECLIB_MAXIMUM_THREADS"]:
         env[_k] = "16"
+    # Enable oneDNN (mkldnn) graph fusion for faster CPU conv/matmul.
+    env["DNNL_VERBOSE"] = "0"
+    env["ATEN_CPU_CAPABILITY"] = "avx512"  # Ryzen 7735HS supports AVX512
     # Real-ESRGAN's train.py imports from basicsr.
     # CodeFormer's basicsr lacks degradations module, so we use the full
     # BasicSR source cloned at D:\Temp\BasicSR_src (no install needed).

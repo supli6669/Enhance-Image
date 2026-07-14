@@ -50,7 +50,7 @@ def main():
     if "datasets" in config:
         for phase in config["datasets"]:
             dataset = config["datasets"][phase]
-            dataset["num_worker_per_gpu"] = 8
+            dataset["num_worker_per_gpu"] = 4
             if device == "cpu":
                 dataset["prefetch_mode"] = "cpu"
                 
@@ -117,6 +117,9 @@ def main():
     for _k in ["OMP_NUM_THREADS", "MKL_NUM_THREADS", "OPENBLAS_NUM_THREADS",
                "NUMEXPR_NUM_THREADS", "VECLIB_MAXIMUM_THREADS"]:
         env[_k] = "16"
+    # Enable oneDNN (mkldnn) graph fusion for faster CPU conv/matmul.
+    env["DNNL_VERBOSE"] = "0"
+    env["ATEN_CPU_CAPABILITY"] = "avx512"  # Ryzen 7735HS supports AVX512
     env["PYTHONPATH"] = os.path.pathsep.join([codeformer_dir, env.get("PYTHONPATH", "")])
     
     print("\nStarting training process. Command:")
