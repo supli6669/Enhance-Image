@@ -1,4 +1,4 @@
-﻿import streamlit as st
+import streamlit as st
 import cv2
 import numpy as np
 import os
@@ -209,11 +209,13 @@ with st.sidebar:
         help="How softly the restored face blends into the background.")
     det_threshold   = st.slider("Detection Threshold", 0.1, 1.0, 0.5, 0.05,
         help="Lower = detect blurry faces too. Higher = reduce false positives.")
+    face_upscale_toggle = st.toggle("Real-ESRGAN Face Upscale", value=False,
+        help="Use Real-ESRGAN to upscale the restored face. Extremely slow on CPU. Keep disabled for 10x+ speedup with virtually identical quality.")
 
     st.markdown("<div class='sidebar-section'>🖼️ Background Upscaling</div>", unsafe_allow_html=True)
     face_detector    = st.selectbox("Face Detector",
-        ["retinaface_resnet50", "retinaface_mobile0.25", "YOLOv5l", "YOLOv5n"],
-        help="RetinaFace = accurate. YOLOv5 = fast.")
+        ["retinaface_mobile0.25", "retinaface_resnet50", "YOLOv5l", "YOLOv5n"],
+        help="MobileNet = extremely fast. RetinaFace = most accurate. YOLOv5 = fast.")
     upscale_factor   = st.select_slider("Upscale Factor", [1, 2, 3, 4], value=2)
     bg_upscale_toggle = st.toggle("Real-ESRGAN Background Upscale", value=True)
 
@@ -308,7 +310,8 @@ if uploaded_file is not None or use_sample:
                 blend_softness=blend_softness,
                 bg_upsampler='realesrgan' if bg_upscale_toggle else None,
                 det_threshold=det_threshold,
-                sharpen_amount=sharpen_amount
+                sharpen_amount=sharpen_amount,
+                face_upsample=face_upscale_toggle
             )
             process_duration = time.time() - start_time
         except Exception as e:

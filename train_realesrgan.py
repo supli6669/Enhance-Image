@@ -152,8 +152,8 @@ def create_training_config(num_images: int) -> str:
         "gray_noise_prob2": 0.4,
         "jpeg_range2": [30, 95],
 
-        "gt_size": 256,
-        "queue_size": 20,  # small queue size for CPU/single worker
+        "gt_size": 320,
+        "queue_size": 64,  # large queue to keep more degraded samples in RAM
 
         "datasets": {
             "train": {
@@ -162,7 +162,7 @@ def create_training_config(num_images: int) -> str:
                 "dataroot_gt": gt_path_rel,
                 "meta_info": os.path.join(REALESRGAN_GT_DIR, "meta_info.txt").replace("\\", "/"),
                 "io_backend": {"type": "disk"},
-                "gt_size": 256,
+                "gt_size": 320,
                 "use_hflip": True,
                 "use_rot": False,
                 "blur_kernel_size": 21,
@@ -182,11 +182,11 @@ def create_training_config(num_images: int) -> str:
                 "betag_range2": [0.5, 4.0],
                 "betap_range2": [1, 2.0],
                 "final_sinc_prob": 0.8,
-                "num_worker_per_gpu": 0,
-                "batch_size_per_gpu": 2,
+                "num_worker_per_gpu": 8,
+                "batch_size_per_gpu": 6,
                 "dataset_enlarge_ratio": 1,
                 "prefetch_mode": "cpu",
-                "num_prefetch_queue": 1,
+                "num_prefetch_queue": 4,
             }
         },
         "network_g": {
@@ -341,6 +341,11 @@ def main():
     ]
 
     env = os.environ.copy()
+    # Force torch / BLAS backends to use ALL 16 logical CPUs so training
+    # saturates the CPU instead of the default 8 threads.
+    for _k in ["OMP_NUM_THREADS", "MKL_NUM_THREADS", "OPENBLAS_NUM_THREADS",
+               "NUMEXPR_NUM_THREADS", "VECLIB_MAXIMUM_THREADS"]:
+        env[_k] = "16"
     # Real-ESRGAN's train.py imports from basicsr.
     # CodeFormer's basicsr lacks degradations module, so we use the full
     # BasicSR source cloned at D:\Temp\BasicSR_src (no install needed).

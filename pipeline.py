@@ -42,7 +42,9 @@ class LocalAIEnhancerPipeline:
         
         if self.use_onnx:
             print(f"[Pipeline] ONNX models detected! Using ONNX Runtime for CodeFormer inference.")
-            self.ort_session_cf = ort.InferenceSession(codeformer_onnx_path, providers=['CPUExecutionProvider'])
+            opts = ort.SessionOptions()
+            opts.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
+            self.ort_session_cf = ort.InferenceSession(codeformer_onnx_path, sess_options=opts, providers=['CPUExecutionProvider'])
             self.net = None
             print("[Pipeline] CodeFormer ONNX model loaded successfully.")
         else:
@@ -86,7 +88,9 @@ class LocalAIEnhancerPipeline:
         # 2. Run ONNX Session
         if not hasattr(self, 'ort_session_re') or self.ort_session_re is None:
             print("[Pipeline] Loading Real-ESRGAN ONNX Runtime Session...")
-            self.ort_session_re = ort.InferenceSession(self.realesrgan_onnx_path, providers=['CPUExecutionProvider'])
+            opts = ort.SessionOptions()
+            opts.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
+            self.ort_session_re = ort.InferenceSession(self.realesrgan_onnx_path, sess_options=opts, providers=['CPUExecutionProvider'])
             
         ort_inputs = {self.ort_session_re.get_inputs()[0].name: img_input}
         ort_outs = self.ort_session_re.run(None, ort_inputs)
@@ -104,7 +108,7 @@ class LocalAIEnhancerPipeline:
             
         return output_bgr
 
-    def process_image(self, img, w=0.5, detection_model='retinaface_resnet50', upscale=2, blend_softness=0.5, bg_upsampler=None, det_threshold=0.5, sharpen_amount=0.0):
+    def process_image(self, img, w=0.5, detection_model='retinaface_resnet50', upscale=2, blend_softness=0.5, bg_upsampler=None, det_threshold=0.5, sharpen_amount=0.0, face_upsample=False):
         """
         Enhance an image using the local CodeFormer pipeline.
         
@@ -270,11 +274,12 @@ class LocalAIEnhancerPipeline:
             upscale=upscale, 
             blend_softness=blend_softness,
             bg_img=bg_img,
-            sharpen_amount=sharpen_amount
+            sharpen_amount=sharpen_amount,
+            face_upsample=face_upsample
         )
         return enhanced_img
 
-    def paste_faces_custom_blend(self, face_helper, upscale, blend_softness, bg_img=None, sharpen_amount=0.0):
+    def paste_faces_custom_blend(self, face_helper, upscale, blend_softness, bg_img=None, sharpen_amount=0.0, face_upsample=False):
         """Custom implementation of face pasting with adjustable soft blending mask."""
         h, w, _ = face_helper.input_img.shape
         h_up, w_up = int(h * upscale), int(w * upscale)
@@ -289,13 +294,13 @@ class LocalAIEnhancerPipeline:
             inv_aff = inverse_affine.copy()
             
             if upscale > 1:
-                # Upscale the restored face using Real-ESRGAN to maintain super-resolution sharpness
-                if self.use_re_onnx:
+                # Upscale the restored face using Real-ESRGAN to maintain super-resolution sharpness if enabled
+                if face_upsample and self.use_re_onnx:
                     restored_face_up = self.enhance_realesrgan_onnx(restored_face, upscale)
-                elif hasattr(self, 'bg_upsampler_instance') and self.bg_upsampler_instance is not None:
+                elif face_upsample and hasattr(self, 'bg_upsampler_instance') and self.bg_upsampler_instance is not None:
                     restored_face_up = self.bg_upsampler_instance.enhance(restored_face, outscale=upscale)[0]
                 else:
-                    # Fallback to Lanczos if no Real-ESRGAN instance loaded
+                    # Fallback to Lanczos if no Real-ESRGAN instance loaded or face_upsample is disabled
                     restored_face_up = cv2.resize(restored_face, (face_helper.face_size[0] * upscale, face_helper.face_size[1] * upscale), interpolation=cv2.INTER_LANCZOS4)
                 
                 inv_aff /= upscale

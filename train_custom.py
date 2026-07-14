@@ -46,11 +46,11 @@ def main():
     config["dist"] = False
     config["dist_params"] = None
     
-    # Force single worker on Windows / CPU to prevent pickling issues
+    # Use multiple workers to saturate CPU cores when training on CPU
     if "datasets" in config:
         for phase in config["datasets"]:
             dataset = config["datasets"][phase]
-            dataset["num_worker_per_gpu"] = 0
+            dataset["num_worker_per_gpu"] = 8
             if device == "cpu":
                 dataset["prefetch_mode"] = "cpu"
                 
@@ -112,6 +112,11 @@ def main():
     
     # Add models/CodeFormer to PYTHONPATH
     env = os.environ.copy()
+    # Force torch / BLAS backends to use ALL 16 logical CPUs so training
+    # saturates the CPU instead of the default 8 threads.
+    for _k in ["OMP_NUM_THREADS", "MKL_NUM_THREADS", "OPENBLAS_NUM_THREADS",
+               "NUMEXPR_NUM_THREADS", "VECLIB_MAXIMUM_THREADS"]:
+        env[_k] = "16"
     env["PYTHONPATH"] = os.path.pathsep.join([codeformer_dir, env.get("PYTHONPATH", "")])
     
     print("\nStarting training process. Command:")

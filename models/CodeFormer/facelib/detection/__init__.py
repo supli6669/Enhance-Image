@@ -47,11 +47,15 @@ def init_retinaface_model(model_name, half=False, device='cuda'):
 
 
 def init_yolov5face_model(model_name, device='cuda'):
+    import os
+    facelib_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     if model_name == 'YOLOv5l':
-        model = YoloDetector(config_name='facelib/detection/yolov5face/models/yolov5l.yaml', device=device)
+        cfg_path = os.path.join(facelib_dir, 'detection', 'yolov5face', 'models', 'yolov5l.yaml')
+        model = YoloDetector(config_name=cfg_path, device=device)
         model_url = 'https://github.com/sczhou/CodeFormer/releases/download/v0.1.0/yolov5l-face.pth'
     elif model_name == 'YOLOv5n':
-        model = YoloDetector(config_name='facelib/detection/yolov5face/models/yolov5n.yaml', device=device)
+        cfg_path = os.path.join(facelib_dir, 'detection', 'yolov5face', 'models', 'yolov5n.yaml')
+        model = YoloDetector(config_name=cfg_path, device=device)
         model_url = 'https://github.com/sczhou/CodeFormer/releases/download/v0.1.0/yolov5n-face.pth'
     else:
         raise NotImplementedError(f'{model_name} is not implemented.')

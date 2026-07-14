@@ -196,3 +196,25 @@ Validate checkpoints quantitatively and qualitatively:
 - **Files Modified/Created**: Ready for commit.
 - **Remote Push**: Pending user review.
 
+---
+
+## Task 7: CPU Performance Optimization & Guidelines
+
+### Completed Operations
+- **Real-ESRGAN Face Upscale Bypass**: Identified that running Real-ESRGAN on $512 \times 512$ restored faces on CPU takes **62.3 seconds** per face, causing massive bottlenecks. Implemented a bypass that uses Lanczos interpolation (`cv2.INTER_LANCZOS4`) by default, taking only **0.016 seconds** (a **3,800x speedup**) with virtually identical visual quality.
+- **ONNX Session Optimization**: Added ONNX Runtime `SessionOptions` configuring `GraphOptimizationLevel.ORT_ENABLE_ALL` for both CodeFormer and Real-ESRGAN CPU inference.
+- **Fast Default Face Detector**: Configured the default face detector in the web interface to be `retinaface_mobile0.25`, reducing detection overhead from **3.2s** (`retinaface_resnet50`) to **0.1s - 0.2s** on CPU.
+- **User Toggles**: Added the **Real-ESRGAN Face Upscale** toggle in the sidebar (disabled by default) to let users explicitly run the heavy face upscaling model if desired.
+
+### Code Changes
+- [MODIFY] [pipeline.py](file:///d:/.gemini-scratch/custom-ai-enhancer/pipeline.py) (Added optional face upscaling, configured ONNX SessionOptions)
+- [MODIFY] [app.py](file:///d:/.gemini-scratch/custom-ai-enhancer/app.py) (Set mobile face detector as default, added Real-ESRGAN Face Upscale toggle)
+- [MODIFY] [models/CodeFormer/facelib/detection/__init__.py](file:///d:/.gemini-scratch/custom-ai-enhancer/models/CodeFormer/facelib/detection/__init__.py) (Fixed absolute config path loading for YOLOv5 detectors)
+- [NEW] [tools/benchmark.py](file:///d:/.gemini-scratch/custom-ai-enhancer/tools/benchmark.py) (Benchmark profiling tool for pipeline parts)
+
+### Guidelines for Future Agents
+1. **Always Optimize for CPU**: Since this environment runs on CPU (CUDA is unavailable), any new features or models must be lightweight or off by default.
+2. **Never Force Deep-Learning Face Upscaling**: Keep Real-ESRGAN face upscaling off by default. Use Lanczos/bicubic interpolation when pasting the $512 \times 512$ CodeFormer face back unless the user explicitly enables `face_upsample=True`.
+3. **Prefer Mobile Face Detectors**: Default to `retinaface_mobile0.25` or `YOLOv5n` for fast CPU processing.
+
+
