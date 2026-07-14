@@ -11,11 +11,13 @@ try:
 except ImportError:
     HAS_ONNX = False
 
-# Ensure CodeFormer directory is on sys.path
+# Ensure CodeFormer and tools directories are on sys.path
 project_dir = os.path.dirname(os.path.abspath(__file__))
 codeformer_dir = os.path.join(project_dir, "models", "CodeFormer")
-if codeformer_dir not in sys.path:
-    sys.path.insert(0, codeformer_dir)
+tools_dir = os.path.join(project_dir, "tools")
+for p in (codeformer_dir, tools_dir):
+    if p not in sys.path:
+        sys.path.insert(0, p)
 
 from basicsr.utils import img2tensor, tensor2img
 from basicsr.utils.registry import ARCH_REGISTRY
@@ -34,6 +36,9 @@ class LocalAIEnhancerPipeline:
         # Check if ONNX models exist and should be used
         codeformer_onnx_path = os.path.join(project_dir, "weights", "CodeFormer", "codeformer.onnx")
         self.use_onnx = HAS_ONNX and os.path.exists(codeformer_onnx_path)
+        
+        self.realesrgan_onnx_path = os.path.join(project_dir, "weights", "realesrgan", "realesrgan.onnx")
+        self.use_re_onnx = HAS_ONNX and os.path.exists(self.realesrgan_onnx_path)
         
         if self.use_onnx:
             print(f"[Pipeline] ONNX models detected! Using ONNX Runtime for CodeFormer inference.")
@@ -79,6 +84,10 @@ class LocalAIEnhancerPipeline:
         img_input = np.expand_dims(img_input, axis=0)
         
         # 2. Run ONNX Session
+        if not hasattr(self, 'ort_session_re') or self.ort_session_re is None:
+            print("[Pipeline] Loading Real-ESRGAN ONNX Runtime Session...")
+            self.ort_session_re = ort.InferenceSession(self.realesrgan_onnx_path, providers=['CPUExecutionProvider'])
+            
         ort_inputs = {self.ort_session_re.get_inputs()[0].name: img_input}
         ort_outs = self.ort_session_re.run(None, ort_inputs)
         output_tensor = ort_outs[0]
@@ -154,13 +163,7 @@ class LocalAIEnhancerPipeline:
         # Handle background upsampling first
         bg_img = None
         if bg_upsampler == 'realesrgan':
-            realesrgan_onnx_path = os.path.join(project_dir, "weights", "realesrgan", "realesrgan.onnx")
-            self.use_re_onnx = HAS_ONNX and os.path.exists(realesrgan_onnx_path)
-            
             if self.use_re_onnx:
-                if not hasattr(self, 'ort_session_re') or self.ort_session_re is None:
-                    print("[Pipeline] Loading Real-ESRGAN ONNX Runtime Session...")
-                    self.ort_session_re = ort.InferenceSession(realesrgan_onnx_path, providers=['CPUExecutionProvider'])
                 print("[Pipeline] Running Real-ESRGAN background super-resolution using ONNX Runtime...")
                 bg_img = self.enhance_realesrgan_onnx(img, upscale)
             else:
@@ -283,18 +286,28 @@ class LocalAIEnhancerPipeline:
             upsample_img = cv2.resize(bg_img, (w_up, h_up), interpolation=cv2.INTER_LANCZOS4)
         
         for restored_face, inverse_affine in zip(face_helper.restored_faces, face_helper.inverse_affine_matrices):
-            # Alignment offset
-            if upscale > 1:
-                extra_offset = 0.5 * upscale
-            else:
-                extra_offset = 0
-            
-            # Create a local copy to avoid modifying original matrices
             inv_aff = inverse_affine.copy()
-            inv_aff[:, 2] += extra_offset
             
-            face_size = face_helper.face_size
-            inv_restored = cv2.warpAffine(restored_face, inv_aff, (w_up, h_up))
+            if upscale > 1:
+                # Upscale the restored face using Real-ESRGAN to maintain super-resolution sharpness
+                if self.use_re_onnx:
+                    restored_face_up = self.enhance_realesrgan_onnx(restored_face, upscale)
+                elif hasattr(self, 'bg_upsampler_instance') and self.bg_upsampler_instance is not None:
+                    restored_face_up = self.bg_upsampler_instance.enhance(restored_face, outscale=upscale)[0]
+                else:
+                    # Fallback to Lanczos if no Real-ESRGAN instance loaded
+                    restored_face_up = cv2.resize(restored_face, (face_helper.face_size[0] * upscale, face_helper.face_size[1] * upscale), interpolation=cv2.INTER_LANCZOS4)
+                
+                inv_aff /= upscale
+                inv_aff[:, 2] *= upscale
+                face_size = (face_helper.face_size[0] * upscale, face_helper.face_size[1] * upscale)
+                inv_restored = cv2.warpAffine(restored_face_up, inv_aff, (w_up, h_up))
+            else:
+                # Add an offset to inverse affine matrix, for more precise back alignment
+                extra_offset = 0
+                inv_aff[:, 2] += extra_offset
+                face_size = face_helper.face_size
+                inv_restored = cv2.warpAffine(restored_face, inv_aff, (w_up, h_up))
             
             # Create boundary mask
             mask = np.ones(face_size, dtype=np.float32)
