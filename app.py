@@ -316,6 +316,8 @@ with st.sidebar:
         st.info("No active training logs detected.")
 
     st.markdown("<div class='sidebar-section'>🎯 Face Restoration</div>", unsafe_allow_html=True)
+    enable_face_restoration = st.toggle("Enable Face Restoration", value=True,
+        help="Detect and restore faces. Disable if the original face is already sharp and you only want to upscale the background.")
     fidelity_weight = st.slider("Fidelity Weight (w)", 0.0, 1.0, 0.5, 0.05,
         help="0.0 = Max AI detail. 1.0 = Max likeness to original.")
     blend_softness  = st.slider("Mask Blending Softness", 0.0, 1.0, 0.5, 0.05,
@@ -439,7 +441,8 @@ with tab_single:
                         sharpen_amount=sharpen_amount,
                         face_upsample=face_upscale_toggle,
                         parallel=True,
-                        batch_size=4
+                        batch_size=4,
+                        face_restore=enable_face_restoration
                     )
                     result_container['enhanced_img'] = result
                 finally:
@@ -611,7 +614,8 @@ with tab_batch:
                         sharpen_amount=sharpen_amount,
                         face_upsample=face_upscale_toggle,
                         parallel=True,
-                        batch_size=4
+                        batch_size=4,
+                        face_restore=enable_face_restoration
                     )
                     
                     # encode result as png

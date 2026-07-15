@@ -139,66 +139,25 @@ class LocalAIEnhancerPipeline:
         ort_outs = self.ort_session_cf.run(None, ort_inputs)
         return ort_outs[0]
 
-    def process_image(self, img, w=0.5, detection_model='retinaface_mobile0.25', upscale=2, blend_softness=0.5, bg_upsampler=None, det_threshold=0.5, sharpen_amount=0.0, face_upsample=False, batch_size=0, parallel=False):
+    def process_image(self, img, w=0.5, detection_model='retinaface_mobile0.25', upscale=2, blend_softness=0.5, bg_upsampler=None, det_threshold=0.5, sharpen_amount=0.0, face_upsample=False, batch_size=0, parallel=False, face_restore=True):
         """
         Enhance an image using the local CodeFormer pipeline.
         
         Args:
             img (numpy.ndarray): Input image in BGR format (OpenCV default).
             w (float): Fidelity weight (0.0 to 1.0). 0.0 for max quality, 1.0 for max fidelity.
-            detection_model (str): Face detector model ('retinaface_resnet50', 'YOLOv5l', etc.).
+            detection_model (str): Face detector model ('retinaface_mobile0.25', etc.).
             upscale (int): Upscale factor for output image.
             blend_softness (float): Blending mask softness (0.0 to 1.0).
             bg_upsampler (str): 'realesrgan' or None.
             det_threshold (float): Face detection confidence threshold.
             batch_size (int): Number of faces to process at once.
+            face_restore (bool): Whether to perform face restoration.
             
         Returns:
             numpy.ndarray: Enhanced output image in BGR format.
         """
-        # Set up FaceRestoreHelper
-        # We tell it where the facelib weights are (under project weights/facelib)
-        os.environ['FACE_DETECTOR_PATH'] = os.path.join(project_dir, "weights", "facelib")
-        
-        face_helper = FaceRestoreHelper(
-            upscale,
-            face_size=512,
-            crop_ratio=(1, 1),
-            det_model=detection_model,
-            save_ext='png',
-            use_parse=True,
-            device=self.device
-        )
-        
-        # Modify confidence threshold dynamically on the underlying detector
-        if hasattr(face_helper, 'face_detector'):
-            detector = face_helper.face_detector
-            if hasattr(detector, 'detect_faces'):
-                original_detect_faces = detector.detect_faces
-                def custom_detect_faces(image, *args, **kwargs):
-                    detector_class = detector.__class__.__name__
-                    if "Yolo" in detector_class:
-                        kwargs['conf_thres'] = det_threshold
-                    else:
-                        kwargs['conf_threshold'] = det_threshold
-                    return original_detect_faces(image, *args, **kwargs)
-                detector.detect_faces = custom_detect_faces
-
-        face_helper.clean_all()
-        face_helper.read_image(img)
-        
-        # 1. Detect face landmarks and align/crop faces
-        self._report_progress("detection", 0.1, f"Detecting faces with {detection_model}...")
-        print(f"[Pipeline] Running face detection model: {detection_model} with threshold: {det_threshold}...")
-        num_det_faces = face_helper.get_face_landmarks_5(
-            only_center_face=False, 
-            resize=640, 
-            eye_dist_threshold=5
-        )
-        print(f"[Pipeline] Detected {num_det_faces} faces.")
-        self._report_progress("detection", 0.3, f"Detected {num_det_faces} faces")
-        
-        # Handle background upsampling first
+        # 1. Handle background upsampling first
         bg_img = None
         if bg_upsampler == 'realesrgan':
             self._report_progress("background", 0.1, "Upscaling background with Real-ESRGAN...")
@@ -249,6 +208,63 @@ class LocalAIEnhancerPipeline:
                 print("[Pipeline] Running Real-ESRGAN background super-resolution...")
                 bg_img = self.bg_upsampler_instance.enhance(img, outscale=upscale)[0]
                 self._report_progress("background", 0.5, "Background upscaled")
+
+        if not face_restore:
+            self._report_progress("complete", 1.0, "Enhancement complete!")
+            if bg_img is not None:
+                # Apply sharpening if requested
+                if sharpen_amount > 0.0:
+                    blurred = cv2.GaussianBlur(bg_img, (0, 0), 3.0)
+                    bg_img = cv2.addWeighted(bg_img, 1.0 + sharpen_amount, blurred, -sharpen_amount, 0)
+                    bg_img = np.clip(bg_img, 0, 255).astype(np.uint8)
+                return bg_img
+            h, w_img, _ = img.shape
+            resized = cv2.resize(img, (w_img * upscale, h * upscale), interpolation=cv2.INTER_LANCZOS4)
+            if sharpen_amount > 0.0:
+                blurred = cv2.GaussianBlur(resized, (0, 0), 3.0)
+                resized = cv2.addWeighted(resized, 1.0 + sharpen_amount, blurred, -sharpen_amount, 0)
+                resized = np.clip(resized, 0, 255).astype(np.uint8)
+            return resized
+
+        # Set up FaceRestoreHelper for face processing
+        os.environ['FACE_DETECTOR_PATH'] = os.path.join(project_dir, "weights", "facelib")
+        face_helper = FaceRestoreHelper(
+            upscale,
+            face_size=512,
+            crop_ratio=(1, 1),
+            det_model=detection_model,
+            save_ext='png',
+            use_parse=True,
+            device=self.device
+        )
+        
+        # Modify confidence threshold dynamically on the underlying detector
+        if hasattr(face_helper, 'face_detector'):
+            detector = face_helper.face_detector
+            if hasattr(detector, 'detect_faces'):
+                original_detect_faces = detector.detect_faces
+                def custom_detect_faces(image, *args, **kwargs):
+                    detector_class = detector.__class__.__name__
+                    if "Yolo" in detector_class:
+                        kwargs['conf_thres'] = det_threshold
+                    else:
+                        kwargs['conf_threshold'] = det_threshold
+                    return original_detect_faces(image, *args, **kwargs)
+                detector.detect_faces = custom_detect_faces
+
+        face_helper.clean_all()
+        face_helper.read_image(img)
+        
+        # 2. Detect face landmarks and align/crop faces
+        self._report_progress("detection", 0.1, f"Detecting faces with {detection_model}...")
+        print(f"[Pipeline] Running face detection model: {detection_model} with threshold: {det_threshold}...")
+        num_det_faces = face_helper.get_face_landmarks_5(
+            only_center_face=False, 
+            resize=640, 
+            eye_dist_threshold=5
+        )
+        print(f"[Pipeline] Detected {num_det_faces} faces.")
+        self._report_progress("detection", 0.3, f"Detected {num_det_faces} faces")
 
         if num_det_faces == 0:
             if bg_img is not None:
