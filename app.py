@@ -212,6 +212,63 @@ def get_pipeline():
 
 pipeline = get_pipeline()
 
+def get_training_status():
+    import re
+    import datetime
+    import glob
+    exp_dir = os.path.join(project_dir, "models", "CodeFormer", "experiments")
+    if not os.path.exists(exp_dir):
+        return None
+        
+    dirs = [d for d in os.listdir(exp_dir) if d.endswith("_CodeFormer_stage3_custom")]
+    if not dirs:
+        return None
+        
+    latest_dir = sorted(dirs)[-1]
+    log_pattern = os.path.join(exp_dir, latest_dir, "train_*.log")
+    log_files = glob.glob(log_pattern)
+    if not log_files:
+        return None
+        
+    latest_log = log_files[0]
+    try:
+        with open(latest_log, "r", encoding="utf-8") as f:
+            lines = f.readlines()[-30:]
+            
+        for line in reversed(lines):
+            if "iter:" in line and "epoch:" in line:
+                match = re.search(r"epoch:\s*(\d+),\s*iter:\s*([\d,]+)", line)
+                eta_match = re.search(r"eta:\s*([\d:]+)", line)
+                loss_match = re.search(r"cross_entropy_loss:\s*([\d.e+-]+)", line)
+                
+                if match:
+                    epoch = int(match.group(1))
+                    iteration = int(match.group(2).replace(",", ""))
+                    eta = eta_match.group(1) if eta_match else "Unknown"
+                    loss = float(loss_match.group(1)) if loss_match else 0.0
+                    
+                    # Extract timestamp at start of line: "2026-07-15 13:25:52"
+                    ts_str = line.split(",")[0][:19]
+                    try:
+                        log_time = datetime.datetime.strptime(ts_str, "%Y-%m-%d %H:%M:%S")
+                        now = datetime.datetime.now()
+                        # If the last update was within 10 minutes, training is active
+                        is_active = abs((now - log_time).total_seconds()) < 600
+                    except Exception:
+                        is_active = True
+                        
+                    return {
+                        "active": is_active,
+                        "epoch": epoch,
+                        "iter": iteration,
+                        "eta": eta,
+                        "loss": loss,
+                        "last_update": ts_str
+                    }
+    except Exception:
+        pass
+    return None
+
 # ── Sidebar ────────────────────────────────────────────────────────────────────
 with st.sidebar:
     st.markdown("""
@@ -220,6 +277,43 @@ with st.sidebar:
         <h2>AI Enhancer</h2>
     </div>
     """, unsafe_allow_html=True)
+
+    # ── Training Dashboard ──────────────────────────────────────────────────────
+    st.markdown("<div class='sidebar-section'>📊 Training Dashboard</div>", unsafe_allow_html=True)
+    status = get_training_status()
+    if status:
+        badge_color = "online" if status["active"] else "offline"
+        badge_text = "🟢 Active" if status["active"] else "⚪ Idle"
+        
+        st.markdown(f"""
+        <div class="glass-card" style="padding: 16px 20px; margin-bottom: 12px; border-radius: 12px; background: rgba(139,92,246,0.03);">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                <span style="font-size:0.75rem; font-weight:700; color:#8b5cf6;">STATUS</span>
+                <span class="value {badge_color}" style="font-size:0.85rem; font-weight:800;">{badge_text}</span>
+            </div>
+            <div style="display:flex; justify-content:space-between; margin-bottom:4px;">
+                <span style="font-size:0.75rem; color:#6b7280;">Iteration</span>
+                <span style="font-size:0.8rem; font-weight:700; color:#ddd6fe;">{status['iter']} / 2000</span>
+            </div>
+            <div style="display:flex; justify-content:space-between; margin-bottom:4px;">
+                <span style="font-size:0.75rem; color:#6b7280;">Epoch</span>
+                <span style="font-size:0.8rem; font-weight:700; color:#ddd6fe;">{status['epoch']}</span>
+            </div>
+            <div style="display:flex; justify-content:space-between; margin-bottom:4px;">
+                <span style="font-size:0.75rem; color:#6b7280;">Loss</span>
+                <span style="font-size:0.8rem; font-weight:700; color:#db2777;">{status['loss']:.4f}</span>
+            </div>
+            <div style="display:flex; justify-content:space-between; margin-bottom:4px;">
+                <span style="font-size:0.75rem; color:#6b7280;">ETA</span>
+                <span style="font-size:0.8rem; font-weight:700; color:#34d399;">{status['eta']}</span>
+            </div>
+            <div style="font-size:0.6rem; color:#4b5563; text-align:right; margin-top:8px;">
+                Updated: {status['last_update']}
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+    else:
+        st.info("No active training logs detected.")
 
     st.markdown("<div class='sidebar-section'>🎯 Face Restoration</div>", unsafe_allow_html=True)
     fidelity_weight = st.slider("Fidelity Weight (w)", 0.0, 1.0, 0.5, 0.05,
