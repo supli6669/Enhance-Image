@@ -260,6 +260,7 @@ class LocalAIEnhancerPipeline:
         face_helper.align_warp_face()
         
         # 2. Process each cropped face through CodeFormer
+        self._report_progress("restoration", 0.1, f"Restoring {num_det_faces} face(s)...")
         if batch_size > 1 and self.use_onnx:
             faces_t = []
             for cropped_face in face_helper.cropped_faces:
@@ -282,6 +283,8 @@ class LocalAIEnhancerPipeline:
                 res = (res + 1.0) / 2.0 * 255.0
                 res = np.transpose(res, (1, 2, 0))
                 face_helper.add_restored_face(cv2.cvtColor(res.astype(np.uint8), cv2.COLOR_RGB2BGR), face_helper.cropped_faces[i])
+            
+            self._report_progress("restoration", 0.8, "Face restoration complete")
         else:
             if parallel:
                 def _process_face(idx, cropped_face):
@@ -318,39 +321,11 @@ class LocalAIEnhancerPipeline:
                     results = list(executor.map(lambda args: _process_face(*args), enumerate(face_helper.cropped_faces)))
                 for idx, restored_face in sorted(results):
                     face_helper.add_restored_face(restored_face, face_helper.cropped_faces[idx])
-            else:
-                for idx, cropped_face in enumerate(face_helper.cropped_faces):
-                    if self.use_onnx:
-                        try:
-                            cropped_face_t = img2tensor(cropped_face / 255.0, bgr2rgb=True, float32=True)
-                            normalize(cropped_face_t, (0.5, 0.5, 0.5), (0.5, 0.5, 0.5), inplace=True)
-                            cropped_face_np = cropped_face_t.unsqueeze(0).numpy()
-                            output = self.run_onnx_batch(cropped_face_np, w)
-                            output = np.squeeze(output, axis=0)
-                            output = np.clip(output, -1.0, 1.0)
-                            output = (output + 1.0) / 2.0 * 255.0
-                            output = np.transpose(output, (1, 2, 0))
-                            restored_face = cv2.cvtColor(output.astype(np.uint8), cv2.COLOR_RGB2BGR)
-                        except Exception as error:
-                            print(f"[Pipeline] Failed CodeFormer ONNX inference for face index {idx}: {error}")
-                            restored_face = cropped_face.copy()
-                    else:
-                        cropped_face_t = img2tensor(cropped_face / 255.0, bgr2rgb=True, float32=True)
-                        normalize(cropped_face_t, (0.5, 0.5, 0.5), (0.5, 0.5, 0.5), inplace=True)
-                        cropped_face_t = cropped_face_t.unsqueeze(0).to(self.device)
-
-                        try:
-                            with torch.no_grad():
-                                output = self.net(cropped_face_t, w=w, adain=True)[0]
-                                restored_face = tensor2img(output, rgb2bgr=True, min_max=(-1, 1))
-                        except Exception as error:
-                            print(f"[Pipeline] Failed CodeFormer inference for face index {idx}: {error}")
-                            restored_face = tensor2img(cropped_face_t, rgb2bgr=True, min_max=(-1, 1))
-
-                    restored_face = restored_face.astype('uint8')
-                    face_helper.add_restored_face(restored_face, cropped_face)
+            
+            self._report_progress("restoration", 0.8, "Face restoration complete")
             
         # 3. Paste restored faces back into input image with custom soft blending
+        self._report_progress("blending", 0.1, f"Blending {len(face_helper.restored_faces)} face(s)...")
         print(f"[Pipeline] Seamlessly pasting {len(face_helper.restored_faces)} restored faces back...")
         face_helper.get_inverse_affine(None)
         
@@ -362,6 +337,10 @@ class LocalAIEnhancerPipeline:
             sharpen_amount=sharpen_amount,
             face_upsample=face_upsample
         )
+        
+        self._report_progress("blending", 1.0, "Blending complete!")
+        self._report_progress("complete", 1.0, "Enhancement complete!")
+        
         return enhanced_img
 
     def paste_faces_custom_blend(self, face_helper, upscale, blend_softness, bg_img=None, sharpen_amount=0.0, face_upsample=False):

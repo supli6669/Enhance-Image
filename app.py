@@ -184,10 +184,28 @@ hr { border: none; border-top: 1px solid rgba(255,255,255,0.06); margin: 24px 0;
 """, unsafe_allow_html=True)
 
 # ── Pipeline ───────────────────────────────────────────────────────────────────
+# Progress state management
+if 'progress_state' not in st.session_state:
+    st.session_state.progress_state = {
+        'stage': None,
+        'progress': 0.0,
+        'message': '',
+        'active': False
+    }
+
+def progress_callback(stage, progress, message):
+    """Callback function to update progress state from pipeline."""
+    st.session_state.progress_state = {
+        'stage': stage,
+        'progress': progress,
+        'message': message,
+        'active': True
+    }
+
 @st.cache_resource(show_spinner=False)
 def get_pipeline():
     try:
-        return LocalAIEnhancerPipeline()
+        return LocalAIEnhancerPipeline(progress_callback=progress_callback)
     except Exception as e:
         st.error(f"Failed to load pipeline: {e}")
         return None
@@ -302,8 +320,13 @@ if uploaded_file is not None or use_sample:
     if not st.session_state.get('processing'):
         # Initialize state
         st.session_state.processing = True
-        progress_placeholder = st.empty()
-        progress_placeholder.text('🔄 Running AI restoration pipeline...')
+        st.session_state.progress_state = {'stage': None, 'progress': 0.0, 'message': '', 'active': False}
+        
+        # Progress bar and status
+        progress_bar = st.progress(0)
+        status_text = st.empty()
+        stage_text = st.empty()
+        
         result_container = {}
         def _run():
             try:
@@ -323,14 +346,39 @@ if uploaded_file is not None or use_sample:
                 result_container['enhanced_img'] = result
             finally:
                 st.session_state.processing = False
+                st.session_state.progress_state['active'] = False
+        
         threading.Thread(target=_run, daemon=True).start()
-        # Wait for result (polling)
+        
+        # Wait for result (polling with progress updates)
+        stage_names = {
+            'initialization': '🔧 Initializing',
+            'detection': '👁️ Detecting Faces',
+            'background': '🖼️ Upscaling Background',
+            'restoration': '✨ Restoring Faces',
+            'blending': '🎨 Blending Faces',
+            'complete': '✅ Complete'
+        }
+        
         while st.session_state.processing:
-            time.sleep(0.2)
-            progress_placeholder.text('⏳ Still processing...')
+            time.sleep(0.1)
+            progress_data = st.session_state.progress_state
+            
+            if progress_data['active']:
+                stage_name = stage_names.get(progress_data['stage'], progress_data['stage'])
+                stage_text.text(f"**{stage_name}**")
+                status_text.text(progress_data['message'])
+                progress_bar.progress(progress_data['progress'])
+            else:
+                status_text.text('⏳ Starting...')
+        
         enhanced_img = result_container.get('enhanced_img')
         process_duration = time.time() - start_time
-        progress_placeholder.empty()
+        
+        # Clear progress UI
+        progress_bar.empty()
+        status_text.empty()
+        stage_text.empty()
     else:
         st.warning('Processing is already running. Please wait.')
         st.stop()
