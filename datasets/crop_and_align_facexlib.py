@@ -18,6 +18,13 @@ from facelib.utils.face_restoration_helper import FaceRestoreHelper
 SRC_ROOT = os.path.join(project_dir, "datasets", "game_characters")
 DST_ROOT = os.path.join(project_dir, "datasets", "ffhq", "ffhq_512")
 DETECTOR = "retinaface_mobile0.25"  # Fast CPU detector
+BLUR_THRESHOLD = 80.0  # Discard crops with Laplacian variance below this
+
+def is_blurry(img, threshold=BLUR_THRESHOLD):
+    """Check if an image is blurry using the variance of Laplacian method."""
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    variance = cv2.Laplacian(gray, cv2.CV_64F).var()
+    return variance < threshold
 
 def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -53,6 +60,7 @@ def main():
     
     count = 0
     failures = 0
+    skipped_blur = 0
     
     for i, img_path in enumerate(raw_images):
         try:
@@ -80,12 +88,17 @@ def main():
             
             # Save cropped faces
             for cropped_face in face_helper.cropped_faces:
+                # Blur filter check
+                if is_blurry(cropped_face):
+                    skipped_blur += 1
+                    continue
+                    
                 count += 1
                 dest_path = os.path.join(DST_ROOT, f"face_{count:06d}.png")
                 cv2.imwrite(dest_path, cropped_face)
                 
             if (i + 1) % 100 == 0:
-                print(f"  Processed {i + 1}/{len(raw_images)} images. Extracted {count} faces...")
+                print(f"  Processed {i + 1}/{len(raw_images)} images. Extracted {count} faces (skipped {skipped_blur} blurry)...")
                 
         except Exception as e:
             # print(f"Error processing {img_path}: {e}")
@@ -94,6 +107,7 @@ def main():
     print(f"\n[DONE] Successfully processed all images!")
     print(f"  Total raw images: {len(raw_images)}")
     print(f"  Extracted face crops: {count}")
+    print(f"  Skipped blurry crops: {skipped_blur}")
     print(f"  Failed loads: {failures}")
     print(f"  Destination: {DST_ROOT}\n")
 

@@ -57,7 +57,7 @@ class LocalAIEnhancerPipeline:
             print(f"[Pipeline] ONNX models detected! Using ONNX Runtime for CodeFormer inference.")
             opts = ort.SessionOptions()
             opts.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
-            self.ort_session_cf = ort.InferenceSession(codeformer_onnx_path, sess_options=opts, providers=['CPUExecutionProvider'])
+            self.ort_session_cf = ort.InferenceSession(codeformer_onnx_path, sess_options=opts, providers=['OpenVINOExecutionProvider', 'CPUExecutionProvider'])
             self.net = None
             print("[Pipeline] CodeFormer ONNX model loaded successfully.")
         else:
@@ -111,7 +111,7 @@ class LocalAIEnhancerPipeline:
             print("[Pipeline] Loading Real-ESRGAN ONNX Runtime Session...")
             opts = ort.SessionOptions()
             opts.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
-            self.ort_session_re = ort.InferenceSession(self.realesrgan_onnx_path, sess_options=opts, providers=['CPUExecutionProvider'])
+            self.ort_session_re = ort.InferenceSession(self.realesrgan_onnx_path, sess_options=opts, providers=['OpenVINOExecutionProvider', 'CPUExecutionProvider'])
             
         ort_inputs = {self.ort_session_re.get_inputs()[0].name: img_input}
         ort_outs = self.ort_session_re.run(None, ort_inputs)

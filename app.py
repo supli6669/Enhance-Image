@@ -402,10 +402,20 @@ if uploaded_file is not None or use_sample:
         <div class="dot"></div><h3>Comparison View</h3>
     </div>""", unsafe_allow_html=True)
 
-    view_mode = st.radio("Mode", ["👥 Side-by-Side", "🌗 Split Screen"],
+    view_mode = st.radio("Mode", ["↔️ Interactive Slider", "👥 Side-by-Side", "🌗 Split Screen"],
                          horizontal=True, label_visibility="collapsed")
 
-    if "Side-by-Side" in view_mode:
+    if "Interactive Slider" in view_mode:
+        from streamlit_image_comparison import image_comparison
+        image_comparison(
+            img1=cv2.cvtColor(img_resized, cv2.COLOR_BGR2RGB),
+            img2=cv2.cvtColor(enhanced_img, cv2.COLOR_BGR2RGB),
+            label1="Original",
+            label2="AI Enhanced",
+            show_labels=True,
+            make_responsive=True
+        )
+    elif "Side-by-Side" in view_mode:
         col_b, col_a = st.columns(2, gap="medium")
         with col_b:
             st.markdown("<div class='img-label before'>◀ Before (Original)</div>", unsafe_allow_html=True)
