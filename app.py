@@ -40,6 +40,35 @@ section[data-testid="stSidebar"] {
 }
 section[data-testid="stSidebar"] > div:first-child { padding-top: 0; }
 
+/* Mobile optimization */
+@media (max-width: 768px) {
+    section[data-testid="stSidebar"] {
+        position: fixed !important;
+        z-index: 999 !important;
+        transform: translateX(-100%) !important;
+        transition: transform 0.3s ease !important;
+    }
+    section[data-testid="stSidebar"].mobile-open {
+        transform: translateX(0) !important;
+    }
+    .stApp {
+        padding-left: 0 !important;
+    }
+    div.stButton > button {
+        padding: 16px 20px !important;
+        font-size: 1rem !important;
+    }
+    .sidebar-brand h2 {
+        font-size: 0.9rem !important;
+    }
+    .hero-title {
+        font-size: 2.2rem !important;
+    }
+    .hero-sub {
+        font-size: 0.9rem !important;
+    }
+}
+
 .sidebar-brand {
     background: linear-gradient(135deg, #7c3aed 0%, #db2777 100%);
     padding: 20px 16px; margin: 0 -1rem 24px -1rem;
@@ -190,19 +219,66 @@ if 'progress_state' not in st.session_state:
         'stage': None,
         'progress': 0.0,
         'message': '',
-        'active': False
+        'active': False,
+        'cancelled': False
     }
+
+# Presets management
+if 'presets' not in st.session_state:
+    st.session_state.presets = {
+        'Portrait': {'fidelity': 0.5, 'blend': 0.5, 'threshold': 0.5, 'upscale': 2, 'sharpen': 0.0},
+        'Landscape': {'fidelity': 0.7, 'blend': 0.3, 'threshold': 0.6, 'upscale': 2, 'sharpen': 0.2},
+        'Anime': {'fidelity': 0.3, 'blend': 0.4, 'threshold': 0.4, 'upscale': 2, 'sharpen': 0.0},
+        'Vintage': {'fidelity': 0.6, 'blend': 0.6, 'threshold': 0.5, 'upscale': 2, 'sharpen': 0.1}
+    }
+
+# History management
+if 'history' not in st.session_state:
+    st.session_state.history = []
+
+# Dark mode management
+if 'dark_mode' not in st.session_state:
+    st.session_state.dark_mode = True
+
+def apply_theme():
+    """Apply dark/light theme based on user preference."""
+    if not st.session_state.dark_mode:
+        st.markdown("""
+        <style>
+        .stApp {
+            background-color: #f5f5f5 !important;
+        }
+        .glass-card {
+            background: rgba(255, 255, 255, 0.9) !important;
+            border: 1px solid rgba(0, 0, 0, 0.1) !important;
+        }
+        section[data-testid="stSidebar"] {
+            background: linear-gradient(180deg, #e8e8e8 0%, #d0d0d0 100%) !important;
+        }
+        .sidebar-brand {
+            background: linear-gradient(135deg, #4a5568 0%, #2d3748 100%) !important;
+        }
+        .hero-title {
+            color: #1a202c !important;
+        }
+        .hero-sub {
+            color: #4a5568 !important;
+        }
+        </style>
+        """, unsafe_allow_html=True)
 
 def progress_callback(stage, progress, message):
     """Callback function to update progress state from pipeline."""
-    st.session_state.progress_state = {
-        'stage': stage,
-        'progress': progress,
-        'message': message,
-        'active': True
-    }
+    if not st.session_state.progress_state.get('cancelled', False):
+        st.session_state.progress_state = {
+            'stage': stage,
+            'progress': progress,
+            'message': message,
+            'active': True,
+            'cancelled': False
+        }
 
-@st.cache_resource(show_spinner=False)
+@st.cache_resource(show_spinner=False, hash_funcs={LocalAIEnhancerPipeline: lambda _: None})
 def get_pipeline():
     try:
         return LocalAIEnhancerPipeline(progress_callback=progress_callback)
@@ -211,6 +287,46 @@ def get_pipeline():
         return None
 
 pipeline = get_pipeline()
+
+# Apply theme
+apply_theme()
+
+# Keyboard shortcuts
+st.markdown("""
+<script>
+document.addEventListener('keydown', function(e) {
+    // Ctrl+U: Focus on upload (simulated by scrolling to upload section)
+    if (e.ctrlKey && e.key === 'u') {
+        e.preventDefault();
+        const uploadSection = document.querySelector('[data-testid="stFileUploader"]');
+        if (uploadSection) {
+            uploadSection.scrollIntoView({ behavior: 'smooth' });
+        }
+    }
+    // Ctrl+R: Run processing (if image is loaded)
+    if (e.ctrlKey && e.key === 'r') {
+        e.preventDefault();
+        const processButton = document.querySelector('button[kind="primary"]');
+        if (processButton) {
+            processButton.click();
+        }
+    }
+    // Ctrl+S: Save settings (show toast)
+    if (e.ctrlKey && e.key === 's') {
+        e.preventDefault();
+        // Settings are automatically saved to session state
+        alert('Settings saved!');
+    }
+    // Esc: Cancel processing
+    if (e.key === 'Escape') {
+        const cancelButton = document.querySelector('button:contains("Cancel")');
+        if (cancelButton) {
+            cancelButton.click();
+        }
+    }
+});
+</script>
+""", unsafe_allow_html=True)
 
 def get_training_status():
     import re
@@ -271,12 +387,58 @@ def get_training_status():
 
 # ── Sidebar ────────────────────────────────────────────────────────────────────
 with st.sidebar:
+    # Dark mode toggle
+    dark_mode_toggle = st.toggle("🌙 Dark Mode", value=st.session_state.dark_mode, key="dark_mode_toggle")
+    if dark_mode_toggle != st.session_state.dark_mode:
+        st.session_state.dark_mode = dark_mode_toggle
+        st.rerun()
+    
     st.markdown("""
     <div class="sidebar-brand">
         <span>✨</span>
         <h2>AI Enhancer</h2>
     </div>
     """, unsafe_allow_html=True)
+    
+    # Export/Import settings
+    st.markdown("<div class='sidebar-section'>⚙️ Settings</div>", unsafe_allow_html=True)
+    
+    col_export, col_import = st.columns(2)
+    with col_export:
+        if st.button("📤 Export"):
+            import json
+            settings = {
+                'fidelity_weight': st.session_state.get('fidelity_weight', 0.5),
+                'blend_softness': st.session_state.get('blend_softness', 0.5),
+                'det_threshold': st.session_state.get('det_threshold', 0.5),
+                'upscale_factor': st.session_state.get('upscale_factor', 2),
+                'sharpen_amount': st.session_state.get('sharpen_amount', 0.0),
+                'dark_mode': st.session_state.dark_mode
+            }
+            st.download_button(
+                "Download JSON",
+                json.dumps(settings, indent=2),
+                "ai_enhancer_settings.json",
+                "application/json",
+                key="download_settings"
+            )
+    
+    with col_import:
+        uploaded_settings = st.file_uploader("📥 Import", type=['json'], key="import_settings")
+        if uploaded_settings:
+            try:
+                import json
+                settings = json.loads(uploaded_settings.read())
+                st.session_state.fidelity_weight = settings.get('fidelity_weight', 0.5)
+                st.session_state.blend_softness = settings.get('blend_softness', 0.5)
+                st.session_state.det_threshold = settings.get('det_threshold', 0.5)
+                st.session_state.upscale_factor = settings.get('upscale_factor', 2)
+                st.session_state.sharpen_amount = settings.get('sharpen_amount', 0.0)
+                st.session_state.dark_mode = settings.get('dark_mode', True)
+                st.success("Settings imported successfully!")
+                st.rerun()
+            except Exception as e:
+                st.error(f"Failed to import settings: {e}")
 
     # ── Training Dashboard ──────────────────────────────────────────────────────
     st.markdown("<div class='sidebar-section'>📊 Training Dashboard</div>", unsafe_allow_html=True)
@@ -293,7 +455,7 @@ with st.sidebar:
             </div>
             <div style="display:flex; justify-content:space-between; margin-bottom:4px;">
                 <span style="font-size:0.75rem; color:#6b7280;">Iteration</span>
-                <span style="font-size:0.8rem; font-weight:700; color:#ddd6fe;">{status['iter']} / 2000</span>
+                <span style="font-size:0.8rem; font-weight:700; color:#ddd6fe;">{status['iter']} / 20000</span>
             </div>
             <div style="display:flex; justify-content:space-between; margin-bottom:4px;">
                 <span style="font-size:0.75rem; color:#6b7280;">Epoch</span>
@@ -318,25 +480,45 @@ with st.sidebar:
     st.markdown("<div class='sidebar-section'>🎯 Face Restoration</div>", unsafe_allow_html=True)
     enable_face_restoration = st.toggle("Enable Face Restoration", value=True,
         help="Detect and restore faces. Disable if the original face is already sharp and you only want to upscale the background.")
-    fidelity_weight = st.slider("Fidelity Weight (w)", 0.0, 1.0, 0.5, 0.05,
-        help="0.0 = Max AI detail. 1.0 = Max likeness to original.")
-    blend_softness  = st.slider("Mask Blending Softness", 0.0, 1.0, 0.5, 0.05,
-        help="How softly the restored face blends into the background.")
-    det_threshold   = st.slider("Detection Threshold", 0.1, 1.0, 0.5, 0.05,
-        help="Lower = detect blurry faces too. Higher = reduce false positives.")
+    
+    # Preset selection with help
+    preset_cols = st.columns([2, 1])
+    with preset_cols[0]:
+        selected_preset = st.selectbox("Quick Preset", ["Custom", "Portrait", "Landscape", "Anime", "Vintage"],
+            help="Pre-configured settings optimized for different image types")
+    with preset_cols[1]:
+        if st.button("Apply", key="apply_preset", help="Apply the selected preset to all parameters"):
+            if selected_preset != "Custom":
+                preset = st.session_state.presets[selected_preset]
+                st.session_state.fidelity_weight = preset['fidelity']
+                st.session_state.blend_softness = preset['blend']
+                st.session_state.det_threshold = preset['threshold']
+                st.session_state.upscale_factor = preset['upscale']
+                st.session_state.sharpen_amount = preset['sharpen']
+                st.success(f"Applied {selected_preset} preset!")
+                st.rerun()
+    
+    fidelity_weight = st.slider("Fidelity Weight (w)", 0.0, 1.0, st.session_state.get('fidelity_weight', 0.3), 0.05,
+        help="0.0 = Max AI detail (more enhancement, less original likeness). 1.0 = Max fidelity (keeps original face structure). Recommended: 0.3-0.7 for portraits.", key="fidelity_weight")
+    blend_softness  = st.slider("Mask Blending Softness", 0.0, 1.0, st.session_state.get('blend_softness', 0.5), 0.05,
+        help="Controls the edge softness when blending restored faces. Higher = smoother, more natural blend. Lower = sharper, more noticeable transition.", key="blend_softness")
+    det_threshold   = st.slider("Detection Threshold", 0.1, 1.0, st.session_state.get('det_threshold', 0.5), 0.05,
+        help="Face detection confidence threshold. Lower values detect more faces including blurry ones. Higher values reduce false detections on non-face objects.", key="det_threshold")
     face_upscale_toggle = st.toggle("Real-ESRGAN Face Upscale", value=False,
-        help="Use Real-ESRGAN to upscale the restored face. Extremely slow on CPU. Keep disabled for 10x+ speedup with virtually identical quality.")
+        help="Use Real-ESRGAN to upscale the restored face. ⚠️ Extremely slow on CPU (10x slower). Keep disabled for virtually identical quality with much faster processing.")
 
     st.markdown("<div class='sidebar-section'>🖼️ Background Upscaling</div>", unsafe_allow_html=True)
     face_detector    = st.selectbox("Face Detector",
         ["retinaface_mobile0.25", "retinaface_resnet50", "YOLOv5l", "YOLOv5n"],
-        help="MobileNet = extremely fast. RetinaFace = most accurate. YOLOv5 = fast.")
-    upscale_factor   = st.select_slider("Upscale Factor", [1, 2, 3, 4], value=2)
-    bg_upscale_toggle = st.toggle("Real-ESRGAN Background Upscale", value=False)
+        help="MobileNet = extremely fast (recommended for CPU). RetinaFace = most accurate (slower). YOLOv5 = good balance of speed and accuracy.")
+    upscale_factor   = st.select_slider("Upscale Factor", [1, 2, 3, 4], value=st.session_state.get('upscale_factor', 2),
+        help="Output resolution multiplier. 2× = double resolution. Higher values increase processing time exponentially.")
+    bg_upscale_toggle = st.toggle("Real-ESRGAN Background Upscale", value=False,
+        help="Upscale the entire image background (not just faces). ⚠️ Slow on CPU. Use only if you need to upscale the whole image.")
 
     st.markdown("<div class='sidebar-section'>🔬 Post-Processing</div>", unsafe_allow_html=True)
-    sharpen_amount = st.slider("Sharpness Boost", 0.0, 1.0, 0.0, 0.05,
-        help="Unsharp mask filter. 0.0 = disabled.")
+    sharpen_amount = st.slider("Sharpness Boost", 0.0, 1.0, st.session_state.get('sharpen_amount', 0.0), 0.05,
+        help="Unsharp mask filter to enhance edge sharpness. 0.0 = disabled. Use sparingly (0.1-0.3) to avoid over-sharpening artifacts.", key="sharpen_amount")
 
     st.markdown("""
     <div class="tip-box">
@@ -363,6 +545,14 @@ with st.sidebar:
         </div>""", unsafe_allow_html=True)
 
 # ── Hero ───────────────────────────────────────────────────────────────────────
+# Mobile menu toggle
+if st.button("☰ Menu", key="mobile_menu"):
+    st.markdown("""
+    <script>
+    document.querySelector('[data-testid="stSidebar"]').classList.toggle('mobile-open');
+    </script>
+    """, unsafe_allow_html=True)
+
 st.markdown("""
 <div class="hero-wrap">
     <div class="hero-glow"></div>
@@ -427,24 +617,48 @@ with tab_single:
             status_text = st.empty()
             stage_text = st.empty()
             
+            # Cancel button
+            cancel_col, _ = st.columns([1, 3])
+            with cancel_col:
+                cancel_button = st.button("❌ Cancel", type="secondary")
+            
+            if cancel_button:
+                st.session_state.progress_state['cancelled'] = True
+                st.warning("⚠️ Processing cancelled by user")
+                st.stop()
+            
             result_container = {}
             def _run():
-                try:
-                    result = pipeline.process_image(
-                        img,
-                        w=fidelity_weight,
-                        detection_model=face_detector,
-                        upscale=upscale_factor,
-                        blend_softness=blend_softness,
-                        bg_upsampler='realesrgan' if bg_upscale_toggle else None,
-                        det_threshold=det_threshold,
-                        sharpen_amount=sharpen_amount,
-                        face_upsample=face_upscale_toggle,
-                        parallel=True,
-                        batch_size=4,
-                        face_restore=enable_face_restoration
-                    )
-                    result_container['enhanced_img'] = result
+                max_retries = 2
+                retry_count = 0
+                last_error = None
+                
+                while retry_count <= max_retries:
+                    try:
+                        result = pipeline.process_image(
+                            img,
+                            w=fidelity_weight,
+                            detection_model=face_detector,
+                            upscale=upscale_factor,
+                            blend_softness=blend_softness,
+                            bg_upsampler='realesrgan' if bg_upscale_toggle else None,
+                            det_threshold=det_threshold,
+                            sharpen_amount=sharpen_amount,
+                            face_upsample=face_upscale_toggle,
+                            parallel=True,
+                            batch_size=4,
+                            face_restore=enable_face_restoration
+                        )
+                        result_container['enhanced_img'] = result
+                        break
+                    except Exception as e:
+                        last_error = e
+                        retry_count += 1
+                        if retry_count <= max_retries:
+                            st.session_state.progress_state['message'] = f"Retry {retry_count}/{max_retries}: {str(e)[:50]}..."
+                            time.sleep(1)
+                        else:
+                            result_container['error'] = str(e)
                 finally:
                     st.session_state.processing = False
                     st.session_state.progress_state['active'] = False
@@ -465,6 +679,15 @@ with tab_single:
                 time.sleep(0.1)
                 progress_data = st.session_state.progress_state
                 
+                # Check for cancellation
+                if progress_data.get('cancelled', False):
+                    st.session_state.processing = False
+                    st.warning("⚠️ Processing cancelled by user")
+                    progress_bar.empty()
+                    status_text.empty()
+                    stage_text.empty()
+                    st.stop()
+                
                 if progress_data['active']:
                     stage_name = stage_names.get(progress_data['stage'], progress_data['stage'])
                     stage_text.text(f"**{stage_name}**")
@@ -480,6 +703,31 @@ with tab_single:
             progress_bar.empty()
             status_text.empty()
             stage_text.empty()
+            
+            # Check for errors
+            if 'error' in result_container:
+                st.error(f"❌ Processing failed after retries: {result_container['error']}")
+                st.info("💡 Try reducing the upscale factor or disabling some features.")
+                st.stop()
+            
+            # Save to history
+            history_item = {
+                'name': img_name,
+                'timestamp': time.time(),
+                'params': {
+                    'fidelity': fidelity_weight,
+                    'blend': blend_softness,
+                    'threshold': det_threshold,
+                    'upscale': upscale_factor,
+                    'sharpen': sharpen_amount
+                },
+                'original_shape': img.shape[:2],
+                'enhanced_shape': enhanced_img.shape[:2]
+            }
+            st.session_state.history.insert(0, history_item)
+            # Keep only last 10 items
+            if len(st.session_state.history) > 10:
+                st.session_state.history = st.session_state.history[:10]
         else:
             st.warning('Processing is already running. Please wait.')
             st.stop()
@@ -555,6 +803,30 @@ with tab_single:
                     BytesIO(buf2).getvalue(),
                     f"comparison_{os.path.splitext(img_name)[0]}.png",
                     "image/png", use_container_width=True)
+
+        # History section
+        if st.session_state.history:
+            st.markdown("""
+            <div class="section-header">
+                <div class="dot"></div><h3>Recent History</h3>
+            </div>""", unsafe_allow_html=True)
+            
+            for idx, item in enumerate(st.session_state.history[:5]):  # Show last 5
+                with st.expander(f"📸 {item['name']} - {time.strftime('%H:%M:%S', time.localtime(item['timestamp']))}"):
+                    cols = st.columns(4)
+                    cols[0].metric("Fidelity", f"{item['params']['fidelity']:.2f}")
+                    cols[1].metric("Blend", f"{item['params']['blend']:.2f}")
+                    cols[2].metric("Upscale", f"{item['params']['upscale']}×")
+                    cols[3].metric("Sharpen", f"{item['params']['sharpen']:.2f}")
+                    
+                    if st.button(f"🔄 Restore Settings", key=f"restore_{idx}"):
+                        st.session_state.fidelity_weight = item['params']['fidelity']
+                        st.session_state.blend_softness = item['params']['blend']
+                        st.session_state.det_threshold = item['params']['threshold']
+                        st.session_state.upscale_factor = item['params']['upscale']
+                        st.session_state.sharpen_amount = item['params']['sharpen']
+                        st.success("Settings restored!")
+                        st.rerun()
 
     else:
         st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)

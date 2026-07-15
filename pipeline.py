@@ -48,10 +48,14 @@ class LocalAIEnhancerPipeline:
         base_cf = os.path.join(project_dir, "weights", "CodeFormer", "codeformer")
         codeformer_onnx_path = base_cf + "_int8.onnx" if os.path.exists(base_cf + "_int8.onnx") else base_cf + ".onnx"
         self.use_onnx = HAS_ONNX and os.path.exists(codeformer_onnx_path)
+        self.codeformer_onnx_path = codeformer_onnx_path
         
         base_re = os.path.join(project_dir, "weights", "realesrgan", "realesrgan")
         self.realesrgan_onnx_path = base_re + "_int8.onnx" if os.path.exists(base_re + "_int8.onnx") else base_re + ".onnx"
         self.use_re_onnx = HAS_ONNX and os.path.exists(self.realesrgan_onnx_path)
+        
+        # Cache for ONNX sessions
+        self._onnx_session_cache = {}
         
         if self.use_onnx:
             print(f"[Pipeline] ONNX models detected! Using ONNX Runtime for CodeFormer inference.")
@@ -97,6 +101,25 @@ class LocalAIEnhancerPipeline:
         """Report progress to callback if available."""
         if self.progress_callback:
             self.progress_callback(stage, progress, message)
+    
+    def _check_cancelled(self):
+        """Check if processing was cancelled by user."""
+        if self.progress_callback:
+            # Check session state through callback
+            import streamlit as st
+            if hasattr(st, 'session_state') and 'progress_state' in st.session_state:
+                return st.session_state.progress_state.get('cancelled', False)
+        return False
+    
+    def _get_onnx_session(self, path, providers=None):
+        """Get or create cached ONNX session."""
+        if path not in self._onnx_session_cache:
+            opts = ort.SessionOptions()
+            opts.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
+            if providers is None:
+                providers = ['OpenVINOExecutionProvider', 'CPUExecutionProvider']
+            self._onnx_session_cache[path] = ort.InferenceSession(path, sess_options=opts, providers=providers)
+        return self._onnx_session_cache[path]
 
     def enhance_realesrgan_onnx(self, img, upscale):
         # 1. Preprocessing
@@ -337,6 +360,35 @@ class LocalAIEnhancerPipeline:
                     results = list(executor.map(lambda args: _process_face(*args), enumerate(face_helper.cropped_faces)))
                 for idx, restored_face in sorted(results):
                     face_helper.add_restored_face(restored_face, face_helper.cropped_faces[idx])
+            else:
+                for idx, cropped_face in enumerate(face_helper.cropped_faces):
+                    if self.use_onnx:
+                        try:
+                            cropped_face_t = img2tensor(cropped_face / 255.0, bgr2rgb=True, float32=True)
+                            normalize(cropped_face_t, (0.5, 0.5, 0.5), (0.5, 0.5, 0.5), inplace=True)
+                            cropped_face_np = cropped_face_t.unsqueeze(0).numpy()
+                            output = self.run_onnx_batch(cropped_face_np, w)
+                            output = np.squeeze(output, axis=0)
+                            output = np.clip(output, -1.0, 1.0)
+                            output = (output + 1.0) / 2.0 * 255.0
+                            output = np.transpose(output, (1, 2, 0))
+                            restored = cv2.cvtColor(output.astype(np.uint8), cv2.COLOR_RGB2BGR)
+                        except Exception as error:
+                            print(f"[Pipeline] Failed CodeFormer ONNX inference for face index {idx}: {error}")
+                            restored = cropped_face.copy()
+                    else:
+                        cropped_face_t = img2tensor(cropped_face / 255.0, bgr2rgb=True, float32=True)
+                        normalize(cropped_face_t, (0.5, 0.5, 0.5), (0.5, 0.5, 0.5), inplace=True)
+                        cropped_face_t = cropped_face_t.unsqueeze(0).to(self.device)
+                        try:
+                            with torch.no_grad():
+                                output = self.net(cropped_face_t, w=w, adain=True)[0]
+                                restored = tensor2img(output, rgb2bgr=True, min_max=(-1, 1))
+                        except Exception as error:
+                            print(f"[Pipeline] Failed CodeFormer inference for face index {idx}: {error}")
+                            restored = tensor2img(cropped_face_t, rgb2bgr=True, min_max=(-1, 1))
+                    restored = restored.astype('uint8')
+                    face_helper.add_restored_face(restored, cropped_face)
             
             self._report_progress("restoration", 0.8, "Face restoration complete")
             

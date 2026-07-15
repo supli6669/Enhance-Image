@@ -3,8 +3,7 @@ title: Custom AI Face Enhancer
 emoji: ✨
 colorFrom: purple
 colorTo: pink
-sdk: streamlit
-app_file: app.py
+sdk: docker
 pinned: false
 license: apache-2.0
 ---
