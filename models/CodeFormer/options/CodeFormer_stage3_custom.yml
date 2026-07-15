@@ -56,7 +56,7 @@ datasets:
     - 30
     - 80
     latent_gt_path: null
-    num_worker_per_gpu: 0
+    num_worker_per_gpu: 4
     batch_size_per_gpu: 1
     dataset_enlarge_ratio: 1
     prefetch_mode: cpu
@@ -97,7 +97,7 @@ path:
   param_key_g: params_ema
   strict_load_g: false
   pretrain_network_d: null
-  resume_state: D:\.gemini-scratch\custom-ai-enhancer\models\CodeFormer\experiments\20260708_201102_CodeFormer_stage3_custom\training_states\1200.state
+  resume_state: D:\.gemini-scratch\custom-ai-enhancer\models\CodeFormer\experiments\20260708_201102_CodeFormer_stage3_custom\training_states\1450.state
 train:
   use_hq_feat_loss: true
   feat_loss_weight: 1.0

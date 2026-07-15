@@ -218,7 +218,7 @@ with st.sidebar:
         ["retinaface_mobile0.25", "retinaface_resnet50", "YOLOv5l", "YOLOv5n"],
         help="MobileNet = extremely fast. RetinaFace = most accurate. YOLOv5 = fast.")
     upscale_factor   = st.select_slider("Upscale Factor", [1, 2, 3, 4], value=2)
-    bg_upscale_toggle = st.toggle("Real-ESRGAN Background Upscale", value=True)
+    bg_upscale_toggle = st.toggle("Real-ESRGAN Background Upscale", value=False)
 
     st.markdown("<div class='sidebar-section'>🔬 Post-Processing</div>", unsafe_allow_html=True)
     sharpen_amount = st.slider("Sharpness Boost", 0.0, 1.0, 0.0, 0.05,

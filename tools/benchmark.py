@@ -35,7 +35,7 @@ def benchmark():
         upscale_factor=2,
         face_size=512,
         crop_ratio=(1, 1),
-        det_model='retinaface_resnet50',
+        det_model='retinaface_mobile0.25',
         save_ext='png',
         use_parse=True,
         device=pipeline.device
@@ -99,17 +99,21 @@ def benchmark():
     t1 = time.time()
     print(f"CodeFormer ONNX inference time (1 face): {t1 - t0:.4f}s")
     
-    # 3. Real-ESRGAN Background Upscaling timing
-    t0 = time.time()
-    bg_img = pipeline.enhance_realesrgan_onnx(img, 2)
-    t1 = time.time()
-    print(f"Real-ESRGAN Background Upscaling time: {t1 - t0:.4f}s")
+    # 3. Real-ESRGAN Background Upscaling timing (optional, disabled by default)
+    run_re_bg = False
+    if run_re_bg:
+        t0 = time.time()
+        bg_img = pipeline.enhance_realesrgan_onnx(img, 2)
+        t1 = time.time()
+        print(f"Real-ESRGAN Background Upscaling time: {t1 - t0:.4f}s")
     
-    # 4. Real-ESRGAN Face Upscaling timing
-    t0 = time.time()
-    face_up_re = pipeline.enhance_realesrgan_onnx(cropped_face, 2)
-    t1 = time.time()
-    print(f"Real-ESRGAN Face Upscaling time (512x512 -> 1024x1024): {t1 - t0:.4f}s")
+    # 4. Real-ESRGAN Face Upscaling timing (optional, disabled by default)
+    run_re_face = False
+    if run_re_face:
+        t0 = time.time()
+        face_up_re = pipeline.enhance_realesrgan_onnx(cropped_face, 2)
+        t1 = time.time()
+        print(f"Real-ESRGAN Face Upscaling time (512x512 -> 1024x1024): {t1 - t0:.4f}s")
     
     # 5. Lanczos Face Upscaling timing
     t0 = time.time()
