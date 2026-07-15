@@ -255,7 +255,7 @@ class LocalAIEnhancerPipeline:
                 return bg_img
             # Return resized background if no faces are detected and no AI upscaler used
             h, w_img, _ = img.shape
-            return cv2.resize(img, (w_img * upscale, h * upscale), interpolation=cv2.INTER_LINEAR)
+            return cv2.resize(img, (w_img * upscale, h * upscale), interpolation=cv2.INTER_LANCZOS4)
             
         face_helper.align_warp_face()
         
@@ -335,7 +335,8 @@ class LocalAIEnhancerPipeline:
             blend_softness=blend_softness,
             bg_img=bg_img,
             sharpen_amount=sharpen_amount,
-            face_upsample=face_upsample
+            face_upsample=face_upsample,
+            w=w
         )
         
         self._report_progress("blending", 1.0, "Blending complete!")
@@ -343,19 +344,20 @@ class LocalAIEnhancerPipeline:
         
         return enhanced_img
 
-    def paste_faces_custom_blend(self, face_helper, upscale, blend_softness, bg_img=None, sharpen_amount=0.0, face_upsample=False):
+    def paste_faces_custom_blend(self, face_helper, upscale, blend_softness, bg_img=None, sharpen_amount=0.0, face_upsample=False, w=0.5):
         """Custom implementation of face pasting with adjustable soft blending mask."""
-        h, w, _ = face_helper.input_img.shape
-        h_up, w_up = int(h * upscale), int(w * upscale)
+        h, w_img, _ = face_helper.input_img.shape
+        h_up, w_up = int(h * upscale), int(w_img * upscale)
         
         # Initialize background image (upsampled background)
         if bg_img is None:
-            upsample_img = cv2.resize(face_helper.input_img, (w_up, h_up), interpolation=cv2.INTER_LINEAR)
+            upsample_img = cv2.resize(face_helper.input_img, (w_up, h_up), interpolation=cv2.INTER_LANCZOS4)
         else:
             upsample_img = cv2.resize(bg_img, (w_up, h_up), interpolation=cv2.INTER_LANCZOS4)
         
-        for restored_face, inverse_affine in zip(face_helper.restored_faces, face_helper.inverse_affine_matrices):
+        for idx, (restored_face, inverse_affine) in enumerate(zip(face_helper.restored_faces, face_helper.inverse_affine_matrices)):
             inv_aff = inverse_affine.copy()
+            cropped_face = face_helper.cropped_faces[idx]
             
             if upscale > 1:
                 # Upscale the restored face using Real-ESRGAN to maintain super-resolution sharpness if enabled
@@ -367,11 +369,20 @@ class LocalAIEnhancerPipeline:
                     # Fallback to Lanczos if no Real-ESRGAN instance loaded or face_upsample is disabled
                     restored_face_up = cv2.resize(restored_face, (face_helper.face_size[0] * upscale, face_helper.face_size[1] * upscale), interpolation=cv2.INTER_LANCZOS4)
                 
+                # Blend with original cropped face to preserve original high-resolution details when w > 0
+                if w > 0.0:
+                    original_face_up = cv2.resize(cropped_face, (face_helper.face_size[0] * upscale, face_helper.face_size[1] * upscale), interpolation=cv2.INTER_LANCZOS4)
+                    restored_face_up = cv2.addWeighted(original_face_up, w, restored_face_up, 1.0 - w, 0.0)
+                
                 inv_aff /= upscale
                 inv_aff[:, 2] *= upscale
                 face_size = (face_helper.face_size[0] * upscale, face_helper.face_size[1] * upscale)
                 inv_restored = cv2.warpAffine(restored_face_up, inv_aff, (w_up, h_up))
             else:
+                # Blend with original cropped face to preserve original high-resolution details when w > 0
+                if w > 0.0:
+                    restored_face = cv2.addWeighted(cropped_face, w, restored_face, 1.0 - w, 0.0)
+                
                 # Add an offset to inverse affine matrix, for more precise back alignment
                 extra_offset = 0
                 inv_aff[:, 2] += extra_offset
