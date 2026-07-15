@@ -1,6 +1,8 @@
 import os
 import sys
+import cv2
 import torch
+torch.set_num_threads(4)
 import yaml
 import subprocess
 import glob
@@ -46,13 +48,15 @@ def main():
     config["dist"] = False
     config["dist_params"] = None
     
-    # Use multiple workers to saturate CPU cores when training on CPU
+    # Use multiple workers to saturate CPU cores when training on GPU; set to 0 on CPU to prevent Windows multiprocessing MemoryError/segfaults.
     if "datasets" in config:
         for phase in config["datasets"]:
             dataset = config["datasets"][phase]
-            dataset["num_worker_per_gpu"] = 4
             if device == "cpu":
+                dataset["num_worker_per_gpu"] = 0
                 dataset["prefetch_mode"] = "cpu"
+            else:
+                dataset["num_worker_per_gpu"] = 4
                 
     # Update weights path if they are in the project weights folder
     project_weights_path = os.path.join(project_dir, "weights", "CodeFormer", "codeformer.pth")
@@ -112,14 +116,15 @@ def main():
     
     # Add models/CodeFormer to PYTHONPATH
     env = os.environ.copy()
-    # Force torch / BLAS backends to use ALL 16 logical CPUs so training
-    # saturates the CPU instead of the default 8 threads.
+    # Force torch / BLAS backends to use limited CPU threads for stability
     for _k in ["OMP_NUM_THREADS", "MKL_NUM_THREADS", "OPENBLAS_NUM_THREADS",
                "NUMEXPR_NUM_THREADS", "VECLIB_MAXIMUM_THREADS"]:
-        env[_k] = "16"
-    # Enable oneDNN (mkldnn) graph fusion for faster CPU conv/matmul.
-    env["DNNL_VERBOSE"] = "0"
-    env["ATEN_CPU_CAPABILITY"] = "avx512"  # Ryzen 7735HS supports AVX512
+        env[_k] = "4"
+    # Disable OpenCV threading and OpenCL runtime (prevents segfaults on Windows)
+    env["OPENCV_OPENCL_RUNTIME"] = "disabled"
+    env["OPENCV_THREAD_LIMIT"] = "1"
+    cv2.setNumThreads(0)
+    # Let torch auto-detect CPU capabilities to avoid SIGILL/segfaults.
     env["PYTHONPATH"] = os.path.pathsep.join([codeformer_dir, env.get("PYTHONPATH", "")])
     
     print("\nStarting training process. Command:")

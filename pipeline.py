@@ -25,14 +25,24 @@ from basicsr.utils.registry import ARCH_REGISTRY
 from facelib.utils.face_restoration_helper import FaceRestoreHelper
 
 class LocalAIEnhancerPipeline:
-    def __init__(self, device=None):
-        """Initialize the CodeFormer model and helper pipeline."""
+    def __init__(self, device=None, progress_callback=None):
+        """Initialize the CodeFormer model and helper pipeline.
+        
+        Args:
+            device: torch device ('cuda' or 'cpu')
+            progress_callback: Optional callback function(stage, progress, message) for progress reporting
+        """
         if device is None:
             self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         else:
             self.device = torch.device(device)
+        
+        self.progress_callback = progress_callback
             
         print(f"[Pipeline] Initializing pipeline on device: {self.device}")
+        
+        # Report initialization progress
+        self._report_progress("initialization", 0.1, "Loading CodeFormer model...")
         
         # Check if ONNX models exist and should be used
         base_cf = os.path.join(project_dir, "weights", "CodeFormer", "codeformer")
@@ -79,6 +89,14 @@ class LocalAIEnhancerPipeline:
                 self.net.load_state_dict(checkpoint['params'])
             self.net.eval()
             print("[Pipeline] CodeFormer model loaded successfully.")
+            
+        # Report initialization complete
+        self._report_progress("initialization", 1.0, "Pipeline ready!")
+    
+    def _report_progress(self, stage, progress, message):
+        """Report progress to callback if available."""
+        if self.progress_callback:
+            self.progress_callback(stage, progress, message)
 
     def enhance_realesrgan_onnx(self, img, upscale):
         # 1. Preprocessing
@@ -170,6 +188,7 @@ class LocalAIEnhancerPipeline:
         face_helper.read_image(img)
         
         # 1. Detect face landmarks and align/crop faces
+        self._report_progress("detection", 0.1, f"Detecting faces with {detection_model}...")
         print(f"[Pipeline] Running face detection model: {detection_model} with threshold: {det_threshold}...")
         num_det_faces = face_helper.get_face_landmarks_5(
             only_center_face=False, 
@@ -177,13 +196,16 @@ class LocalAIEnhancerPipeline:
             eye_dist_threshold=5
         )
         print(f"[Pipeline] Detected {num_det_faces} faces.")
+        self._report_progress("detection", 0.3, f"Detected {num_det_faces} faces")
         
         # Handle background upsampling first
         bg_img = None
         if bg_upsampler == 'realesrgan':
+            self._report_progress("background", 0.1, "Upscaling background with Real-ESRGAN...")
             if self.use_re_onnx:
                 print("[Pipeline] Running Real-ESRGAN background super-resolution using ONNX Runtime...")
                 bg_img = self.enhance_realesrgan_onnx(img, upscale)
+                self._report_progress("background", 0.5, "Background upscaled")
             else:
                 if not hasattr(self, 'bg_upsampler_instance') or self.bg_upsampler_instance is None:
                     print("[Pipeline] Loading Real-ESRGAN background upsampler...")
@@ -226,6 +248,7 @@ class LocalAIEnhancerPipeline:
                 
                 print("[Pipeline] Running Real-ESRGAN background super-resolution...")
                 bg_img = self.bg_upsampler_instance.enhance(img, outscale=upscale)[0]
+                self._report_progress("background", 0.5, "Background upscaled")
 
         if num_det_faces == 0:
             if bg_img is not None:

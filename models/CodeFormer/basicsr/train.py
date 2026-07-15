@@ -6,6 +6,7 @@ import copy
 import random
 import time
 import torch
+torch.backends.mkldnn.enabled = False
 from os import path as osp
 
 from basicsr.data import build_dataloader, build_dataset
@@ -15,19 +16,19 @@ from basicsr.models import build_model
 from basicsr.utils import (MessageLogger, check_resume, get_env_info, get_root_logger, init_tb_logger,
                            init_wandb_logger, make_exp_dirs, mkdir_and_rename, set_random_seed)
 from basicsr.utils.dist_util import get_dist_info, init_dist
-from basicsr.utils.options import dict2str, parse
+from basicsr.utils.options import dict2str, parse_options
 
 import warnings
 # ignore UserWarning: Detected call of `lr_scheduler.step()` before `optimizer.step()`.
 warnings.filterwarnings("ignore", category=UserWarning)
 
-def parse_options(root_path, is_train=True):
+def get_options(root_path, is_train=True):
     parser = argparse.ArgumentParser()
     parser.add_argument('-opt', type=str, required=True, help='Path to option YAML file.')
     parser.add_argument('--launcher', choices=['none', 'pytorch', 'slurm'], default='none', help='job launcher')
     parser.add_argument('--local_rank', type=int, default=0)
     args = parser.parse_args()
-    opt = parse(args.opt, root_path, is_train=is_train)
+    opt, args = parse_options(root_path, is_train=is_train)
 
     # distributed settings
     if args.launcher == 'none':
@@ -109,7 +110,7 @@ def create_train_val_dataloader(opt, logger):
 
 def train_pipeline(root_path):
     # parse options, set distributed setting, set ramdom seed
-    opt = parse_options(root_path, is_train=True)
+    opt = get_options(root_path, is_train=True)
 
     torch.backends.cudnn.benchmark = True
     # torch.backends.cudnn.deterministic = True

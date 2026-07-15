@@ -56,7 +56,7 @@ datasets:
     - 30
     - 80
     latent_gt_path: null
-    num_worker_per_gpu: 4
+    num_worker_per_gpu: 0
     batch_size_per_gpu: 1
     dataset_enlarge_ratio: 1
     prefetch_mode: cpu
@@ -147,7 +147,7 @@ train:
   net_d_start_iter: 5001
   manual_seed: 0
 val:
-  val_freq: 50000000000.0
+  val_freq: 500
   save_img: true
   metrics:
     psnr:

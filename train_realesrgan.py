@@ -141,24 +141,24 @@ def create_training_config(num_images: int, lmdb_dir: str) -> str:
         "percep_gt_usm": True,
         "gan_gt_usm": False,
 
-        # the first degradation process
+        # the first degradation process - MODERATE increase for stability
         "resize_prob": [0.2, 0.7, 0.1],
         "resize_range": [0.15, 1.5],
-        "gaussian_noise_prob": 0.5,
-        "noise_range": [1, 30],
+        "gaussian_noise_prob": 0.6,  # 0.5 → 0.6 (moderate)
+        "noise_range": [3, 40],      # [1, 30] → [3, 40] (moderate)
         "poisson_scale_range": [0.05, 3.0],
         "gray_noise_prob": 0.4,
-        "jpeg_range": [30, 95],
+        "jpeg_range": [20, 90],      # [30, 95] → [20, 90] (moderate)
 
-        # the second degradation process
+        # the second degradation process - MODERATE increase for stability
         "second_blur_prob": 0.8,
         "resize_prob2": [0.3, 0.4, 0.3],
         "resize_range2": [0.3, 1.2],
-        "gaussian_noise_prob2": 0.5,
-        "noise_range2": [1, 25],
+        "gaussian_noise_prob2": 0.6,  # 0.5 → 0.6 (moderate)
+        "noise_range2": [3, 35],      # [1, 25] → [3, 35] (moderate)
         "poisson_scale_range2": [0.05, 2.5],
         "gray_noise_prob2": 0.4,
-        "jpeg_range2": [30, 95],
+        "jpeg_range2": [20, 90],      # [30, 95] → [20, 90] (moderate)
 
         "gt_size": 256,
         "queue_size": 120,  # must be divisible by batch_size (12) for the degradation queue
@@ -221,22 +221,22 @@ def create_training_config(num_images: int, lmdb_dir: str) -> str:
             "ema_decay": 0.999,
             "optim_g": {
                 "type": "Adam",
-                "lr": 1.0e-4,
+                "lr": 1.5e-4,  # 1.0e-4 → 1.5e-4 (moderate increase)
                 "weight_decay": 0,
                 "betas": [0.9, 0.99],
             },
             "optim_d": {
                 "type": "Adam",
-                "lr": 1.0e-4,
+                "lr": 1.5e-4,  # 1.0e-4 → 1.5e-4 (moderate increase)
                 "weight_decay": 0,
                 "betas": [0.9, 0.99],
             },
             "scheduler": {
                 "type": "MultiStepLR",
-                "milestones": [400000],
+                "milestones": [5000, 10000],  # [400000] → [5000, 10000]
                 "gamma": 0.5,
             },
-            "total_iter": 50000,
+            "total_iter": 15000,  # 50000 → 15000 (giảm 3.3x)
             "warmup_iter": -1,
             "pixel_opt": {
                 "type": "L1Loss",

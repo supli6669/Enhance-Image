@@ -1,3 +1,4 @@
+import argparse
 import yaml
 import time
 from collections import OrderedDict
@@ -28,16 +29,15 @@ def ordered_yaml():
     Loader.add_constructor(_mapping_tag, dict_constructor)
     return Loader, Dumper
 
-
 def parse(opt_path, root_path, is_train=True):
     """Parse option file.
 
     Args:
         opt_path (str): Option file path.
-        is_train (str): Indicate whether in training or not. Default: True.
+        is_train (bool): Indicate whether training mode. Default True.
 
     Returns:
-        (dict): Options.
+        dict: Options.
     """
     with open(opt_path, mode='r') as f:
         Loader, _ = ordered_yaml()
@@ -45,17 +45,15 @@ def parse(opt_path, root_path, is_train=True):
 
     opt['is_train'] = is_train
 
-    # opt['name'] = f"{get_time_str()}_{opt['name']}"
-    if opt['path'].get('resume_state', None): # Shangchen added
+    # name handling
+    if opt['path'].get('resume_state', None):
         resume_state_path = opt['path'].get('resume_state')
-        opt['name'] = resume_state_path.replace("\\", "/").split("/")[-3]
+        opt['name'] = resume_state_path.replace('\\', '/').split('/')[-3]
     else:
         opt['name'] = f"{get_time_str()}_{opt['name']}"
 
-
     # datasets
     for phase, dataset in opt['datasets'].items():
-        # for several datasets, e.g., test_1, test_2
         phase = phase.split('_')[0]
         dataset['phase'] = phase
         if 'scale' in opt:
@@ -77,15 +75,24 @@ def parse(opt_path, root_path, is_train=True):
         opt['path']['training_states'] = osp.join(experiments_root, 'training_states')
         opt['path']['log'] = experiments_root
         opt['path']['visualization'] = osp.join(experiments_root, 'visualization')
-
-    else:  # test
+    else:
         results_root = osp.join(root_path, 'results', opt['name'])
         opt['path']['results_root'] = results_root
         opt['path']['log'] = results_root
         opt['path']['visualization'] = osp.join(results_root, 'visualization')
-
     return opt
 
+def parse_options(root_path, is_train=True):
+    """Parse command line arguments and option file.
+    Returns opt dict and argparse args.
+    """
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-opt', type=str, required=True, help='Path to option YAML file.')
+    parser.add_argument('--launcher', choices=['none', 'pytorch', 'slurm'], default='none', help='job launcher')
+    parser.add_argument('--local_rank', type=int, default=0)
+    args = parser.parse_args()
+    opt = parse(args.opt, root_path, is_train=is_train)
+    return opt, args
 
 def dict2str(opt, indent_level=1):
     """dict to string for printing options.
