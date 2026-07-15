@@ -31,6 +31,9 @@ COPY . /app/
 # Create weights directory and make sure it has permissions
 RUN mkdir -p /app/weights && chmod -R 777 /app/weights
 
+# Download model weights during build phase to prevent runtime startup hang
+RUN python tools/download_weights.py
+
 # Expose port 7860 for Hugging Face Spaces
 EXPOSE 7860
 
