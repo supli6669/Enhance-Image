@@ -279,203 +279,270 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-# ── Upload ─────────────────────────────────────────────────────────────────────
-col_upload, col_sample = st.columns([3, 1], gap="large")
-uploaded_file = None
-use_sample    = False
+# ── Upload & Tabs ──────────────────────────────────────────────────────────────
+tab_single, tab_batch = st.tabs(["✨ Single Image", "📦 Batch Processing"])
 
-with col_upload:
-    uploaded_file = st.file_uploader(
-        "Drop your image here, or click to browse",
-        type=["png", "jpg", "jpeg", "webp"]
-    )
-with col_sample:
-    st.markdown("<div style='height:32px'></div>", unsafe_allow_html=True)
-    if st.button("🖼️ Use Sample Portrait"):
-        use_sample = True
+with tab_single:
+    col_upload, col_sample = st.columns([3, 1], gap="large")
+    uploaded_file = None
+    use_sample    = False
 
-sample_image_path = os.path.join(project_dir, "models", "CodeFormer", "inputs", "whole_imgs", "00.jpg")
-
-# ── Pipeline Execution ─────────────────────────────────────────────────────────
-if uploaded_file is not None or use_sample:
-    if use_sample:
-        if not os.path.exists(sample_image_path):
-            st.error(f"Sample image not found: `{sample_image_path}`")
-            st.stop()
-        img      = cv2.imread(sample_image_path)
-        img_name = "sample_portrait.jpg"
-    else:
-        file_bytes = np.asarray(bytearray(uploaded_file.read()), dtype=np.uint8)
-        img        = cv2.imdecode(file_bytes, 1)
-        img_name   = uploaded_file.name
-
-    if img is None:
-        st.error("Could not decode image. Please upload a valid PNG / JPG / WEBP file.")
-        st.stop()
-
-    st.markdown("<hr>", unsafe_allow_html=True)
-
-    start_time = time.time()
-    # Async processing using a background thread
-    if not st.session_state.get('processing'):
-        # Initialize state
-        st.session_state.processing = True
-        st.session_state.progress_state = {'stage': None, 'progress': 0.0, 'message': '', 'active': False}
-        
-        # Progress bar and status
-        progress_bar = st.progress(0)
-        status_text = st.empty()
-        stage_text = st.empty()
-        
-        result_container = {}
-        def _run():
-            try:
-                result = pipeline.process_image(
-                    img,
-                    w=fidelity_weight,
-                    detection_model=face_detector,
-                    upscale=upscale_factor,
-                    blend_softness=blend_softness,
-                    bg_upsampler='realesrgan' if bg_upscale_toggle else None,
-                    det_threshold=det_threshold,
-                    sharpen_amount=sharpen_amount,
-                    face_upsample=face_upscale_toggle,
-                    parallel=True,
-                    batch_size=4
-                )
-                result_container['enhanced_img'] = result
-            finally:
-                st.session_state.processing = False
-                st.session_state.progress_state['active'] = False
-        
-        threading.Thread(target=_run, daemon=True).start()
-        
-        # Wait for result (polling with progress updates)
-        stage_names = {
-            'initialization': '🔧 Initializing',
-            'detection': '👁️ Detecting Faces',
-            'background': '🖼️ Upscaling Background',
-            'restoration': '✨ Restoring Faces',
-            'blending': '🎨 Blending Faces',
-            'complete': '✅ Complete'
-        }
-        
-        while st.session_state.processing:
-            time.sleep(0.1)
-            progress_data = st.session_state.progress_state
-            
-            if progress_data['active']:
-                stage_name = stage_names.get(progress_data['stage'], progress_data['stage'])
-                stage_text.text(f"**{stage_name}**")
-                status_text.text(progress_data['message'])
-                progress_bar.progress(progress_data['progress'])
-            else:
-                status_text.text('⏳ Starting...')
-        
-        enhanced_img = result_container.get('enhanced_img')
-        process_duration = time.time() - start_time
-        
-        # Clear progress UI
-        progress_bar.empty()
-        status_text.empty()
-        stage_text.empty()
-    else:
-        st.warning('Processing is already running. Please wait.')
-        st.stop()
-
-    h_orig, w_orig = img.shape[:2]
-    h_enh,  w_enh  = enhanced_img.shape[:2]
-    mid_x          = w_enh // 2
-    img_resized    = cv2.resize(img, (w_enh, h_enh), interpolation=cv2.INTER_LANCZOS4)
-
-    st.markdown(f"""
-    <div class="stats-row">
-        <div class="stat-pill">⏱️ {process_duration:.2f}s</div>
-        <div class="stat-pill">📐 Original: {w_orig}×{h_orig}</div>
-        <div class="stat-pill">🚀 Enhanced: {w_enh}×{h_enh}</div>
-        <div class="stat-pill">⬆️ {upscale_factor}× upscale</div>
-    </div>
-    """, unsafe_allow_html=True)
-
-    st.markdown("""
-    <div class="section-header">
-        <div class="dot"></div><h3>Comparison View</h3>
-    </div>""", unsafe_allow_html=True)
-
-    view_mode = st.radio("Mode", ["↔️ Interactive Slider", "👥 Side-by-Side", "🌗 Split Screen"],
-                         horizontal=True, label_visibility="collapsed")
-
-    if "Interactive Slider" in view_mode:
-        from streamlit_image_comparison import image_comparison
-        image_comparison(
-            img1=cv2.cvtColor(img_resized, cv2.COLOR_BGR2RGB),
-            img2=cv2.cvtColor(enhanced_img, cv2.COLOR_BGR2RGB),
-            label1="Original",
-            label2="AI Enhanced",
-            show_labels=True,
-            make_responsive=True
+    with col_upload:
+        uploaded_file = st.file_uploader(
+            "Drop your image here, or click to browse",
+            type=["png", "jpg", "jpeg", "webp"],
+            key="single_uploader"
         )
-    elif "Side-by-Side" in view_mode:
-        col_b, col_a = st.columns(2, gap="medium")
-        with col_b:
-            st.markdown("<div class='img-label before'>◀ Before (Original)</div>", unsafe_allow_html=True)
-            st.image(cv2.cvtColor(img, cv2.COLOR_BGR2RGB), use_container_width=True)
-        with col_a:
-            st.markdown("<div class='img-label after'>After (AI Enhanced) ▶</div>", unsafe_allow_html=True)
-            st.image(cv2.cvtColor(enhanced_img, cv2.COLOR_BGR2RGB), use_container_width=True)
-    else:
-        st.markdown("<div class='img-label after'>◀ Original &nbsp;|&nbsp; Enhanced ▶</div>",
-                    unsafe_allow_html=True)
-        split_img = np.copy(enhanced_img)
-        split_img[:, :mid_x] = img_resized[:, :mid_x]
-        cv2.line(split_img, (mid_x, 0), (mid_x, h_enh), (255, 255, 255), max(2, w_enh // 300))
-        st.image(cv2.cvtColor(split_img, cv2.COLOR_BGR2RGB), use_container_width=True)
+    with col_sample:
+        st.markdown("<div style='height:32px'></div>", unsafe_allow_html=True)
+        if st.button("🖼️ Use Sample Portrait"):
+            use_sample = True
 
-    st.markdown("""
-    <div class="section-header">
-        <div class="dot"></div><h3>Download Results</h3>
-    </div>""", unsafe_allow_html=True)
+    sample_image_path = os.path.join(project_dir, "models", "CodeFormer", "inputs", "whole_imgs", "00.jpg")
 
-    col_dl1, col_dl2 = st.columns(2, gap="medium")
-    with col_dl1:
-        ok, buf = cv2.imencode(".png", enhanced_img)
-        if ok:
-            st.download_button("📥 Download Enhanced Image",
-                BytesIO(buf).getvalue(),
-                f"enhanced_{os.path.splitext(img_name)[0]}.png",
-                "image/png", use_container_width=True)
-    with col_dl2:
-        split_img = np.copy(enhanced_img)
-        split_img[:, :mid_x] = img_resized[:, :mid_x]
-        cv2.line(split_img, (mid_x, 0), (mid_x, h_enh), (255, 255, 255), max(2, w_enh // 300))
-        ok2, buf2 = cv2.imencode(".png", split_img)
-        if ok2:
-            st.download_button("🌗 Download Split Comparison",
-                BytesIO(buf2).getvalue(),
-                f"comparison_{os.path.splitext(img_name)[0]}.png",
-                "image/png", use_container_width=True)
+    # ── Pipeline Execution (Single) ─────────────────────────────────────────────
+    if uploaded_file is not None or use_sample:
+        if use_sample:
+            if not os.path.exists(sample_image_path):
+                st.error(f"Sample image not found: `{sample_image_path}`")
+                st.stop()
+            img      = cv2.imread(sample_image_path)
+            img_name = "sample_portrait.jpg"
+        else:
+            file_bytes = np.asarray(bytearray(uploaded_file.read()), dtype=np.uint8)
+            img        = cv2.imdecode(file_bytes, 1)
+            img_name   = uploaded_file.name
 
-else:
-    st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
-    st.markdown("""
-    <div class="glass-card">
-        <div class="section-header" style="margin-top:0">
-            <div class="dot"></div><h3>How to Get Started</h3>
+        if img is None:
+            st.error("Could not decode image. Please upload a valid PNG / JPG / WEBP file.")
+            st.stop()
+
+        st.markdown("<hr>", unsafe_allow_html=True)
+
+        start_time = time.time()
+        # Async processing using a background thread
+        if not st.session_state.get('processing'):
+            # Initialize state
+            st.session_state.processing = True
+            st.session_state.progress_state = {'stage': None, 'progress': 0.0, 'message': '', 'active': False}
+            
+            # Progress bar and status
+            progress_bar = st.progress(0)
+            status_text = st.empty()
+            stage_text = st.empty()
+            
+            result_container = {}
+            def _run():
+                try:
+                    result = pipeline.process_image(
+                        img,
+                        w=fidelity_weight,
+                        detection_model=face_detector,
+                        upscale=upscale_factor,
+                        blend_softness=blend_softness,
+                        bg_upsampler='realesrgan' if bg_upscale_toggle else None,
+                        det_threshold=det_threshold,
+                        sharpen_amount=sharpen_amount,
+                        face_upsample=face_upscale_toggle,
+                        parallel=True,
+                        batch_size=4
+                    )
+                    result_container['enhanced_img'] = result
+                finally:
+                    st.session_state.processing = False
+                    st.session_state.progress_state['active'] = False
+            
+            threading.Thread(target=_run, daemon=True).start()
+            
+            # Wait for result (polling with progress updates)
+            stage_names = {
+                'initialization': '🔧 Initializing',
+                'detection': '👁️ Detecting Faces',
+                'background': '🖼️ Upscaling Background',
+                'restoration': '✨ Restoring Faces',
+                'blending': '🎨 Blending Faces',
+                'complete': '✅ Complete'
+            }
+            
+            while st.session_state.processing:
+                time.sleep(0.1)
+                progress_data = st.session_state.progress_state
+                
+                if progress_data['active']:
+                    stage_name = stage_names.get(progress_data['stage'], progress_data['stage'])
+                    stage_text.text(f"**{stage_name}**")
+                    status_text.text(progress_data['message'])
+                    progress_bar.progress(progress_data['progress'])
+                else:
+                    status_text.text('⏳ Starting...')
+            
+            enhanced_img = result_container.get('enhanced_img')
+            process_duration = time.time() - start_time
+            
+            # Clear progress UI
+            progress_bar.empty()
+            status_text.empty()
+            stage_text.empty()
+        else:
+            st.warning('Processing is already running. Please wait.')
+            st.stop()
+
+        h_orig, w_orig = img.shape[:2]
+        h_enh,  w_enh  = enhanced_img.shape[:2]
+        mid_x          = w_enh // 2
+        img_resized    = cv2.resize(img, (w_enh, h_enh), interpolation=cv2.INTER_LANCZOS4)
+
+        st.markdown(f"""
+        <div class="stats-row">
+            <div class="stat-pill">⏱️ {process_duration:.2f}s</div>
+            <div class="stat-pill">📐 Original: {w_orig}×{h_orig}</div>
+            <div class="stat-pill">🚀 Enhanced: {w_enh}×{h_enh}</div>
+            <div class="stat-pill">⬆️ {upscale_factor}× upscale</div>
         </div>
-        <ol class="step-list">
-            <li><span>Upload a low-quality, blurry, or old portrait photo above. Supports PNG, JPG, and WEBP.</span></li>
-            <li><span>Or click <b>"Use Sample Portrait"</b> to run the pipeline on a built-in demo — no upload needed.</span></li>
-            <li><span>Fine-tune the AI with sidebar sliders. <b>Fidelity Weight</b> controls creativity vs. likeness. <b>Mask Softness</b> controls face blending.</span></li>
-            <li><span>Review the before/after comparison and download your crystal-clear PNG result.</span></li>
-        </ol>
-    </div>
-    """, unsafe_allow_html=True)
+        """, unsafe_allow_html=True)
 
-    st.markdown("""
-    <div style="display:flex; gap:12px; flex-wrap:wrap; justify-content:center; margin-top:8px;">
-        <div class="stat-pill">🤖 CodeFormer Face Restoration</div>
-        <div class="stat-pill">🖼️ Real-ESRGAN Super-Resolution</div>
-        <div class="stat-pill">🔒 100% Local · No Cloud</div>
-        <div class="stat-pill">📦 Custom-Trained Weights</div>
-    </div>
-    """, unsafe_allow_html=True)
+        st.markdown("""
+        <div class="section-header">
+            <div class="dot"></div><h3>Comparison View</h3>
+        </div>""", unsafe_allow_html=True)
+
+        view_mode = st.radio("Mode", ["↔️ Interactive Slider", "👥 Side-by-Side", "🌗 Split Screen"],
+                             horizontal=True, label_visibility="collapsed")
+
+        if "Interactive Slider" in view_mode:
+            from streamlit_image_comparison import image_comparison
+            image_comparison(
+                img1=cv2.cvtColor(img_resized, cv2.COLOR_BGR2RGB),
+                img2=cv2.cvtColor(enhanced_img, cv2.COLOR_BGR2RGB),
+                label1="Original",
+                label2="AI Enhanced",
+                show_labels=True,
+                make_responsive=True
+            )
+        elif "Side-by-Side" in view_mode:
+            col_b, col_a = st.columns(2, gap="medium")
+            with col_b:
+                st.markdown("<div class='img-label before'>◀ Before (Original)</div>", unsafe_allow_html=True)
+                st.image(cv2.cvtColor(img, cv2.COLOR_BGR2RGB), use_container_width=True)
+            with col_a:
+                st.markdown("<div class='img-label after'>After (AI Enhanced) ▶</div>", unsafe_allow_html=True)
+                st.image(cv2.cvtColor(enhanced_img, cv2.COLOR_BGR2RGB), use_container_width=True)
+        else:
+            st.markdown("<div class='img-label after'>◀ Original &nbsp;|&nbsp; Enhanced ▶</div>",
+                        unsafe_allow_html=True)
+            split_img = np.copy(enhanced_img)
+            split_img[:, :mid_x] = img_resized[:, :mid_x]
+            cv2.line(split_img, (mid_x, 0), (mid_x, h_enh), (255, 255, 255), max(2, w_enh // 300))
+            st.image(cv2.cvtColor(split_img, cv2.COLOR_BGR2RGB), use_container_width=True)
+
+        st.markdown("""
+        <div class="section-header">
+            <div class="dot"></div><h3>Download Results</h3>
+        </div>""", unsafe_allow_html=True)
+
+        col_dl1, col_dl2 = st.columns(2, gap="medium")
+        with col_dl1:
+            ok, buf = cv2.imencode(".png", enhanced_img)
+            if ok:
+                st.download_button("📥 Download Enhanced Image",
+                    BytesIO(buf).getvalue(),
+                    f"enhanced_{os.path.splitext(img_name)[0]}.png",
+                    "image/png", use_container_width=True)
+        with col_dl2:
+            split_img = np.copy(enhanced_img)
+            split_img[:, :mid_x] = img_resized[:, :mid_x]
+            cv2.line(split_img, (mid_x, 0), (mid_x, h_enh), (255, 255, 255), max(2, w_enh // 300))
+            ok2, buf2 = cv2.imencode(".png", split_img)
+            if ok2:
+                st.download_button("🌗 Download Split Comparison",
+                    BytesIO(buf2).getvalue(),
+                    f"comparison_{os.path.splitext(img_name)[0]}.png",
+                    "image/png", use_container_width=True)
+
+    else:
+        st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
+        st.markdown("""
+        <div class="glass-card">
+            <div class="section-header" style="margin-top:0">
+                <div class="dot"></div><h3>How to Get Started</h3>
+            </div>
+            <ol class="step-list">
+                <li><span>Upload a low-quality, blurry, or old portrait photo above. Supports PNG, JPG, and WEBP.</span></li>
+                <li><span>Or click <b>"Use Sample Portrait"</b> to run the pipeline on a built-in demo — no upload needed.</span></li>
+                <li><span>Fine-tune the AI with sidebar sliders. <b>Fidelity Weight</b> controls creativity vs. likeness. <b>Mask Softness</b> controls face blending.</span></li>
+                <li><span>Review the before/after comparison and download your crystal-clear PNG result.</span></li>
+            </ol>
+        </div>
+        """, unsafe_allow_html=True)
+
+with tab_batch:
+    uploaded_files = st.file_uploader(
+        "Upload multiple images to process",
+        type=["png", "jpg", "jpeg", "webp"],
+        accept_multiple_files=True,
+        key="batch_uploader"
+    )
+    if uploaded_files:
+        if st.button("🚀 Process Batch", key="batch_button"):
+            import zipfile
+            from io import BytesIO
+            
+            zip_buffer = BytesIO()
+            with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
+                # Progress bar and status
+                batch_progress = st.progress(0)
+                status_text = st.empty()
+                
+                total_files = len(uploaded_files)
+                for idx, file in enumerate(uploaded_files):
+                    status_text.text(f"Processing ({idx+1}/{total_files}): {file.name}")
+                    
+                    # decode image
+                    file_bytes = np.asarray(bytearray(file.read()), dtype=np.uint8)
+                    img_b = cv2.imdecode(file_bytes, 1)
+                    
+                    if img_b is None:
+                        st.warning(f"Could not decode {file.name}, skipping.")
+                        continue
+                        
+                    # run pipeline
+                    result = pipeline.process_image(
+                        img_b,
+                        w=fidelity_weight,
+                        detection_model=face_detector,
+                        upscale=upscale_factor,
+                        blend_softness=blend_softness,
+                        bg_upsampler='realesrgan' if bg_upscale_toggle else None,
+                        det_threshold=det_threshold,
+                        sharpen_amount=sharpen_amount,
+                        face_upsample=face_upscale_toggle,
+                        parallel=True,
+                        batch_size=4
+                    )
+                    
+                    # encode result as png
+                    ok, buf = cv2.imencode(".png", result)
+                    if ok:
+                        # add to zip
+                        zip_file.writestr(f"enhanced_{file.name}", BytesIO(buf).getvalue())
+                        
+                    batch_progress.progress((idx + 1) / total_files)
+                    
+                status_text.text("✅ Batch processing complete!")
+                
+            st.download_button(
+                "📥 Download Enhanced Zip",
+                zip_buffer.getvalue(),
+                "enhanced_images.zip",
+                "application/zip",
+                use_container_width=True
+            )
+
+st.markdown("""
+<div style="display:flex; gap:12px; flex-wrap:wrap; justify-content:center; margin-top:8px;">
+    <div class="stat-pill">🤖 CodeFormer Face Restoration</div>
+    <div class="stat-pill">🖼️ Real-ESRGAN Super-Resolution</div>
+    <div class="stat-pill">🔒 100% Local · No Cloud</div>
+    <div class="stat-pill">📦 Custom-Trained Weights</div>
+</div>
+""", unsafe_allow_html=True)
