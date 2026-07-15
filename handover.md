@@ -302,3 +302,62 @@ Root cause chain (verified by isolated repro scripts):
 - The 23-block standard model only trains on GPU (HF Space). On this CPU, num_block=6 is the ceiling.
 
 
+
+## Task 9: Future Optimization Plans (Plans A, B, C)
+
+### Plan A – INT8 Quantization for ONNX Models
+- **Goal:** Reduce model size & increase inference speed on CPU.
+- **Tools:** `onnxruntime.quantization`, `tools/quantize_onnx.py`.
+- **Steps:**
+  1. Export current CodeFormer & Real‑ESRGAN models to ONNX (if not already present) using `tools/export_onnx.py`.
+  2. Create script `tools/quantize_onnx.py`:
+```python
+from onnxruntime.quantization import quantize_dynamic, QuantType
+
+def quantize_model(in_path, out_path):
+    quantize_dynamic(in_path, out_path, weight_type=QuantType.QInt8)
+```
+  3. Run for each model:
+```bash
+python tools/quantize_onnx.py weights/codeformer.onnx weights/codeformer_int8.onnx
+python tools/quantize_onnx.py weights/realesrgan.onnx weights/realesrgan_int8.onnx
+```
+  4. Update `pipeline.py` to prefer `_int8.onnx` if it exists.
+  5. Benchmark using `tools/benchmark.py` (measure latency, memory, PSNR/LPIPS impact).
+- **Verification:** Compare inference time before/after, confirm size reduction and acceptable quality drop (<2 % PSNR loss).
+
+### Plan B – Parallel / Batch Face Processing
+- **Goal:** Speed up processing of images containing multiple faces.
+- **Approach A (ThreadPoolExecutor):**
+  1. Detect all faces using the fast detector.
+  2. Submit each face crop to a thread pool (`max_workers = os.cpu_count() // 2`).
+  3. Each worker runs the CodeFormer ONNX session on its crop.
+  4. Collect results and blend back using existing `paste_faces_custom_blend`.
+- **Approach B (Batch Tensor):**
+  1. Stack all face crops into a single batch tensor (`N x C x H x W`).
+  2. Run a single ONNX session inference (`session.run(None, {"input": batch})`).
+  3. Split batch output back to individual faces.
+- **Implementation:** Add helper `pipeline._process_faces_batch()` and a flag `use_batch=True` in UI.
+- **Verification:** Run on a test image with 5‑10 faces, ensure total time ≈ 1/​N of sequential.
+
+### Plan C – Asynchronous UI Processing in Streamlit
+- **Goal:** Prevent UI freeze when heavy tasks (Real‑ESRGAN background upscale, batch face processing) run.
+- **Technique:** Use `st.experimental_singleton` / `st.session_state` to store a background thread.
+```python
+import threading, queue
+
+def run_async(func, *args):
+    q = queue.Queue()
+    t = threading.Thread(target=lambda: q.put(func(*args)), daemon=True)
+    t.start()
+    return q, t
+```
+- **UI Changes:**
+  * Add progress bar (`st.progress`) linked to thread status.
+  * Disable “Run” button while task is active.
+- **Safety:** Ensure thread‑safe access to ONNX sessions (create one per thread or use locks).
+- **Verification:** Deploy locally, trigger a heavy upscale, confirm UI remains responsive and progress updates.
+
+### Integration into Handovers
+- Append this section to `handover.md` under **Task 9**.
+- Update roadmap references in future AGENTS rules if needed.

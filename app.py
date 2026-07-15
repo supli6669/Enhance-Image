@@ -3,6 +3,7 @@ import cv2
 import numpy as np
 import os
 import time
+import threading
 from io import BytesIO
 from pipeline import LocalAIEnhancerPipeline
 
@@ -297,26 +298,42 @@ if uploaded_file is not None or use_sample:
     st.markdown("<hr>", unsafe_allow_html=True)
 
     start_time = time.time()
-    with st.spinner("⚡ Running AI restoration pipeline…"):
-        if pipeline is None:
-            st.error("AI pipeline failed to load. Check device status in sidebar.")
-            st.stop()
-        try:
-            enhanced_img = pipeline.process_image(
-                img,
-                w=fidelity_weight,
-                detection_model=face_detector,
-                upscale=upscale_factor,
-                blend_softness=blend_softness,
-                bg_upsampler='realesrgan' if bg_upscale_toggle else None,
-                det_threshold=det_threshold,
-                sharpen_amount=sharpen_amount,
-                face_upsample=face_upscale_toggle
-            )
-            process_duration = time.time() - start_time
-        except Exception as e:
-            st.error(f"Pipeline error: {e}")
-            st.stop()
+    # Async processing using a background thread
+    if not st.session_state.get('processing'):
+        # Initialize state
+        st.session_state.processing = True
+        progress_placeholder = st.empty()
+        progress_placeholder.text('🔄 Running AI restoration pipeline...')
+        result_container = {}
+        def _run():
+            try:
+                result = pipeline.process_image(
+                    img,
+                    w=fidelity_weight,
+                    detection_model=face_detector,
+                    upscale=upscale_factor,
+                    blend_softness=blend_softness,
+                    bg_upsampler='realesrgan' if bg_upscale_toggle else None,
+                    det_threshold=det_threshold,
+                    sharpen_amount=sharpen_amount,
+                    face_upsample=face_upscale_toggle,
+                    parallel=True,
+                    batch_size=4
+                )
+                result_container['enhanced_img'] = result
+            finally:
+                st.session_state.processing = False
+        threading.Thread(target=_run, daemon=True).start()
+        # Wait for result (polling)
+        while st.session_state.processing:
+            time.sleep(0.2)
+            progress_placeholder.text('⏳ Still processing...')
+        enhanced_img = result_container.get('enhanced_img')
+        process_duration = time.time() - start_time
+        progress_placeholder.empty()
+    else:
+        st.warning('Processing is already running. Please wait.')
+        st.stop()
 
     h_orig, w_orig = img.shape[:2]
     h_enh,  w_enh  = enhanced_img.shape[:2]
