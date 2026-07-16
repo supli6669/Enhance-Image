@@ -355,7 +355,22 @@ def main():
     print("#" * 60)
     # A. Official Skins (113 characters)
     download_official_skins("bluearchive", bluearchive_dir)
-    # B. Safebooru Mix
+    # B. Safebooru Characters
+    ba_chars = {
+        "shiroko": "shiroko_(blue_archive)",
+        "aru": "aru_(blue_archive)",
+        "hoshino": "hoshino_(blue_archive)",
+        "nonomi": "nonomi_(blue_archive)",
+        "serika": "serika_(blue_archive)",
+        "momoi": "momoi_(blue_archive)",
+        "midori": "midori_(blue_archive)",
+        "yuzu": "yuzu_(blue_archive)",
+        "mutsuki": "mutsuki_(blue_archive)",
+        "iori": "iori_(blue_archive)"
+    }
+    for key, tag in ba_chars.items():
+        download_from_safebooru(tag, bluearchive_dir, f"ba_{key}", 30)
+    # C. Safebooru Mix
     download_from_safebooru("blue_archive", bluearchive_dir, "ba_general", 300)
 
     # ─────────────────────────────────────────────────────────────

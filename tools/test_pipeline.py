@@ -36,7 +36,7 @@ def main():
         enhanced_img = pipeline.process_image(
             img, 
             w=0.5, 
-            detection_model='retinaface_resnet50', 
+            detection_model='retinaface_mobile0.25', 
             upscale=upscale, 
             blend_softness=0.5
         )

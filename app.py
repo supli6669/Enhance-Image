@@ -440,6 +440,16 @@ with st.sidebar:
             except Exception as e:
                 st.error(f"Failed to import settings: {e}")
 
+    if st.button("🔄 Reset UI State"):
+        st.session_state.processing = False
+        st.session_state.enhanced_img = None
+        st.session_state.processing_error = None
+        st.session_state.last_run_params = None
+        if pipeline:
+            pipeline.cancel_flag = False
+        st.success("UI State reset successfully!")
+        st.rerun()
+
     # ── Training Dashboard ──────────────────────────────────────────────────────
     st.markdown("<div class='sidebar-section'>📊 Training Dashboard</div>", unsafe_allow_html=True)
     status = get_training_status()
@@ -605,35 +615,37 @@ with tab_single:
 
         st.markdown("<hr>", unsafe_allow_html=True)
 
-        start_time = time.time()
-        # Async processing using a background thread
-        if not st.session_state.get('processing'):
-            # Initialize state
-            st.session_state.processing = True
-            st.session_state.progress_state = {'stage': None, 'progress': 0.0, 'message': '', 'active': False}
-            
-            # Progress bar and status
-            progress_bar = st.progress(0)
-            status_text = st.empty()
-            stage_text = st.empty()
-            
-            # Cancel button
-            cancel_col, _ = st.columns([1, 3])
-            with cancel_col:
-                cancel_button = st.button("❌ Cancel", type="secondary")
-            
-            if cancel_button:
-                st.session_state.progress_state['cancelled'] = True
-                st.warning("⚠️ Processing cancelled by user")
-                st.stop()
-            
-            result_container = {}
-            def _run():
-                max_retries = 2
-                retry_count = 0
-                last_error = None
+        # Track parameters to auto-rerun if they change
+        current_params = {
+            'img_name': img_name,
+            'w': fidelity_weight,
+            'detection_model': face_detector,
+            'upscale': upscale_factor,
+            'blend_softness': blend_softness,
+            'bg_upsampler': 'realesrgan' if bg_upscale_toggle else None,
+            'det_threshold': det_threshold,
+            'sharpen_amount': sharpen_amount,
+            'face_upsample': face_upscale_toggle,
+            'face_restore': enable_face_restoration
+        }
+        
+        if st.session_state.get('last_run_params') != current_params:
+            st.session_state.enhanced_img = None
+            st.session_state.processing_error = None
+            st.session_state.processing = False
+            st.session_state.process_duration = None
+            if pipeline:
+                pipeline.cancel_flag = False
+
+        if st.session_state.enhanced_img is None and st.session_state.get('processing_error') is None:
+            if not st.session_state.get('processing'):
+                st.session_state.processing = True
+                st.session_state.progress_state = {'stage': 'initialization', 'progress': 0.0, 'message': 'Starting...', 'active': True, 'cancelled': False}
+                st.session_state.start_time = time.time()
+                if pipeline:
+                    pipeline.cancel_flag = False
                 
-                while retry_count <= max_retries:
+                def _run():
                     try:
                         result = pipeline.process_image(
                             img,
@@ -649,68 +661,78 @@ with tab_single:
                             batch_size=4,
                             face_restore=enable_face_restoration
                         )
-                        result_container['enhanced_img'] = result
-                        break
+                        if pipeline.cancel_flag:
+                            return
+                        st.session_state.enhanced_img = result
+                        st.session_state.process_duration = time.time() - st.session_state.start_time
+                        st.session_state.last_run_params = current_params
                     except Exception as e:
-                        last_error = e
-                        retry_count += 1
-                        if retry_count <= max_retries:
-                            st.session_state.progress_state['message'] = f"Retry {retry_count}/{max_retries}: {str(e)[:50]}..."
-                            time.sleep(1)
-                        else:
-                            result_container['error'] = str(e)
-                finally:
-                    st.session_state.processing = False
-                    st.session_state.progress_state['active'] = False
-            
-            threading.Thread(target=_run, daemon=True).start()
-            
-            # Wait for result (polling with progress updates)
-            stage_names = {
-                'initialization': '🔧 Initializing',
-                'detection': '👁️ Detecting Faces',
-                'background': '🖼️ Upscaling Background',
-                'restoration': '✨ Restoring Faces',
-                'blending': '🎨 Blending Faces',
-                'complete': '✅ Complete'
-            }
-            
-            while st.session_state.processing:
-                time.sleep(0.1)
+                        import traceback
+                        traceback.print_exc()
+                        st.session_state.processing_error = str(e)
+                    finally:
+                        st.session_state.processing = False
+                        st.session_state.progress_state['active'] = False
+
+                threading.Thread(target=_run, daemon=True).start()
+                st.rerun()
+
+            else:
+                # We are actively processing
+                progress_bar = st.progress(0)
+                status_text = st.empty()
+                stage_text = st.empty()
+                
+                stage_names = {
+                    'initialization': '🔧 Initializing',
+                    'detection': '👁️ Detecting Faces',
+                    'background': '🖼️ Upscaling Background',
+                    'restoration': '✨ Restoring Faces',
+                    'blending': '🎨 Blending Faces',
+                    'complete': '✅ Complete'
+                }
+                
                 progress_data = st.session_state.progress_state
-                
-                # Check for cancellation
-                if progress_data.get('cancelled', False):
-                    st.session_state.processing = False
-                    st.warning("⚠️ Processing cancelled by user")
-                    progress_bar.empty()
-                    status_text.empty()
-                    stage_text.empty()
-                    st.stop()
-                
-                if progress_data['active']:
+                if progress_data.get('active'):
                     stage_name = stage_names.get(progress_data['stage'], progress_data['stage'])
                     stage_text.text(f"**{stage_name}**")
                     status_text.text(progress_data['message'])
                     progress_bar.progress(progress_data['progress'])
                 else:
                     status_text.text('⏳ Starting...')
-            
-            enhanced_img = result_container.get('enhanced_img')
-            process_duration = time.time() - start_time
-            
-            # Clear progress UI
-            progress_bar.empty()
-            status_text.empty()
-            stage_text.empty()
-            
-            # Check for errors
-            if 'error' in result_container:
-                st.error(f"❌ Processing failed after retries: {result_container['error']}")
-                st.info("💡 Try reducing the upscale factor or disabling some features.")
+                
+                # Render Cancel button
+                cancel_col, _ = st.columns([1, 3])
+                with cancel_col:
+                    cancel_button = st.button("❌ Cancel", type="secondary")
+                
+                if cancel_button:
+                    if pipeline:
+                        pipeline.cancel_flag = True
+                    st.session_state.processing = False
+                    st.session_state.progress_state['cancelled'] = True
+                    st.warning("⚠️ Processing cancelled by user")
+                    st.rerun()
+                
+                time.sleep(0.1)
+                st.rerun()
                 st.stop()
-            
-            # Save to history
+
+        if st.session_state.get('processing_error') is not None:
+            st.error(f"❌ Processing failed: {st.session_state.processing_error}")
+            st.info("💡 Try reducing the upscale factor or disabling some features.")
+            if st.button("🔄 Try Again"):
+                st.session_state.processing_error = None
+                st.session_state.processing = False
+                st.rerun()
+            st.stop()
+
+        # If we reach here, we have the enhanced image
+        enhanced_img = st.session_state.enhanced_img
+        process_duration = st.session_state.process_duration
+
+        # Save to history
+        if st.session_state.get('history_added_for') != current_params:
             history_item = {
                 'name': img_name,
                 'timestamp': time.time(),
@@ -725,12 +747,9 @@ with tab_single:
                 'enhanced_shape': enhanced_img.shape[:2]
             }
             st.session_state.history.insert(0, history_item)
-            # Keep only last 10 items
             if len(st.session_state.history) > 10:
                 st.session_state.history = st.session_state.history[:10]
-        else:
-            st.warning('Processing is already running. Please wait.')
-            st.stop()
+            st.session_state.history_added_for = current_params
 
         h_orig, w_orig = img.shape[:2]
         h_enh,  w_enh  = enhanced_img.shape[:2]
@@ -853,6 +872,9 @@ with tab_batch:
     )
     if uploaded_files:
         if st.button("🚀 Process Batch", key="batch_button"):
+            if pipeline is None:
+                st.error("Cannot process batch: The AI Enhancer pipeline is offline or failed to initialize. Please check the logs.")
+                st.stop()
             import zipfile
             from io import BytesIO
             

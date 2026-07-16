@@ -7,7 +7,13 @@ import yaml
 import subprocess
 import glob
 
+import argparse
+
 def main():
+    parser = argparse.ArgumentParser(description="Train CodeFormer with custom parameters.")
+    parser.add_argument("--verify", action="store_true", help="Run 2 iterations for verification purposes.")
+    args = parser.parse_args()
+
     project_dir = os.path.dirname(os.path.abspath(__file__))
     codeformer_dir = os.path.join(project_dir, "models", "CodeFormer")
     
@@ -84,24 +90,31 @@ def main():
         except ValueError:
             continue
     
-    if latest_state and latest_state_iter < config.get("train", {}).get("total_iter", 50):
+    if latest_state:
         print(f"\n>>> RESUME MODE: Found checkpoint at iteration {latest_state_iter}")
         print(f"    State file: {latest_state}")
         config["path"]["resume_state"] = latest_state
-        # When resuming, we don't need pretrain_network_g as it will be loaded from state
         config["path"]["pretrain_network_g"] = None
-        print(f"    Resuming training from iter {latest_state_iter} to {config['train']['total_iter']}...")
-    elif latest_state and latest_state_iter >= config.get("train", {}).get("total_iter", 50):
-        print(f"\n>>> Training already completed ({latest_state_iter} >= {config['train']['total_iter']} total_iter)")
-        print("    To train more iterations, increase total_iter in the config.")
-        sys.exit(0)
+        if args.verify:
+            config["train"]["total_iter"] = latest_state_iter + 2
+            print(f"    Resuming training from iter {latest_state_iter} to {config['train']['total_iter']} (verification mode)...")
+        else:
+            if latest_state_iter >= config.get("train", {}).get("total_iter", 20000):
+                print(f"\n>>> Training already completed ({latest_state_iter} >= {config.get('train', {}).get('total_iter', 20000)} total_iter)")
+                sys.exit(0)
+            print(f"    Resuming training from iter {latest_state_iter} to {config['train']['total_iter']}...")
     else:
         print("\n>>> FRESH START: No previous checkpoint found. Starting from pretrained weights.")
+        if args.verify:
+            config["train"]["total_iter"] = 2
+            print(f"    Training from scratch to {config['train']['total_iter']} (verification mode)...")
+        else:
+            print(f"    Training from scratch to {config.get('train', {}).get('total_iter', 20000)}...")
     
     # Write back the updated configuration
     with open(config_path, "w", encoding="utf-8") as f:
         yaml.dump(config, f, default_flow_style=False, sort_keys=False)
-    print(f"Updated configuration file for device={device.upper()}, num_gpu={num_gpus}")
+    print(f"Updated configuration file: device={device.upper()}, num_gpu={num_gpus}, total_iter={config['train']['total_iter']}")
     
     # 5. Run the training process
     train_script = os.path.join("basicsr", "train.py")

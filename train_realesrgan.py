@@ -24,6 +24,9 @@ ANIME_DIR = os.path.join(DATASET_BASE, "anime")
 FACE_DIR = os.path.join(DATASET_BASE, "faces")
 STARRAIL_DIR = os.path.join(DATASET_BASE, "starrail")
 BLUEARCHIVE_DIR = os.path.join(DATASET_BASE, "bluearchive")
+DIV2K_DIR = os.path.join(DATASET_BASE, "div2k")
+FLICKR2K_DIR = os.path.join(DATASET_BASE, "flickr2k_subset")
+FFHQ1024_DIR = os.path.join(DATASET_BASE, "ffhq1024_subset")
 
 # Combined GT (high-quality) folder for Real-ESRGAN training
 REALESRGAN_GT_DIR = os.path.join(PROJECT_DIR, "datasets", "realesrgan_gt")
@@ -76,6 +79,9 @@ def prepare_gt_dataset():
         "face": FACE_DIR,
         "starrail": STARRAIL_DIR,
         "bluearchive": BLUEARCHIVE_DIR,
+        "div2k": DIV2K_DIR,
+        "flickr2k": FLICKR2K_DIR,
+        "ffhq1024": FFHQ1024_DIR,
     }
 
     for category, src_dir in sources.items():
@@ -300,6 +306,11 @@ def find_latest_state() -> str | None:
 
 
 def main():
+    import argparse
+    parser = argparse.ArgumentParser(description="Train Real-ESRGAN with custom parameters.")
+    parser.add_argument("--verify", action="store_true", help="Run 2 iterations for verification purposes.")
+    args = parser.parse_args()
+
     print("=" * 55)
     print("  Real-ESRGAN Custom Training Runner")
     print("  Target: Landscape + Anime + Face enhancement")
@@ -347,10 +358,27 @@ def main():
             cfg = yaml.safe_load(f)
         cfg["path"]["resume_state"] = latest_state
         cfg["path"]["pretrain_network_g"] = None
+        if args.verify:
+            cfg["train"]["total_iter"] = iter_num + 2
+            print(f"    Resuming training from iter {iter_num} to {cfg['train']['total_iter']} (verification mode)...")
+        else:
+            if iter_num >= cfg.get("train", {}).get("total_iter", 15000):
+                print(f"\n>>> Training already completed ({iter_num} >= {cfg.get('train', {}).get('total_iter', 15000)} total_iter)")
+                sys.exit(0)
+            print(f"    Resuming training from iter {iter_num} to {cfg['train']['total_iter']}...")
         with open(config_path, "w", encoding="utf-8") as f:
             yaml.dump(cfg, f, default_flow_style=False, sort_keys=False)
     else:
         print("\n>>> FRESH START: No previous checkpoint. Starting from scratch.")
+        with open(config_path, "r", encoding="utf-8") as f:
+            cfg = yaml.safe_load(f)
+        if args.verify:
+            cfg["train"]["total_iter"] = 2
+            print(f"    Training from scratch to {cfg['train']['total_iter']} (verification mode)...")
+        else:
+            print(f"    Training from scratch to {cfg.get('train', {}).get('total_iter', 15000)}...")
+        with open(config_path, "w", encoding="utf-8") as f:
+            yaml.dump(cfg, f, default_flow_style=False, sort_keys=False)
 
     # 6. Run training
     train_script = os.path.join("realesrgan", "train.py")
@@ -384,12 +412,8 @@ def main():
     # Real-ESRGAN's train.py imports from basicsr.
     # CodeFormer's basicsr lacks degradations module, so we use the full
     # BasicSR source cloned at D:\Temp\BasicSR_src (no install needed).
-    basicsr_src = r"D:\Temp\BasicSR_src"
-    codeformer_dir = os.path.join(PROJECT_DIR, "models", "CodeFormer")
     env["PYTHONPATH"] = os.path.pathsep.join([
         REALESRGAN_DIR,
-        basicsr_src,       # full BasicSR with degradations
-        codeformer_dir,    # fallback
         env.get("PYTHONPATH", ""),
     ])
 

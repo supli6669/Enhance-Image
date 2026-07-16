@@ -10,7 +10,7 @@ import os, cv2, glob
 # Source folder containing the raw character folders
 SRC_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "game_characters"))
 # Destination folder expected by CodeFormer
-DST_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "ffhq", "ffhq_512"))
+DST_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "models", "CodeFormer", "datasets", "ffhq", "ffhq_512"))
 
 os.makedirs(DST_ROOT, exist_ok=True)
 

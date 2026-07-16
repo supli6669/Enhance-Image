@@ -16,9 +16,11 @@ from facelib.utils.face_restoration_helper import FaceRestoreHelper
 # Configuration
 # ----------------------------------------------------------------------
 SRC_ROOT = os.path.join(project_dir, "datasets", "game_characters")
-DST_ROOT = os.path.join(project_dir, "datasets", "ffhq", "ffhq_512")
+DST_ROOT = os.path.join(project_dir, "models", "CodeFormer", "datasets", "ffhq", "ffhq_512")
 DETECTOR = "retinaface_mobile0.25"  # Fast CPU detector
 BLUR_THRESHOLD = 80.0  # Discard crops with Laplacian variance below this
+MIN_RESOLUTION = 128  # Discard raw images smaller than this
+MIN_FACE_COVERAGE = 0.15  # Discard face crops that cover less than 15% of the original image area
 
 def is_blurry(img, threshold=BLUR_THRESHOLD):
     """Check if an image is blurry using the variance of Laplacian method."""
@@ -33,9 +35,7 @@ def main():
     # Configure face detector path
     os.environ['FACE_DETECTOR_PATH'] = os.path.join(project_dir, "weights", "facelib")
     
-    # Clear and recreate destination folder
-    if os.path.exists(DST_ROOT):
-        shutil.rmtree(DST_ROOT)
+    # Ensure destination folder exists
     os.makedirs(DST_ROOT, exist_ok=True)
     
     # Initialize face helper
@@ -61,12 +61,20 @@ def main():
     count = 0
     failures = 0
     skipped_blur = 0
+    skipped_res = 0
+    skipped_coverage = 0
     
     for i, img_path in enumerate(raw_images):
         try:
             img = cv2.imread(img_path)
             if img is None:
                 failures += 1
+                continue
+                
+            # Resolution check
+            h_img, w_img, _ = img.shape
+            if h_img < MIN_RESOLUTION or w_img < MIN_RESOLUTION:
+                skipped_res += 1
                 continue
                 
             face_helper.clean_all()
@@ -87,18 +95,29 @@ def main():
             face_helper.align_warp_face()
             
             # Save cropped faces
-            for cropped_face in face_helper.cropped_faces:
+            for idx, cropped_face in enumerate(face_helper.cropped_faces):
+                # Face coverage check
+                if hasattr(face_helper, 'face_det_list') and idx < len(face_helper.face_det_list):
+                    det_box = face_helper.face_det_list[idx]
+                    x1, y1, x2, y2 = det_box[:4]
+                    face_area = (x2 - x1) * (y2 - y1)
+                    img_area = w_img * h_img
+                    ratio = face_area / img_area
+                    if ratio < MIN_FACE_COVERAGE:
+                        skipped_coverage += 1
+                        continue
+
                 # Blur filter check
                 if is_blurry(cropped_face):
                     skipped_blur += 1
                     continue
                     
                 count += 1
-                dest_path = os.path.join(DST_ROOT, f"face_{count:06d}.png")
+                dest_path = os.path.join(DST_ROOT, f"face_align_{count:06d}.png")
                 cv2.imwrite(dest_path, cropped_face)
                 
             if (i + 1) % 100 == 0:
-                print(f"  Processed {i + 1}/{len(raw_images)} images. Extracted {count} faces (skipped {skipped_blur} blurry)...")
+                print(f"  Processed {i + 1}/{len(raw_images)} images. Extracted {count} faces (skipped {skipped_blur} blurry, {skipped_coverage} small, {skipped_res} low-res)...")
                 
         except Exception as e:
             # print(f"Error processing {img_path}: {e}")
@@ -108,6 +127,8 @@ def main():
     print(f"  Total raw images: {len(raw_images)}")
     print(f"  Extracted face crops: {count}")
     print(f"  Skipped blurry crops: {skipped_blur}")
+    print(f"  Skipped low-res images: {skipped_res}")
+    print(f"  Skipped small face crops: {skipped_coverage}")
     print(f"  Failed loads: {failures}")
     print(f"  Destination: {DST_ROOT}\n")
 

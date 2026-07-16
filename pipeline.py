@@ -38,6 +38,7 @@ class LocalAIEnhancerPipeline:
             self.device = torch.device(device)
         
         self.progress_callback = progress_callback
+        self.cancel_flag = False
             
         print(f"[Pipeline] Initializing pipeline on device: {self.device}")
         
@@ -104,12 +105,7 @@ class LocalAIEnhancerPipeline:
     
     def _check_cancelled(self):
         """Check if processing was cancelled by user."""
-        if self.progress_callback:
-            # Check session state through callback
-            import streamlit as st
-            if hasattr(st, 'session_state') and 'progress_state' in st.session_state:
-                return st.session_state.progress_state.get('cancelled', False)
-        return False
+        return self.cancel_flag
     
     def _get_onnx_session(self, path, providers=None):
         """Get or create cached ONNX session."""
@@ -154,7 +150,7 @@ class LocalAIEnhancerPipeline:
 
     def run_onnx_batch(self, faces_np, w_val):
         """Helper to run ONNX batch inference."""
-        w_np = np.full((faces_np.shape[0], 1), w_val, dtype=np.float32)
+        w_np = np.full((faces_np.shape[0],), w_val, dtype=np.float32)
         ort_inputs = {
             self.ort_session_cf.get_inputs()[0].name: faces_np,
             self.ort_session_cf.get_inputs()[1].name: w_np

@@ -31,11 +31,11 @@ def download_file(url, save_path):
 
 def main():
     weights_to_download = {
-        "weights/CodeFormer/codeformer.pth": "https://github.com/sczhou/CodeFormer/releases/download/v0.1.0/codeformer.pth",
-        "weights/facelib/detection_Resnet50_Final.pth": "https://github.com/sczhou/CodeFormer/releases/download/v0.1.0/detection_Resnet50_Final.pth",
-        "weights/facelib/parsing_parsenet.pth": "https://github.com/sczhou/CodeFormer/releases/download/v0.1.0/parsing_parsenet.pth",
-        "weights/facelib/yolov5l-face.pth": "https://github.com/sczhou/CodeFormer/releases/download/v0.1.0/yolov5l-face.pth",
-        "weights/realesrgan/RealESRGAN_x2plus.pth": "https://github.com/sczhou/CodeFormer/releases/download/v0.1.0/RealESRGAN_x2plus.pth"
+        "weights/CodeFormer/codeformer.pth": "https://huggingface.co/spaces/sczhou/CodeFormer/resolve/main/weights/CodeFormer/codeformer.pth",
+        "weights/facelib/detection_Resnet50_Final.pth": "https://huggingface.co/spaces/sczhou/CodeFormer/resolve/main/weights/facelib/detection_Resnet50_Final.pth",
+        "weights/facelib/parsing_parsenet.pth": "https://huggingface.co/spaces/sczhou/CodeFormer/resolve/main/weights/facelib/parsing_parsenet.pth",
+        "weights/facelib/yolov5l-face.pth": "https://huggingface.co/spaces/sczhou/CodeFormer/resolve/main/weights/facelib/yolov5l-face.pth",
+        "weights/realesrgan/RealESRGAN_x2plus.pth": "https://huggingface.co/spaces/sczhou/CodeFormer/resolve/main/weights/realesrgan/RealESRGAN_x2plus.pth"
     }
     
     for save_path, url in weights_to_download.items():

@@ -104,7 +104,7 @@ def export_codeformer():
         print(f"[WARNING] ONNX validation failed: {e}")
         return True
 
-def export_realesrgan():
+def export_realesrgan(num_block=None):
     print("\n--- Exporting Real-ESRGAN to ONNX ---")
     device = torch.device("cpu")
     
@@ -115,21 +115,26 @@ def export_realesrgan():
     if checkpoint_path:
         print(f"Found custom Real-ESRGAN checkpoint: {checkpoint_path}")
         scale = 4
+        default_blocks = 6
     else:
         checkpoint_path = os.path.join(project_dir, "weights", "realesrgan", "RealESRGAN_x2plus.pth")
         print(f"No custom checkpoint found. Using pretrained weights: {checkpoint_path}")
         scale = 2
+        default_blocks = 23
         
     if not os.path.exists(checkpoint_path):
         print(f"[ERROR] Real-ESRGAN weights not found at: {checkpoint_path}")
         return False
         
+    blocks = num_block if num_block is not None else default_blocks
+    print(f"Instantiating RRDBNet with scale={scale}, num_block={blocks}")
+    
     # 2. Instantiate RRDBNet architecture with correct scale
     net = RRDBNet(
         num_in_ch=3,
         num_out_ch=3,
         num_feat=64,
-        num_block=23,
+        num_block=blocks,
         num_grow_ch=32,
         scale=scale
     )
@@ -175,8 +180,13 @@ def export_realesrgan():
         return True
 
 def main():
+    import argparse
+    parser = argparse.ArgumentParser(description="Export CodeFormer and Real-ESRGAN models to ONNX")
+    parser.add_argument('--num-block', type=int, default=None, help="Number of RRDB blocks for Real-ESRGAN (defaults to 6 for custom checkpoint, 23 for pretrained)")
+    args = parser.parse_args()
+    
     success_cf = export_codeformer()
-    success_re = export_realesrgan()
+    success_re = export_realesrgan(num_block=args.num_block)
     if success_cf and success_re:
         print("\n=== ALL MODELS EXPORTED SUCCESSFULLY ===")
     else:
