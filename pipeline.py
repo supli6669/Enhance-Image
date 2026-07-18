@@ -533,9 +533,20 @@ class LocalAIEnhancerPipeline:
                 parse_mask = cv2.resize(parse_mask, face_size)
                 parse_mask = cv2.warpAffine(parse_mask, inv_aff, (w_up, h_up), flags=3)
                 inv_soft_parse_mask = parse_mask[:, :, None]
+                # Squeeze to 2D and convert to standard contiguous float32 arrays to avoid stride/broadcast issues
+                mask1 = np.ascontiguousarray(inv_soft_parse_mask.squeeze(), dtype=np.float32)
+                mask2 = np.ascontiguousarray(inv_soft_mask.squeeze(), dtype=np.float32)
                 
-                # Intersect soft boundary mask with face feature parsing mask
-                fuse_mask = (inv_soft_parse_mask < inv_soft_mask).astype('int')
+                # Intersect soft boundary mask with face feature parsing mask in 2D
+                fuse_mask_2d = (mask1 < mask2).astype(np.float32)
+                fuse_mask = fuse_mask_2d[:, :, None]
+                
+                # Ensure original masks are properly shaped in 3D
+                if len(inv_soft_mask.shape) == 2:
+                    inv_soft_mask = inv_soft_mask[:, :, None]
+                if len(inv_soft_parse_mask.shape) == 2:
+                    inv_soft_parse_mask = inv_soft_parse_mask[:, :, None]
+                    
                 inv_soft_mask = inv_soft_parse_mask * fuse_mask + inv_soft_mask * (1 - fuse_mask)
             
             # Merge restored face onto the background
