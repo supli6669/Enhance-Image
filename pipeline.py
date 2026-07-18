@@ -12,6 +12,17 @@ try:
 except ImportError:
     HAS_ONNX = False
 
+def _get_ort_providers():
+    if not HAS_ONNX:
+        return []
+    try:
+        available = ort.get_available_providers()
+        preferred = ['OpenVINOExecutionProvider', 'CPUExecutionProvider']
+        providers = [p for p in preferred if p in available]
+        return providers if providers else ['CPUExecutionProvider']
+    except Exception:
+        return ['CPUExecutionProvider']
+
 # Ensure CodeFormer and tools directories are on sys.path
 project_dir = os.path.dirname(os.path.abspath(__file__))
 codeformer_dir = os.path.join(project_dir, "models", "CodeFormer")
@@ -62,7 +73,7 @@ class LocalAIEnhancerPipeline:
             print(f"[Pipeline] ONNX models detected! Using ONNX Runtime for CodeFormer inference.")
             opts = ort.SessionOptions()
             opts.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
-            self.ort_session_cf = ort.InferenceSession(codeformer_onnx_path, sess_options=opts, providers=['OpenVINOExecutionProvider', 'CPUExecutionProvider'])
+            self.ort_session_cf = ort.InferenceSession(codeformer_onnx_path, sess_options=opts, providers=_get_ort_providers())
             self.net = None
             print("[Pipeline] CodeFormer ONNX model loaded successfully.")
         else:
@@ -113,7 +124,7 @@ class LocalAIEnhancerPipeline:
             opts = ort.SessionOptions()
             opts.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
             if providers is None:
-                providers = ['OpenVINOExecutionProvider', 'CPUExecutionProvider']
+                providers = _get_ort_providers()
             self._onnx_session_cache[path] = ort.InferenceSession(path, sess_options=opts, providers=providers)
         return self._onnx_session_cache[path]
 
@@ -130,7 +141,7 @@ class LocalAIEnhancerPipeline:
             print("[Pipeline] Loading Real-ESRGAN ONNX Runtime Session...")
             opts = ort.SessionOptions()
             opts.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
-            self.ort_session_re = ort.InferenceSession(self.realesrgan_onnx_path, sess_options=opts, providers=['OpenVINOExecutionProvider', 'CPUExecutionProvider'])
+            self.ort_session_re = ort.InferenceSession(self.realesrgan_onnx_path, sess_options=opts, providers=_get_ort_providers())
             
         ort_inputs = {self.ort_session_re.get_inputs()[0].name: img_input}
         ort_outs = self.ort_session_re.run(None, ort_inputs)

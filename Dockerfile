@@ -11,6 +11,10 @@ RUN apt-get update && apt-get install -y \
 
 WORKDIR /app
 
+# Set environment variables for non-interactive python behavior and logging
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1
+
 # Upgrade pip and install wheel/setuptools
 RUN pip install --no-cache-dir --upgrade pip setuptools wheel
 
@@ -18,8 +22,8 @@ RUN pip install --no-cache-dir --upgrade pip setuptools wheel
 RUN pip install --no-cache-dir torch torchvision --index-url https://download.pytorch.org/whl/cpu
 
 # Copy and execute the custom BasicSR patch script to install basicsr on Python 3.11+
-COPY patch_and_install_basicsr.py /app/
-RUN python patch_and_install_basicsr.py
+COPY tools/patch_and_install_basicsr.py /app/tools/
+RUN python tools/patch_and_install_basicsr.py
 
 # Copy requirements and install the remaining packages
 COPY requirements.txt /app/

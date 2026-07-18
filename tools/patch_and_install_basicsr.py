@@ -46,21 +46,16 @@ def main():
     with open(setup_py_path, "w", encoding="utf-8") as f:
         f.write(content)
         
-    # 4. Install using the virtual environment's pip
-    # Since we are on Windows, the python path is .venv\Scripts\python.exe
-    venv_python = os.path.join(project_dir, ".venv", "Scripts", "python.exe")
-    if not os.path.exists(venv_python):
-        print(f"Virtual environment python not found at {venv_python}")
-        sys.exit(1)
-        
-    print(f"Installing BasicSR into virtual environment using {venv_python}...")
+    # 4. Install using the current python executable's pip
+    python_exe = sys.executable
+    print(f"Installing BasicSR using {python_exe}...")
     # We set BASICSR_EXT=True to compile if needed, or leave it default
     # BasicSR by default tries to compile CUDA extensions. To prevent build failures on systems without CUDA compiler,
     # we can disable building extensions by not setting BASICSR_EXT=True or explicitly setting BASICSR_EXT=False if needed.
     # Usually, leaving it default installs the pure Python code + basic setup.
     env = os.environ.copy()
     env["BASICSR_EXT"] = "False"  # Force pure Python installation to avoid needing a C++ compiler
-    subprocess.run([venv_python, "-m", "pip", "install", temp_dir], env=env, check=True)
+    subprocess.run([python_exe, "-m", "pip", "install", temp_dir], env=env, check=True)
     
     # 5. Clean up
     print("Cleaning up temp directory...")
