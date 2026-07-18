@@ -33,13 +33,13 @@ def main():
     project_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     
     weights_to_download = {
-        "weights/CodeFormer/codeformer.pth": "https://huggingface.co/spaces/sczhou/CodeFormer/resolve/main/weights/CodeFormer/codeformer.pth",
-        "weights/facelib/detection_Resnet50_Final.pth": "https://huggingface.co/spaces/sczhou/CodeFormer/resolve/main/weights/facelib/detection_Resnet50_Final.pth",
+        "weights/CodeFormer/codeformer.pth": "https://github.com/sczhou/CodeFormer/releases/download/v0.1.0/codeformer.pth",
+        "weights/facelib/detection_Resnet50_Final.pth": "https://github.com/sczhou/CodeFormer/releases/download/v0.1.0/detection_Resnet50_Final.pth",
         "weights/facelib/detection_mobilenet0.25_Final.pth": "https://github.com/sczhou/CodeFormer/releases/download/v0.1.0/detection_mobilenet0.25_Final.pth",
-        "weights/facelib/parsing_parsenet.pth": "https://huggingface.co/spaces/sczhou/CodeFormer/resolve/main/weights/facelib/parsing_parsenet.pth",
-        "weights/facelib/yolov5l-face.pth": "https://huggingface.co/spaces/sczhou/CodeFormer/resolve/main/weights/facelib/yolov5l-face.pth",
+        "weights/facelib/parsing_parsenet.pth": "https://github.com/sczhou/CodeFormer/releases/download/v0.1.0/parsing_parsenet.pth",
+        "weights/facelib/yolov5l-face.pth": "https://github.com/sczhou/CodeFormer/releases/download/v0.1.0/yolov5l-face.pth",
         "weights/facelib/yolov5n-face.pth": "https://github.com/sczhou/CodeFormer/releases/download/v0.1.0/yolov5n-face.pth",
-        "weights/realesrgan/RealESRGAN_x2plus.pth": "https://huggingface.co/spaces/sczhou/CodeFormer/resolve/main/weights/realesrgan/RealESRGAN_x2plus.pth"
+        "weights/realesrgan/RealESRGAN_x2plus.pth": "https://github.com/xinntao/Real-ESRGAN/releases/download/v0.2.1/RealESRGAN_x2plus.pth"
     }
     
     for rel_path, url in weights_to_download.items():
