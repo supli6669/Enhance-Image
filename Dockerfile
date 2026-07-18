@@ -5,7 +5,7 @@ FROM python:3.11-slim
 RUN apt-get update && apt-get install -y \
     git \
     build-essential \
-    libgl1-mesa-glx \
+    libgl1 \
     libglib2.0-0 \
     && rm -rf /var/lib/apt/lists/*
 
@@ -18,8 +18,8 @@ ENV PYTHONUNBUFFERED=1 \
 # Upgrade pip and install wheel/setuptools
 RUN pip install --no-cache-dir --upgrade pip setuptools wheel
 
-# Optimization: Pre-install CPU-only PyTorch & Torchvision to keep Docker image small
-RUN pip install --no-cache-dir torch torchvision --index-url https://download.pytorch.org/whl/cpu
+# Optimization: Pre-install CPU-only PyTorch, Torchvision and NumPy to keep Docker image small
+RUN pip install --no-cache-dir torch torchvision numpy --index-url https://download.pytorch.org/whl/cpu
 
 # Copy and execute the custom BasicSR patch script to install basicsr on Python 3.11+
 COPY tools/patch_and_install_basicsr.py /app/tools/
