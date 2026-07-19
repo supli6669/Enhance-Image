@@ -475,3 +475,197 @@ face_helper.read_image(img)
 
 ### Git Commit & Push Status
 - **Status:** Push completed to origin (GitHub) and hf (Hugging Face Spaces) main branch.
+
+---
+
+## Task 11: Full Bug Audit & Backlog
+
+**Date:** 2026-07-19
+**Status:** 🔵 In Progress — Bugs identified, fixes pending
+
+### Overview
+Performed a full static code audit of [`app.py`](file:///d:/.gemini-scratch/custom-ai-enhancer/app.py), [`pipeline.py`](file:///d:/.gemini-scratch/custom-ai-enhancer/pipeline.py), [`Dockerfile`](file:///d:/.gemini-scratch/custom-ai-enhancer/Dockerfile), and [`.github/workflows/hf_sync.yml`](file:///d:/.gemini-scratch/custom-ai-enhancer/.github/workflows/hf_sync.yml). Found **12 bugs** total.
+
+> **Pipeline import status:** ✅ `from pipeline import LocalAIEnhancerPipeline` succeeds locally.
+
+---
+
+### Bug Backlog (Priority Order)
+
+| # | Status | Sev | File | Description |
+|---|--------|-----|------|-------------|
+| B1 | ❌ Open | 🔴 Critical | app.py | `processing`, `enhanced_img`, `processing_error`, `process_duration` used with no init guard |
+| B2 | ❌ Open | 🔴 Critical | pipeline.py | `enhance_realesrgan_onnx()` sends full image to ONNX without tiling — OOM on large images |
+| B3 | ❌ Open | 🟠 High | pipeline.py | Parallel ONNX face processing shares `ort_session_cf` across threads — not thread-safe |
+| B4 | ❌ Open | 🟠 High | app.py | Batch tab calls `pipeline.process_image()` synchronously on main thread — UI freezes |
+| B5 | ❌ Open | 🟠 High | app.py | Dead `progress_callback()` (line 272) still writes `session_state` from thread — dangerous |
+| B6 | ❌ Open | 🟡 Medium | app.py | `st.session_state.start_time` read in background thread without init guard |
+| B7 | ❌ Open | 🟡 Medium | pipeline.py | `face_helper.face_size` assumed to be tuple, can be `int` on some facexlib versions |
+| B8 | ❌ Open | 🟡 Medium | app.py | Training dashboard regex only captures `cross_entropy_loss` — Real-ESRGAN runs show `0.0` |
+| B9 | ❌ Open | 🟡 Medium | app.py | Keyboard shortcut `Esc` uses `button:contains()` — invalid CSS, Cancel never fires |
+| B10 | ❌ Open | 🟢 Low | app.py | `split_img` computed twice — once in Split Screen view, once in Download section |
+| B11 | ❌ Open | 🟢 Low | Dockerfile | `patch_and_install_basicsr.py` does `git clone` at build time — fails on slow/offline network |
+| B12 | ❌ Open | 🟢 Low | app.py | CSS `li::before { display:flex }` on pseudo-element — non-standard, visual glitch in some browsers |
+
+---
+
+### Bug Details
+
+#### B1 — 🔴 Session State Keys Have No Initialization Guard
+**File:** [`app.py`](file:///d:/.gemini-scratch/custom-ai-enhancer/app.py) lines 219–243 (init block) and 635–643 (first use)
+
+`progress_state`, `presets`, `history`, `dark_mode` are all guarded with `if 'x' not in st.session_state`. But `processing`, `enhanced_img`, `processing_error`, `process_duration`, `start_time` are **never initialized** — they are directly assigned at line 636. On a cold start where `last_run_params` is `None` and no params have changed, the code jumps straight to line 643 (`st.session_state.enhanced_img is None`) and crashes with `AttributeError`.
+
+**Fix:** Add to the init block (after line 226):
+```python
+for key, default in [
+    ('processing', False),
+    ('enhanced_img', None),
+    ('processing_error', None),
+    ('process_duration', None),
+    ('start_time', None),
+    ('last_run_params', None),
+    ('history_added_for', None),
+]:
+    if key not in st.session_state:
+        st.session_state[key] = default
+```
+
+---
+
+#### B2 — 🔴 ONNX RealESRGAN Has No Tiling — OOM on Large Images
+**File:** [`pipeline.py`](file:///d:/.gemini-scratch/custom-ai-enhancer/pipeline.py) lines 134–163
+
+`enhance_realesrgan_onnx()` takes the entire image as a single input tensor. For a 1920×1080 image, this creates a `[1, 3, 1080, 1920]` float32 tensor. The ONNX model produces large intermediate activations and will OOM on memory-constrained environments (e.g. HF Spaces Free Tier ~16GB). The PyTorch path correctly uses `tile=400, tile_pad=40`.
+
+**Fix:** Implement tile-based inference inside `enhance_realesrgan_onnx()`:
+- Split image into overlapping 400px tiles with 40px padding
+- Run ONNX on each tile separately
+- Stitch tiles back together with a linear blend at seams
+
+---
+
+#### B3 — 🟠 Parallel ONNX Race on Shared Session
+**File:** [`pipeline.py`](file:///d:/.gemini-scratch/custom-ai-enhancer/pipeline.py) lines 349–383
+
+When `parallel=True` and ONNX is active, multiple `ThreadPoolExecutor` workers call `self.ort_session_cf.run()` concurrently on the **same** session object. ONNX Runtime does not guarantee concurrent `.run()` calls on the same `InferenceSession` are safe. Random errors like `Invalid tensor shape` or `OrtValue index out of range` may occur when multiple faces are detected.
+
+**Fix:** Add a `threading.Lock` around `ort_session_cf.run()` in `run_onnx_batch()`, or spawn a separate session per thread using `self._get_onnx_session()`.
+
+---
+
+#### B4 — 🟠 Batch Tab Freezes UI (Synchronous Main Thread)
+**File:** [`app.py`](file:///d:/.gemini-scratch/custom-ai-enhancer/app.py) lines 932–991
+
+The single-image tab was fixed to run `pipeline.process_image()` in a background thread. The batch tab still runs it synchronously on the Streamlit main thread in a `for` loop. For 10 images at ~30s each, the entire Streamlit app is frozen for ~5 minutes.
+
+**Fix:** Wrap the batch loop in a background thread using `queue.Queue`, same pattern as the single-image tab. Post per-image results to the queue; main thread polls and updates `st.progress`.
+
+---
+
+#### B5 — 🟠 Dead `progress_callback` Writes `session_state` From Thread
+**File:** [`app.py`](file:///d:/.gemini-scratch/custom-ai-enhancer/app.py) lines 272–281
+
+```python
+def progress_callback(stage, progress, message):
+    st.session_state.progress_state = { ... }  # ← thread-unsafe write
+```
+
+This function is never used (replaced by the queue-based `local_progress_callback`). But it's still defined and the pipeline is initialized with `LocalAIEnhancerPipeline()` (no callback). If a future agent accidentally passes it to the constructor, the original thread-safety bug returns.
+
+**Fix:** Delete this function entirely, or rename to `_DEPRECATED_progress_callback` with a `raise NotImplementedError` body.
+
+---
+
+#### B6 — 🟡 `start_time` Read in Thread Without Guard
+**File:** [`app.py`](file:///d:/.gemini-scratch/custom-ai-enhancer/app.py) line 689
+
+```python
+'duration': time.time() - st.session_state.start_time,
+```
+
+If the session is lost between thread launch and result receipt (browser refresh, timeout), this raises `AttributeError`. Fix: use `st.session_state.get('start_time', time.time())`.
+
+---
+
+#### B7 — 🟡 `face_helper.face_size` Can Be `int` Not Tuple
+**File:** [`pipeline.py`](file:///d:/.gemini-scratch/custom-ai-enhancer/pipeline.py) lines 459, 463, 468, 478
+
+`face_helper.face_size[0]` and `face_helper.face_size[1]` are used extensively. On some `facexlib` versions, `face_size` is set to `512` (int) not `(512, 512)` (tuple). Indexing an int raises `TypeError`.
+
+**Fix:** At top of `paste_faces_custom_blend()`:
+```python
+fs = face_helper.face_size
+face_size = fs if isinstance(fs, tuple) else (fs, fs)
+```
+Then replace all `face_helper.face_size` usages with `face_size`.
+
+---
+
+#### B8 — 🟡 Training Dashboard Loss = 0.0 for Real-ESRGAN
+**File:** [`app.py`](file:///d:/.gemini-scratch/custom-ai-enhancer/app.py) line 361
+
+```python
+loss_match = re.search(r"cross_entropy_loss:\s*([\d.e+-]+)", line)
+```
+
+Real-ESRGAN logs use keys like `l_g_pix`, `l_g_percep`, `l_g_gan`. The regex only matches `cross_entropy_loss` (CodeFormer-specific). All Real-ESRGAN training sessions show loss `0.0`.
+
+**Fix:**
+```python
+loss_match = (
+    re.search(r"cross_entropy_loss:\s*([\d.e+-]+)", line) or
+    re.search(r"l_g_pix:\s*([\d.e+-]+)", line) or
+    re.search(r"l_g_percep:\s*([\d.e+-]+)", line)
+)
+```
+
+---
+
+#### B9 — 🟡 `Esc` Keyboard Shortcut Uses Invalid CSS Selector
+**File:** [`app.py`](file:///d:/.gemini-scratch/custom-ai-enhancer/app.py) lines 324–328
+
+```javascript
+const cancelButton = document.querySelector('button:contains("Cancel")');
+```
+
+`:contains()` is a jQuery pseudo-selector. It does not exist in native browser `document.querySelector`. This always returns `null`, so `Esc` never cancels.
+
+**Fix:**
+```javascript
+const cancelButton = Array.from(document.querySelectorAll('button')).find(b => b.textContent.includes('Cancel'));
+if (cancelButton) cancelButton.click();
+```
+
+---
+
+#### B10 — 🟢 `split_img` Computed Twice
+**File:** [`app.py`](file:///d:/.gemini-scratch/custom-ai-enhancer/app.py) lines 855–858 and 874–876
+
+`split_img` is created inside the `"🌗 Split Screen"` view mode block and also recreated unconditionally in the Download section. Cache and reuse.
+
+---
+
+#### B11 — 🟢 Dockerfile `git clone` at Build Time
+**File:** [`Dockerfile`](file:///d:/.gemini-scratch/custom-ai-enhancer/Dockerfile) lines 25–26
+
+`patch_and_install_basicsr.py` clones BasicSR from GitHub at Docker build time. This fails silently on network-restricted or rate-limited build runners. Consider vendoring BasicSR or caching the wheel as a pre-built artifact.
+
+---
+
+#### B12 — 🟢 CSS `::before { display:flex }` Non-Standard
+**File:** [`app.py`](file:///d:/.gemini-scratch/custom-ai-enhancer/app.py) lines 185–191
+
+`display:flex` on `::before` pseudo-elements is non-standard and inconsistent across browsers. Change to `display:inline-flex` or use `display:grid` with `place-items:center`.
+
+---
+
+### Notes for Future Agents
+- Fix **B1 first** — it's a cold-start crash, very small change, high impact.
+- Fix **B5 second** — delete/disable the dead `progress_callback` to prevent accidental regression.
+- Fix **B7 third** — one-liner, prevents `TypeError` on some facexlib versions.
+- **B2** (ONNX tiling) is the most complex fix — needs careful implementation to avoid seam artifacts.
+- **B3, B4** are parallel/threading refactors — do them together.
+- **B8, B9** are small regex/JS fixes — can be done as a single minor patch commit.
+- **B10–B12** are cosmetic/housekeeping — batch at end of any session.
+
