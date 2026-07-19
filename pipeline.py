@@ -3,6 +3,7 @@ import sys
 import cv2
 import numpy as np
 import torch
+import threading
 from concurrent.futures import ThreadPoolExecutor
 from torchvision.transforms.functional import normalize
 
@@ -108,6 +109,9 @@ class LocalAIEnhancerPipeline:
             
         # Cache for FaceRestoreHelper instances
         self._face_helper_cache = {}
+        
+        # Threading lock for concurrent ONNX inference sessions
+        self.cf_onnx_lock = threading.Lock()
 
         # Report initialization complete
         self._report_progress("initialization", 1.0, "Pipeline ready!")
@@ -169,9 +173,9 @@ class LocalAIEnhancerPipeline:
             self.ort_session_cf.get_inputs()[0].name: faces_np,
             self.ort_session_cf.get_inputs()[1].name: w_np
         }
-        ort_outs = self.ort_session_cf.run(None, ort_inputs)
+        with self.cf_onnx_lock:
+            ort_outs = self.ort_session_cf.run(None, ort_inputs)
         return ort_outs[0]
-
     def process_image(self, img, w=0.5, detection_model='retinaface_mobile0.25', upscale=2, blend_softness=0.5, bg_upsampler=None, det_threshold=0.5, sharpen_amount=0.0, face_upsample=False, batch_size=0, parallel=False, face_restore=True):
         """
         Enhance an image using the local CodeFormer pipeline.

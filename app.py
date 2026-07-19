@@ -251,6 +251,11 @@ for key, default in [
     ('start_time', None),
     ('last_run_params', None),
     ('history_added_for', None),
+    ('batch_processing', False),
+    ('batch_progress', 0.0),
+    ('batch_status', ""),
+    ('batch_zip_data', None),
+    ('batch_error', None),
 ]:
     if key not in st.session_state:
         st.session_state[key] = default
@@ -928,7 +933,6 @@ with tab_single:
             </ol>
         </div>
         """, unsafe_allow_html=True)
-
 with tab_batch:
     uploaded_files = st.file_uploader(
         "Upload multiple images to process",
@@ -937,66 +941,162 @@ with tab_batch:
         key="batch_uploader"
     )
     if uploaded_files:
-        if st.button("🚀 Process Batch", key="batch_button"):
-            if pipeline is None:
-                st.error("Cannot process batch: The AI Enhancer pipeline is offline or failed to initialize. Please check the logs.")
-                st.stop()
-            import zipfile
-            from io import BytesIO
+        # If not processing and no zip data, display start button
+        if not st.session_state.get('batch_processing') and st.session_state.get('batch_zip_data') is None and st.session_state.get('batch_error') is None:
+            if st.button("🚀 Process Batch", key="batch_button"):
+                if pipeline is None:
+                    st.error("Cannot process batch: The AI Enhancer pipeline is offline or failed to initialize. Please check the logs.")
+                    st.stop()
+                
+                # Reset states
+                st.session_state.batch_processing = True
+                st.session_state.batch_progress = 0.0
+                st.session_state.batch_status = "Initializing batch processing..."
+                st.session_state.batch_zip_data = None
+                st.session_state.batch_error = None
+                if pipeline:
+                    pipeline.cancel_flag = False
+                
+                # Decode all images into memory immediately to prevent UploadedFile close issues on reruns
+                batch_tasks = []
+                for file in uploaded_files:
+                    try:
+                        file_bytes = np.asarray(bytearray(file.read()), dtype=np.uint8)
+                        img_b = cv2.imdecode(file_bytes, 1)
+                        if img_b is not None:
+                            batch_tasks.append((file.name, img_b))
+                    except Exception as e:
+                        st.warning(f"Could not read {file.name}: {e}")
+                
+                if not batch_tasks:
+                    st.error("No valid images found to process.")
+                    st.session_state.batch_processing = False
+                    st.stop()
+                
+                # Queue IPC
+                batch_queue = queue.Queue()
+                st.session_state._batch_queue = batch_queue
+                
+                def _run_batch():
+                    try:
+                        import zipfile
+                        from io import BytesIO
+                        zip_buffer = BytesIO()
+                        total = len(batch_tasks)
+                        
+                        with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
+                            for idx, (name, img_b) in enumerate(batch_tasks):
+                                if pipeline.cancel_flag:
+                                    break
+                                
+                                batch_queue.put({
+                                    'type': 'progress',
+                                    'progress': idx / total,
+                                    'status': f"Processing ({idx+1}/{total}): {name}"
+                                })
+                                
+                                result = pipeline.process_image(
+                                    img_b,
+                                    w=fidelity_weight,
+                                    detection_model=face_detector,
+                                    upscale=upscale_factor,
+                                    blend_softness=blend_softness,
+                                    bg_upsampler='realesrgan' if bg_upscale_toggle else None,
+                                    det_threshold=det_threshold,
+                                    sharpen_amount=sharpen_amount,
+                                    face_upsample=face_upscale_toggle,
+                                    parallel=True,
+                                    batch_size=4,
+                                    face_restore=enable_face_restoration
+                                )
+                                
+                                ok, buf = cv2.imencode(".png", result)
+                                if ok:
+                                    zip_file.writestr(f"enhanced_{name}", BytesIO(buf).getvalue())
+                        
+                        if pipeline.cancel_flag:
+                            batch_queue.put({'type': 'cancelled'})
+                        else:
+                            batch_queue.put({
+                                'type': 'result',
+                                'zip_data': zip_buffer.getvalue()
+                            })
+                    except Exception as e:
+                        import traceback
+                        traceback.print_exc()
+                        batch_queue.put({
+                            'type': 'error',
+                            'error': str(e)
+                        })
+                
+                threading.Thread(target=_run_batch, daemon=True).start()
+                st.rerun()
+
+        # If actively processing, render progress bar and Cancel button
+        elif st.session_state.get('batch_processing'):
+            bq = st.session_state.get('_batch_queue')
+            if bq is not None:
+                while not bq.empty():
+                    try:
+                        msg = bq.get_nowait()
+                        if msg['type'] == 'progress':
+                            st.session_state.batch_progress = msg['progress']
+                            st.session_state.batch_status = msg['status']
+                        elif msg['type'] == 'result':
+                            st.session_state.batch_zip_data = msg['zip_data']
+                            st.session_state.batch_processing = False
+                            st.rerun()
+                        elif msg['type'] == 'cancelled':
+                            st.session_state.batch_processing = False
+                            st.session_state.batch_zip_data = None
+                            st.session_state.batch_error = "Processing cancelled by user."
+                            st.rerun()
+                        elif msg['type'] == 'error':
+                            st.session_state.batch_error = msg['error']
+                            st.session_state.batch_processing = False
+                            st.rerun()
+                    except queue.Empty:
+                        break
             
-            if pipeline:
-                pipeline.progress_callback = None
-            zip_buffer = BytesIO()
-            with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
-                # Progress bar and status
-                batch_progress = st.progress(0)
-                status_text = st.empty()
-                
-                total_files = len(uploaded_files)
-                for idx, file in enumerate(uploaded_files):
-                    status_text.text(f"Processing ({idx+1}/{total_files}): {file.name}")
-                    
-                    # decode image
-                    file_bytes = np.asarray(bytearray(file.read()), dtype=np.uint8)
-                    img_b = cv2.imdecode(file_bytes, 1)
-                    
-                    if img_b is None:
-                        st.warning(f"Could not decode {file.name}, skipping.")
-                        continue
-                        
-                    # run pipeline
-                    result = pipeline.process_image(
-                        img_b,
-                        w=fidelity_weight,
-                        detection_model=face_detector,
-                        upscale=upscale_factor,
-                        blend_softness=blend_softness,
-                        bg_upsampler='realesrgan' if bg_upscale_toggle else None,
-                        det_threshold=det_threshold,
-                        sharpen_amount=sharpen_amount,
-                        face_upsample=face_upscale_toggle,
-                        parallel=True,
-                        batch_size=4,
-                        face_restore=enable_face_restoration
-                    )
-                    
-                    # encode result as png
-                    ok, buf = cv2.imencode(".png", result)
-                    if ok:
-                        # add to zip
-                        zip_file.writestr(f"enhanced_{file.name}", BytesIO(buf).getvalue())
-                        
-                    batch_progress.progress((idx + 1) / total_files)
-                    
-                status_text.text("✅ Batch processing complete!")
-                
+            st.markdown(f"**⏳ {st.session_state.batch_status}**")
+            st.progress(st.session_state.batch_progress)
+            
+            cancel_col, _ = st.columns([1, 3])
+            with cancel_col:
+                if st.button("❌ Cancel Batch", type="secondary", key="cancel_batch_btn"):
+                    if pipeline:
+                        pipeline.cancel_flag = True
+                    st.session_state.batch_processing = False
+                    st.warning("⚠️ Cancelling batch processing...")
+                    st.rerun()
+            
+            time.sleep(0.2)
+            st.rerun()
+            st.stop()
+
+        # Error display
+        if st.session_state.get('batch_error') is not None:
+            st.error(f"❌ Batch processing failed: {st.session_state.batch_error}")
+            if st.button("🔄 Try Again", key="try_again_batch"):
+                st.session_state.batch_error = None
+                st.session_state.batch_zip_data = None
+                st.rerun()
+        
+        # Result download button
+        if st.session_state.get('batch_zip_data') is not None:
+            st.success("✅ Batch processing complete!")
             st.download_button(
                 "📥 Download Enhanced Zip",
-                zip_buffer.getvalue(),
+                st.session_state.batch_zip_data,
                 "enhanced_images.zip",
                 "application/zip",
-                use_container_width=True
+                use_container_width=True,
+                key="download_batch_zip"
             )
+            if st.button("🔄 Process New Batch", key="reset_batch"):
+                st.session_state.batch_zip_data = None
+                st.session_state.batch_error = None
+                st.rerun()
 
 st.markdown("""
 <div style="display:flex; gap:12px; flex-wrap:wrap; justify-content:center; margin-top:8px;">
