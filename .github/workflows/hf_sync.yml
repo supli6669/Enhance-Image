@@ -15,6 +15,10 @@ jobs:
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: |
+          if [ -z "$HF_TOKEN" ]; then
+            echo "::error::HF_TOKEN secret is missing or empty on GitHub! Please go to Settings -> Secrets and Variables -> Actions on your GitHub repository, and add HF_TOKEN with your Hugging Face write token."
+            exit 1
+          fi
           git config user.email "action@github.com"
           git config user.name "GitHub Action"
           git remote add hf https://suplo6669:$HF_TOKEN@huggingface.co/spaces/suplo6669/Enhancer
