@@ -4,10 +4,12 @@ import numpy as np
 import os
 import time
 import threading
+import queue
 from io import BytesIO
 from pipeline import LocalAIEnhancerPipeline
 
 project_dir = os.path.dirname(os.path.abspath(__file__))
+
 
 # ── Page Config ────────────────────────────────────────────────────────────────
 st.set_page_config(
@@ -281,12 +283,13 @@ def progress_callback(stage, progress, message):
 @st.cache_resource(show_spinner=False, hash_funcs={LocalAIEnhancerPipeline: lambda _: None})
 def get_pipeline():
     try:
-        return LocalAIEnhancerPipeline(progress_callback=progress_callback)
+        return LocalAIEnhancerPipeline()
     except Exception as e:
         st.error(f"Failed to load pipeline: {e}")
         return None
 
 pipeline = get_pipeline()
+
 
 # Apply theme
 apply_theme()
@@ -645,6 +648,23 @@ with tab_single:
                 if pipeline:
                     pipeline.cancel_flag = False
                 
+                # Setup result queue for safe thread-safe IPC
+                result_queue = queue.Queue()
+                st.session_state._result_queue = result_queue
+                
+                # Define thread-safe progress callback
+                def local_progress_callback(stage, progress, message):
+                    result_queue.put({
+                        'type': 'progress',
+                        'stage': stage,
+                        'progress': progress,
+                        'message': message
+                    })
+                
+                # Attach to cached pipeline
+                if pipeline:
+                    pipeline.progress_callback = local_progress_callback
+
                 def _run():
                     try:
                         result = pipeline.process_image(
@@ -663,22 +683,57 @@ with tab_single:
                         )
                         if pipeline.cancel_flag:
                             return
-                        st.session_state.enhanced_img = result
-                        st.session_state.process_duration = time.time() - st.session_state.start_time
-                        st.session_state.last_run_params = current_params
+                        result_queue.put({
+                            'type': 'result',
+                            'enhanced_img': result,
+                            'duration': time.time() - st.session_state.start_time,
+                            'params': current_params
+                        })
                     except Exception as e:
                         import traceback
                         traceback.print_exc()
-                        st.session_state.processing_error = str(e)
+                        result_queue.put({
+                            'type': 'error',
+                            'error': str(e)
+                        })
                     finally:
-                        st.session_state.processing = False
-                        st.session_state.progress_state['active'] = False
+                        if pipeline:
+                            pipeline.progress_callback = None
 
                 threading.Thread(target=_run, daemon=True).start()
                 st.rerun()
 
             else:
-                # We are actively processing
+                # We are actively processing.
+                # Check queue for new progress or results
+                q = st.session_state.get('_result_queue')
+                if q is not None:
+                    while not q.empty():
+                        try:
+                            msg = q.get_nowait()
+                            if msg['type'] == 'progress':
+                                st.session_state.progress_state = {
+                                    'stage': msg['stage'],
+                                    'progress': msg['progress'],
+                                    'message': msg['message'],
+                                    'active': True,
+                                    'cancelled': False
+                                }
+                            elif msg['type'] == 'result':
+                                st.session_state.enhanced_img = msg['enhanced_img']
+                                st.session_state.process_duration = msg['duration']
+                                st.session_state.last_run_params = msg['params']
+                                st.session_state.processing = False
+                                st.session_state.progress_state['active'] = False
+                                st.rerun()
+                            elif msg['type'] == 'error':
+                                st.session_state.processing_error = msg['error']
+                                st.session_state.processing = False
+                                st.session_state.progress_state['active'] = False
+                                st.rerun()
+                        except queue.Empty:
+                            break
+
                 progress_bar = st.progress(0)
                 status_text = st.empty()
                 stage_text = st.empty()
@@ -730,6 +785,9 @@ with tab_single:
         # If we reach here, we have the enhanced image
         enhanced_img = st.session_state.enhanced_img
         process_duration = st.session_state.process_duration
+        if enhanced_img is None:
+            st.error("❌ Processed image is empty.")
+            st.stop()
 
         # Save to history
         if st.session_state.get('history_added_for') != current_params:
@@ -878,6 +936,8 @@ with tab_batch:
             import zipfile
             from io import BytesIO
             
+            if pipeline:
+                pipeline.progress_callback = None
             zip_buffer = BytesIO()
             with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
                 # Progress bar and status

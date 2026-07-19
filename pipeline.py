@@ -106,6 +106,9 @@ class LocalAIEnhancerPipeline:
             self.net.eval()
             print("[Pipeline] CodeFormer model loaded successfully.")
             
+        # Cache for FaceRestoreHelper instances
+        self._face_helper_cache = {}
+
         # Report initialization complete
         self._report_progress("initialization", 1.0, "Pipeline ready!")
     
@@ -258,29 +261,40 @@ class LocalAIEnhancerPipeline:
 
         # Set up FaceRestoreHelper for face processing
         os.environ['FACE_DETECTOR_PATH'] = os.path.join(project_dir, "weights", "facelib")
-        face_helper = FaceRestoreHelper(
-            upscale,
-            face_size=512,
-            crop_ratio=(1, 1),
-            det_model=detection_model,
-            save_ext='png',
-            use_parse=True,
-            device=self.device
-        )
-        
-        # Modify confidence threshold dynamically on the underlying detector
+        cache_key = (detection_model, upscale)
+        if cache_key not in self._face_helper_cache:
+            print(f"[Pipeline] Creating new FaceRestoreHelper for {detection_model} (upscale={upscale})...")
+            face_helper = FaceRestoreHelper(
+                upscale,
+                face_size=512,
+                crop_ratio=(1, 1),
+                det_model=detection_model,
+                save_ext='png',
+                use_parse=True,
+                device=self.device
+            )
+            
+            # Modify confidence threshold dynamically on the underlying detector
+            if hasattr(face_helper, 'face_detector'):
+                detector = face_helper.face_detector
+                if hasattr(detector, 'detect_faces'):
+                    original_detect_faces = detector.detect_faces
+                    def custom_detect_faces(image, *args, **kwargs):
+                        detector_class = detector.__class__.__name__
+                        thresh = getattr(detector, 'custom_det_threshold', 0.5)
+                        if "Yolo" in detector_class:
+                            kwargs['conf_thres'] = thresh
+                        else:
+                            kwargs['conf_threshold'] = thresh
+                        return original_detect_faces(image, *args, **kwargs)
+                    detector.detect_faces = custom_detect_faces
+            self._face_helper_cache[cache_key] = face_helper
+        else:
+            face_helper = self._face_helper_cache[cache_key]
+            
+        # Update threshold dynamically
         if hasattr(face_helper, 'face_detector'):
-            detector = face_helper.face_detector
-            if hasattr(detector, 'detect_faces'):
-                original_detect_faces = detector.detect_faces
-                def custom_detect_faces(image, *args, **kwargs):
-                    detector_class = detector.__class__.__name__
-                    if "Yolo" in detector_class:
-                        kwargs['conf_thres'] = det_threshold
-                    else:
-                        kwargs['conf_threshold'] = det_threshold
-                    return original_detect_faces(image, *args, **kwargs)
-                detector.detect_faces = custom_detect_faces
+            face_helper.face_detector.custom_det_threshold = det_threshold
 
         face_helper.clean_all()
         face_helper.read_image(img)

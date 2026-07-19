@@ -354,10 +354,123 @@ def run_async(func, *args):
 ```
 - **UI Changes:**
   * Add progress bar (`st.progress`) linked to thread status.
-  * Disable “Run” button while task is active.
-- **Safety:** Ensure thread‑safe access to ONNX sessions (create one per thread or use locks).
 - **Verification:** Deploy locally, trigger a heavy upscale, confirm UI remains responsive and progress updates.
 
 ### Integration into Handovers
-- Append this section to `handover.md` under **Task 9**.
+- Append this section to `handover.md` under **Task 9**.
 - Update roadmap references in future AGENTS rules if needed.
+
+---
+
+## Task 10: Image Upload Bug Investigation & Fix Plan
+
+**Date:** 2026-07-19  
+**Status:** 🔴 Bugs identified — Fix pending user approval
+
+### Overview
+Investigated why the Streamlit web app crashes or freezes when the user uploads an image. Full code-path audit of [`app.py`](file:///d:/.gemini-scratch/custom-ai-enhancer/app.py) and [`pipeline.py`](file:///d:/.gemini-scratch/custom-ai-enhancer/pipeline.py) revealed **5 bugs** — from critical to low severity.
+
+---
+
+### Root Cause: 5 Bugs Found
+
+#### Bug #1 — 🔴 CRITICAL: Background thread writes to `st.session_state` (Streamlit doesn't allow this)
+
+**Location:** [`app.py`](file:///d:/.gemini-scratch/custom-ai-enhancer/app.py) lines 648–678
+
+The `_run()` function is spawned as a `threading.Thread`. Inside it, results are written directly to `st.session_state`:
+```python
+st.session_state.enhanced_img = result       # ← from background thread ❌
+st.session_state.processing_error = str(e)   # ← from background thread ❌
+st.session_state.processing = False          # ← from background thread ❌
+```
+Streamlit **only allows** reading/writing `session_state` from the main request thread. Writes from background threads are silently dropped or cause race conditions. This is why the UI gets permanently stuck on the "processing" spinner — `enhanced_img` never gets set.
+
+**Fix:** Use `queue.Queue` as a thread-safe bridge. The background thread pushes results into the queue; the main thread reads from it during the polling loop and writes to `session_state` safely.
+
+---
+
+#### Bug #2 — 🟠 HIGH: `progress_callback` bound into `@st.cache_resource` at cache time
+
+**Location:** [`app.py`](file:///d:/.gemini-scratch/custom-ai-enhancer/app.py) lines 281–287
+
+```python
+@st.cache_resource(show_spinner=False, ...)
+def get_pipeline():
+    return LocalAIEnhancerPipeline(progress_callback=progress_callback)  # ← captured at cache time
+```
+`progress_callback` is captured once when the pipeline is first cached. The callback also writes to `session_state` from the background thread (compound of Bug #1). Additionally, if the session is refreshed, the cached callback may point to a stale session context.
+
+**Fix:** Do not bind `progress_callback` in the constructor. Instead, pass it per-call to `process_image()`, or use the `queue.Queue` approach from Bug #1 to decouple the pipeline from session state entirely.
+
+---
+
+#### Bug #3 — 🟠 HIGH: `enhanced_img` can be `None`, not guarded before use
+
+**Location:** [`app.py`](file:///d:/.gemini-scratch/custom-ai-enhancer/app.py) line 747
+
+```python
+'enhanced_shape': enhanced_img.shape[:2]  # ← AttributeError if None
+```
+If the pipeline returns `None` (e.g. silent exception in an edge case), this line crashes with an `AttributeError`. The same `None` value would also crash at `enhanced_img.shape` on line 755 and `cv2.cvtColor(enhanced_img, ...)` on lines 793, 800.
+
+**Fix:** After reading `enhanced_img = st.session_state.enhanced_img`, add a `None` guard before any `.shape` or `cv2` usage.
+
+---
+
+#### Bug #4 — 🟡 MEDIUM: `FaceRestoreHelper` re-initialized on every `process_image()` call
+
+**Location:** [`pipeline.py`](file:///d:/.gemini-scratch/custom-ai-enhancer/pipeline.py) line 261
+
+```python
+def process_image(self, img, ...):
+    face_helper = FaceRestoreHelper(upscale, face_size=512, det_model=detection_model, ...)
+```
+`FaceRestoreHelper.__init__` loads face detection weights (RetinaFace / YOLOv5) from disk every single call. On CPU this adds ~0.3–1.0 seconds of overhead per image and causes unnecessary disk I/O.
+
+**Fix:** Cache `FaceRestoreHelper` instances in a dict keyed by `(detection_model, upscale)`. Call `face_helper.clean_all()` at the start of each `process_image()` call to reset the per-image state without re-loading weights.
+
+```python
+# In __init__:
+self._face_helper_cache = {}
+
+# In process_image():
+cache_key = (detection_model, upscale)
+if cache_key not in self._face_helper_cache:
+    self._face_helper_cache[cache_key] = FaceRestoreHelper(upscale, face_size=512, det_model=detection_model, ...)
+face_helper = self._face_helper_cache[cache_key]
+face_helper.clean_all()
+face_helper.read_image(img)
+```
+
+---
+
+#### Bug #5 — 🟢 LOW: `split_img` recomputed redundantly in Download section
+
+**Location:** [`app.py`](file:///d:/.gemini-scratch/custom-ai-enhancer/app.py) lines 816–818
+
+`split_img` is computed again inside the Download Results block regardless of which view mode is active. This is harmless correctness-wise but duplicates computation. Minor cleanup: compute it once and reuse.
+
+---
+
+### Planned Fix Summary
+
+| # | Bug | Severity | File | Lines |
+|---|-----|----------|------|-------|
+| 1 | Thread writes `session_state` unsafely | 🔴 Critical | app.py | 648–678 |
+| 2 | `progress_callback` bound at cache time | 🟠 High | app.py | 281–287 |
+| 3 | `enhanced_img` not guarded for `None` | 🟠 High | app.py | 747, 755, 793 |
+| 4 | `FaceRestoreHelper` re-created every call | 🟡 Medium | pipeline.py | 261 |
+| 5 | `split_img` redundant computation | 🟢 Low | app.py | 816–818 |
+
+### Architecture Decision (pending user approval)
+Two options for fixing Bug #1:
+- **Option A (Recommended):** Keep background threading. Add `queue.Queue` as thread-safe bridge for results. Main thread reads queue during polling loop and writes `session_state` safely.
+- **Option B:** Remove threading entirely. Use `st.spinner()` with synchronous pipeline call. Simpler, but UI blocks completely during processing.
+
+### Code Changes (Planned — Not Yet Applied)
+- [MODIFY] [app.py](file:///d:/.gemini-scratch/custom-ai-enhancer/app.py) (Fix bugs #1, #2, #3, #5)
+- [MODIFY] [pipeline.py](file:///d:/.gemini-scratch/custom-ai-enhancer/pipeline.py) (Fix bug #4 — cache FaceRestoreHelper)
+
+### Git Commit & Push Status
+- **Status:** Pending — awaiting user approval on fix approach.
