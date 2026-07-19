@@ -23,14 +23,10 @@ All AI agents working on this codebase must adhere strictly to these rules:
    - When using ONNX Runtime sessions for inference on CPU, always construct and pass `SessionOptions` with `GraphOptimizationLevel.ORT_ENABLE_ALL` to maximize performance.
 
 6. **Sync Obsidian Vault After Every Session**:
-   - The project has an Obsidian knowledge base vault at `D:\AgentBrain\` that serves as the human-readable brain for all agents.
-   - `D:\AgentBrain\Projects\Custom AI Enhancer\handover.md` is a **hard link** to the source `handover.md` — it auto-syncs on every write.
-   - At the end of any session where you modify `handover.md` or create brain artifacts (implementation plans, walkthroughs), run the sync script:
+   - The project utilizes an Obsidian knowledge base vault at `D:\AgentBrain\` containing Rules and Skills.
+   - At the end of any session where you modify project rules or instructions, run the sync script to update the vault:
      ```powershell
-     powershell -ExecutionPolicy Bypass -File "D:\AgentBrain\sync.ps1" `
-         -ConversationId "<current-conversation-id>" `
-         -SessionTitle "<short title of what was done today>" `
-         -SessionContent "<markdown content for the session log>"
+     powershell -ExecutionPolicy Bypass -File "D:\AgentBrain\sync.ps1"
      ```
-   - This will copy the latest `AGENTS.md`, sync brain artifacts, write a session log, and update the vault timestamp.
+   - This will copy the latest `AGENTS.md` to the vault's Rules directory and update the vault timestamp.
    - Vault location: `D:\AgentBrain\`
