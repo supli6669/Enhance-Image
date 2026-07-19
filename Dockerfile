@@ -41,5 +41,5 @@ RUN python tools/download_weights.py
 # Expose port 7860 for Hugging Face Spaces
 EXPOSE 7860
 
-# Run Streamlit on port 7860
-CMD ["streamlit", "run", "app.py", "--server.port=7860", "--server.address=0.0.0.0"]
+# Run Streamlit on port 7860 in headless mode
+CMD ["streamlit", "run", "app.py", "--server.port=7860", "--server.address=0.0.0.0", "--server.headless=true", "--browser.gatherUsageStats=false"]
