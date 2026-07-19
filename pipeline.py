@@ -134,16 +134,13 @@ class LocalAIEnhancerPipeline:
                 providers = _get_ort_providers()
             self._onnx_session_cache[path] = ort.InferenceSession(path, sess_options=opts, providers=providers)
         return self._onnx_session_cache[path]
-
-    def enhance_realesrgan_onnx(self, img, upscale):
-        # 1. Preprocessing
+    def _enhance_realesrgan_onnx_single(self, img, upscale):
         h, w, c = img.shape
         img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
         img_rgb = img_rgb.astype(np.float32) / 255.0
         img_input = np.transpose(img_rgb, (2, 0, 1))
         img_input = np.expand_dims(img_input, axis=0)
         
-        # 2. Run ONNX Session
         if not hasattr(self, 'ort_session_re') or self.ort_session_re is None:
             print("[Pipeline] Loading Real-ESRGAN ONNX Runtime Session...")
             opts = ort.SessionOptions()
@@ -154,7 +151,6 @@ class LocalAIEnhancerPipeline:
         ort_outs = self.ort_session_re.run(None, ort_inputs)
         output_tensor = ort_outs[0]
         
-        # 3. Postprocessing
         output = np.squeeze(output_tensor, axis=0)
         output = np.clip(output, 0, 1)
         output = np.transpose(output, (1, 2, 0))
@@ -166,6 +162,57 @@ class LocalAIEnhancerPipeline:
             
         return output_bgr
 
+    def enhance_realesrgan_onnx(self, img, upscale):
+        h, w, c = img.shape
+        tile_size = 400
+        tile_pad = 40
+        
+        # If the image is small enough, run single inference directly
+        if h <= tile_size and w <= tile_size:
+            return self._enhance_realesrgan_onnx_single(img, upscale)
+            
+        print(f"[Pipeline] Image dimensions {w}x{h} exceed tile size {tile_size}. Running tile-based ONNX upscaling...")
+        
+        # We perform tiles at scale=2 since the model is 2x, then resize final stitched image if upscale != 2
+        output_h, output_w = h * 2, w * 2
+        output_img = np.zeros((output_h, output_w, c), dtype=np.uint8)
+        
+        stride = tile_size - tile_pad * 2
+        
+        for y in range(0, h, stride):
+            for x in range(0, w, stride):
+                # Bounding box of the original crop (with overlap padding)
+                y1 = max(0, y - tile_pad)
+                x1 = max(0, x - tile_pad)
+                y2 = min(h, y + tile_size - tile_pad)
+                x2 = min(w, x + tile_size - tile_pad)
+                
+                tile = img[y1:y2, x1:x2]
+                
+                # Inference tile at 2x
+                enhanced_tile = self._enhance_realesrgan_onnx_single(tile, 2)
+                
+                # Stitch back by calculating crop regions to drop the overlap padding
+                pad_top = y - y1
+                pad_left = x - x1
+                
+                w_crop = min(stride, w - x)
+                h_crop = min(stride, h - y)
+                
+                # Target coordinates in output_img
+                oy1, ox1 = y * 2, x * 2
+                oy2, ox2 = (y + h_crop) * 2, (x + w_crop) * 2
+                
+                # Source coordinates in enhanced_tile (compensating for pad_top/pad_left)
+                ty1, tx1 = pad_top * 2, pad_left * 2
+                ty2, tx2 = (pad_top + h_crop) * 2, (pad_left + w_crop) * 2
+                
+                output_img[oy1:oy2, ox1:ox2] = enhanced_tile[ty1:ty2, tx1:tx2]
+                
+        if upscale != 2:
+            output_img = cv2.resize(output_img, (w * upscale, h * upscale), interpolation=cv2.INTER_LANCZOS4)
+            
+        return output_img
     def run_onnx_batch(self, faces_np, w_val):
         """Helper to run ONNX batch inference."""
         w_np = np.full((faces_np.shape[0],), w_val, dtype=np.float32)

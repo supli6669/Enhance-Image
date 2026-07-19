@@ -182,10 +182,11 @@ div.stDownloadButton > button:hover {
     counter-increment: steps; display: flex; align-items: flex-start;
     gap: 14px; margin-bottom: 18px; color: #c4b5fd; line-height: 1.6; font-size: 0.95rem;
 }
+
 .step-list li::before {
     content: counter(steps); flex-shrink: 0; width: 28px; height: 28px;
     border-radius: 50%; background: linear-gradient(135deg, #7c3aed, #db2777);
-    display: flex; align-items: center; justify-content: center;
+    display: inline-flex; align-items: center; justify-content: center;
     font-weight: 800; font-size: 0.8rem; color: white;
     box-shadow: 0 0 14px rgba(124,58,237,0.5);
 }
@@ -699,7 +700,7 @@ with tab_single:
                         result_queue.put({
                             'type': 'result',
                             'enhanced_img': result,
-                            'duration': time.time() - st.session_state.start_time,
+                            'duration': time.time() - st.session_state.get('start_time', time.time()),
                             'params': current_params
                         })
                     except Exception as e:
@@ -826,6 +827,9 @@ with tab_single:
         h_enh,  w_enh  = enhanced_img.shape[:2]
         mid_x          = w_enh // 2
         img_resized    = cv2.resize(img, (w_enh, h_enh), interpolation=cv2.INTER_LANCZOS4)
+        split_img      = np.copy(enhanced_img)
+        split_img[:, :mid_x] = img_resized[:, :mid_x]
+        cv2.line(split_img, (mid_x, 0), (mid_x, h_enh), (255, 255, 255), max(2, w_enh // 300))
 
         st.markdown(f"""
         <div class="stats-row">
@@ -865,11 +869,7 @@ with tab_single:
         else:
             st.markdown("<div class='img-label after'>◀ Original &nbsp;|&nbsp; Enhanced ▶</div>",
                         unsafe_allow_html=True)
-            split_img = np.copy(enhanced_img)
-            split_img[:, :mid_x] = img_resized[:, :mid_x]
-            cv2.line(split_img, (mid_x, 0), (mid_x, h_enh), (255, 255, 255), max(2, w_enh // 300))
             st.image(cv2.cvtColor(split_img, cv2.COLOR_BGR2RGB), use_container_width=True)
-
         st.markdown("""
         <div class="section-header">
             <div class="dot"></div><h3>Download Results</h3>
@@ -884,9 +884,6 @@ with tab_single:
                     f"enhanced_{os.path.splitext(img_name)[0]}.png",
                     "image/png", use_container_width=True)
         with col_dl2:
-            split_img = np.copy(enhanced_img)
-            split_img[:, :mid_x] = img_resized[:, :mid_x]
-            cv2.line(split_img, (mid_x, 0), (mid_x, h_enh), (255, 255, 255), max(2, w_enh // 300))
             ok2, buf2 = cv2.imencode(".png", split_img)
             if ok2:
                 st.download_button("🌗 Download Split Comparison",
