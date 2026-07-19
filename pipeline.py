@@ -438,6 +438,10 @@ class LocalAIEnhancerPipeline:
         h, w_img, _ = face_helper.input_img.shape
         h_up, w_up = int(h * upscale), int(w_img * upscale)
         
+        # Normalize face size to tuple just in case it is an integer in some facexlib versions
+        fs = face_helper.face_size
+        raw_face_size = fs if isinstance(fs, tuple) else (fs, fs)
+        
         # Initialize background image (upsampled background)
         if bg_img is None:
             upsample_img = cv2.resize(face_helper.input_img, (w_up, h_up), interpolation=cv2.INTER_LANCZOS4)
@@ -456,16 +460,16 @@ class LocalAIEnhancerPipeline:
                     restored_face_up = self.bg_upsampler_instance.enhance(restored_face, outscale=upscale)[0]
                 else:
                     # Fallback to Lanczos if no Real-ESRGAN instance loaded or face_upsample is disabled
-                    restored_face_up = cv2.resize(restored_face, (face_helper.face_size[0] * upscale, face_helper.face_size[1] * upscale), interpolation=cv2.INTER_LANCZOS4)
+                    restored_face_up = cv2.resize(restored_face, (raw_face_size[0] * upscale, raw_face_size[1] * upscale), interpolation=cv2.INTER_LANCZOS4)
                 
                 # Blend with original cropped face to preserve original high-resolution details when w > 0
                 if w > 0.0:
-                    original_face_up = cv2.resize(cropped_face, (face_helper.face_size[0] * upscale, face_helper.face_size[1] * upscale), interpolation=cv2.INTER_LANCZOS4)
+                    original_face_up = cv2.resize(cropped_face, (raw_face_size[0] * upscale, raw_face_size[1] * upscale), interpolation=cv2.INTER_LANCZOS4)
                     restored_face_up = cv2.addWeighted(original_face_up, w, restored_face_up, 1.0 - w, 0.0)
                 
                 inv_aff /= upscale
                 inv_aff[:, 2] *= upscale
-                face_size = (face_helper.face_size[0] * upscale, face_helper.face_size[1] * upscale)
+                face_size = (raw_face_size[0] * upscale, raw_face_size[1] * upscale)
                 inv_restored = cv2.warpAffine(restored_face_up, inv_aff, (w_up, h_up))
             else:
                 # Blend with original cropped face to preserve original high-resolution details when w > 0
@@ -475,7 +479,7 @@ class LocalAIEnhancerPipeline:
                 # Add an offset to inverse affine matrix, for more precise back alignment
                 extra_offset = 0
                 inv_aff[:, 2] += extra_offset
-                face_size = face_helper.face_size
+                face_size = raw_face_size
                 inv_restored = cv2.warpAffine(restored_face, inv_aff, (w_up, h_up))
             
             # Create boundary mask

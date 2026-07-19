@@ -242,6 +242,19 @@ if 'history' not in st.session_state:
 if 'dark_mode' not in st.session_state:
     st.session_state.dark_mode = True
 
+# App state lifecycle management
+for key, default in [
+    ('processing', False),
+    ('enhanced_img', None),
+    ('processing_error', None),
+    ('process_duration', None),
+    ('start_time', None),
+    ('last_run_params', None),
+    ('history_added_for', None),
+]:
+    if key not in st.session_state:
+        st.session_state[key] = default
+
 def apply_theme():
     """Apply dark/light theme based on user preference."""
     if not st.session_state.dark_mode:
@@ -269,16 +282,6 @@ def apply_theme():
         </style>
         """, unsafe_allow_html=True)
 
-def progress_callback(stage, progress, message):
-    """Callback function to update progress state from pipeline."""
-    if not st.session_state.progress_state.get('cancelled', False):
-        st.session_state.progress_state = {
-            'stage': stage,
-            'progress': progress,
-            'message': message,
-            'active': True,
-            'cancelled': False
-        }
 
 @st.cache_resource(show_spinner=False, hash_funcs={LocalAIEnhancerPipeline: lambda _: None})
 def get_pipeline():
@@ -322,7 +325,7 @@ document.addEventListener('keydown', function(e) {
     }
     // Esc: Cancel processing
     if (e.key === 'Escape') {
-        const cancelButton = document.querySelector('button:contains("Cancel")');
+        const cancelButton = Array.from(document.querySelectorAll('button')).find(b => b.textContent.includes('Cancel'));
         if (cancelButton) {
             cancelButton.click();
         }
@@ -358,7 +361,12 @@ def get_training_status():
             if "iter:" in line and "epoch:" in line:
                 match = re.search(r"epoch:\s*(\d+),\s*iter:\s*([\d,]+)", line)
                 eta_match = re.search(r"eta:\s*([\d:]+)", line)
-                loss_match = re.search(r"cross_entropy_loss:\s*([\d.e+-]+)", line)
+                loss_match = (
+                    re.search(r"cross_entropy_loss:\s*([\d.e+-]+)", line) or
+                    re.search(r"l_g_pix:\s*([\d.e+-]+)", line) or
+                    re.search(r"l_g_percep:\s*([\d.e+-]+)", line) or
+                    re.search(r"loss:\s*([\d.e+-]+)", line)
+                )
                 
                 if match:
                     epoch = int(match.group(1))
