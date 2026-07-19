@@ -365,7 +365,7 @@ def run_async(func, *args):
 ## Task 10: Image Upload Bug Investigation & Fix Plan
 
 **Date:** 2026-07-19  
-**Status:** 🔴 Bugs identified — Fix pending user approval
+**Status:** ✅ Completed
 
 ### Overview
 Investigated why the Streamlit web app crashes or freezes when the user uploads an image. Full code-path audit of [`app.py`](file:///d:/.gemini-scratch/custom-ai-enhancer/app.py) and [`pipeline.py`](file:///d:/.gemini-scratch/custom-ai-enhancer/pipeline.py) revealed **5 bugs** — from critical to low severity.
@@ -463,14 +463,15 @@ face_helper.read_image(img)
 | 4 | `FaceRestoreHelper` re-created every call | 🟡 Medium | pipeline.py | 261 |
 | 5 | `split_img` redundant computation | 🟢 Low | app.py | 816–818 |
 
-### Architecture Decision (pending user approval)
-Two options for fixing Bug #1:
-- **Option A (Recommended):** Keep background threading. Add `queue.Queue` as thread-safe bridge for results. Main thread reads queue during polling loop and writes `session_state` safely.
-- **Option B:** Remove threading entirely. Use `st.spinner()` with synchronous pipeline call. Simpler, but UI blocks completely during processing.
+### Architecture Decision (Applied)
+- **Option A (Chosen):** Kept background threading. Added `queue.Queue` as thread-safe bridge for results. Main thread reads queue during polling loop and writes `session_state` safely.
 
-### Code Changes (Planned — Not Yet Applied)
-- [MODIFY] [app.py](file:///d:/.gemini-scratch/custom-ai-enhancer/app.py) (Fix bugs #1, #2, #3, #5)
-- [MODIFY] [pipeline.py](file:///d:/.gemini-scratch/custom-ai-enhancer/pipeline.py) (Fix bug #4 — cache FaceRestoreHelper)
+### Code Changes (Applied)
+- [MODIFY] [app.py](file:///d:/.gemini-scratch/custom-ai-enhancer/app.py) (Fixed bugs #1, #2, #3, #5 via queue IPC and None guards)
+- [MODIFY] [pipeline.py](file:///d:/.gemini-scratch/custom-ai-enhancer/pipeline.py) (Fixed bug #4 — cached FaceRestoreHelper dynamically)
+- [MODIFY] [Dockerfile](file:///d:/.gemini-scratch/custom-ai-enhancer/Dockerfile) (Added headless and telemetry flags to streamlit run command)
+- [MODIFY] [requirements.txt](file:///d:/.gemini-scratch/custom-ai-enhancer/requirements.txt) (Cleaned up fake version numbers to resolve Hugging Face build failure)
+- [MODIFY] [.github/workflows/hf_sync.yml](file:///d:/.gemini-scratch/custom-ai-enhancer/.github/workflows/hf_sync.yml) (Added token checks to output clear error on github action failure)
 
 ### Git Commit & Push Status
-- **Status:** Pending — awaiting user approval on fix approach.
+- **Status:** Push completed to origin (GitHub) and hf (Hugging Face Spaces) main branch.
