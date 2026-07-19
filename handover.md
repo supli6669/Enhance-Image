@@ -494,15 +494,15 @@ Performed a full static code audit of [`app.py`](file:///d:/.gemini-scratch/cust
 
 | # | Status | Sev | File | Description |
 |---|--------|-----|------|-------------|
-| B1 | ❌ Open | 🔴 Critical | app.py | `processing`, `enhanced_img`, `processing_error`, `process_duration` used with no init guard |
+| B1 | ✅ Fixed | 🔴 Critical | app.py | `processing`, `enhanced_img`, `processing_error`, `process_duration` used with no init guard |
 | B2 | ❌ Open | 🔴 Critical | pipeline.py | `enhance_realesrgan_onnx()` sends full image to ONNX without tiling — OOM on large images |
 | B3 | ❌ Open | 🟠 High | pipeline.py | Parallel ONNX face processing shares `ort_session_cf` across threads — not thread-safe |
 | B4 | ❌ Open | 🟠 High | app.py | Batch tab calls `pipeline.process_image()` synchronously on main thread — UI freezes |
-| B5 | ❌ Open | 🟠 High | app.py | Dead `progress_callback()` (line 272) still writes `session_state` from thread — dangerous |
+| B5 | ✅ Fixed | 🟠 High | app.py | Dead `progress_callback()` (line 272) still writes `session_state` from thread — dangerous |
 | B6 | ❌ Open | 🟡 Medium | app.py | `st.session_state.start_time` read in background thread without init guard |
-| B7 | ❌ Open | 🟡 Medium | pipeline.py | `face_helper.face_size` assumed to be tuple, can be `int` on some facexlib versions |
-| B8 | ❌ Open | 🟡 Medium | app.py | Training dashboard regex only captures `cross_entropy_loss` — Real-ESRGAN runs show `0.0` |
-| B9 | ❌ Open | 🟡 Medium | app.py | Keyboard shortcut `Esc` uses `button:contains()` — invalid CSS, Cancel never fires |
+| B7 | ✅ Fixed | 🟡 Medium | pipeline.py | `face_helper.face_size` assumed to be tuple, can be `int` on some facexlib versions |
+| B8 | ✅ Fixed | 🟡 Medium | app.py | Training dashboard regex only captures `cross_entropy_loss` — Real-ESRGAN runs show `0.0` |
+| B9 | ✅ Fixed | 🟡 Medium | app.py | Keyboard shortcut `Esc` uses `button:contains()` — invalid CSS, Cancel never fires |
 | B10 | ❌ Open | 🟢 Low | app.py | `split_img` computed twice — once in Split Screen view, once in Download section |
 | B11 | ❌ Open | 🟢 Low | Dockerfile | `patch_and_install_basicsr.py` does `git clone` at build time — fails on slow/offline network |
 | B12 | ❌ Open | 🟢 Low | app.py | CSS `li::before { display:flex }` on pseudo-element — non-standard, visual glitch in some browsers |
