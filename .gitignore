@@ -39,3 +39,7 @@ temp/
 *.jpg
 *.jpeg
 *.webp
+
+# Ignore built wheels directory
+wheels/
+

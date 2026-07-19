@@ -20,11 +20,9 @@ RUN pip install --no-cache-dir --upgrade pip setuptools wheel
 
 # Optimization: Pre-install CPU-only PyTorch, Torchvision and NumPy to keep Docker image small
 RUN pip install --no-cache-dir torch torchvision numpy --index-url https://download.pytorch.org/whl/cpu
-
-# Copy and execute the custom BasicSR patch script to install basicsr on Python 3.11+
-COPY tools/patch_and_install_basicsr.py /app/tools/
+# Copy tools directory (including patch script and base64 wheel) and install basicsr offline on Python 3.11+
+COPY tools/ /app/tools/
 RUN python tools/patch_and_install_basicsr.py
-
 # Copy requirements and install the remaining packages
 COPY requirements.txt /app/
 RUN pip install --no-cache-dir -r requirements.txt

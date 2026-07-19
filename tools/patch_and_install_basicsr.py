@@ -2,11 +2,38 @@ import os
 import shutil
 import subprocess
 import sys
-
 def main():
     project_dir = os.path.dirname(os.path.abspath(__file__))
     temp_dir = os.path.join(project_dir, "temp_basicsr")
+    python_exe = sys.executable
     
+    # 0. Check if a local base64 encoded wheel exists in tools/
+    import glob
+    import base64
+    b64_files = glob.glob(os.path.join(project_dir, "basicsr-*.whl.b64"))
+    if b64_files:
+        b64_path = b64_files[0]
+        whl_path = b64_path.replace(".b64", "")
+        print(f"Found base64 encoded wheel at {b64_path}. Decoding to {whl_path}...")
+        try:
+            with open(b64_path, "rb") as f_in:
+                decoded_data = base64.b64decode(f_in.read())
+            with open(whl_path, "wb") as f_out:
+                f_out.write(decoded_data)
+                
+            print(f"Installing BasicSR from decoded wheel {whl_path}...")
+            subprocess.run([python_exe, "-m", "pip", "install", whl_path], check=True)
+            print("BasicSR installed successfully from decoded wheel!")
+            
+            # Clean up decoded wheel
+            if os.path.exists(whl_path):
+                os.remove(whl_path)
+            return
+        except Exception as e:
+            print(f"Failed to install from base64 wheel: {e}. Falling back to git clone...")
+            if os.path.exists(whl_path):
+                os.remove(whl_path)
+                
     # 1. Clean up existing temp directory if it exists
     if os.path.exists(temp_dir):
         print(f"Cleaning up existing {temp_dir}...")
