@@ -469,7 +469,7 @@ face_helper.read_image(img)
 ### Code Changes (Applied)
 - [MODIFY] [app.py](file:///d:/.gemini-scratch/custom-ai-enhancer/app.py) (Fixed bugs #1, #2, #3, #5 via queue IPC and None guards)
 - [MODIFY] [pipeline.py](file:///d:/.gemini-scratch/custom-ai-enhancer/pipeline.py) (Fixed bug #4 — cached FaceRestoreHelper dynamically)
-- [MODIFY] [Dockerfile](file:///d:/.gemini-scratch/custom-ai-enhancer/Dockerfile) (Added headless and telemetry flags to streamlit run command)
+- [MODIFY] [Dockerfile](file:///d:/.gemini-scratch/custom-ai-enhancer/Dockerfile) (Added headless, telemetry, and CORS/XSRF disable flags to streamlit run command)
 - [MODIFY] [requirements.txt](file:///d:/.gemini-scratch/custom-ai-enhancer/requirements.txt) (Cleaned up fake version numbers to resolve Hugging Face build failure)
 - [MODIFY] [.github/workflows/hf_sync.yml](file:///d:/.gemini-scratch/custom-ai-enhancer/.github/workflows/hf_sync.yml) (Added token checks to output clear error on github action failure)
 
