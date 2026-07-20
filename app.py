@@ -646,7 +646,11 @@ with tab_single:
             'face_restore': enable_face_restoration
         }
         
-        if st.session_state.get('last_run_params') != current_params:
+        if st.session_state.get('last_run_params') != current_params and not st.session_state.get('processing'):
+            # Only reset state when NOT actively processing.
+            # last_run_params is set AFTER completion, so this condition is always
+            # true during the polling loop — which would reset processing=False and
+            # spawn a new thread every rerun (infinite loop). The guard prevents that.
             st.session_state.enhanced_img = None
             st.session_state.processing_error = None
             st.session_state.processing = False

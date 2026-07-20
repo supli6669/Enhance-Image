@@ -669,3 +669,48 @@ if (cancelButton) cancelButton.click();
 - **B8, B9** are small regex/JS fixes — can be done as a single minor patch commit.
 - **B10–B12** are cosmetic/housekeeping — batch at end of any session.
 
+
+---
+
+## Task 12: Fix — Image Upload Not Processed (Infinite Thread Spawn Loop)
+
+**Date:** 2026-07-20
+**Status:** ✅ Fixed
+
+### Root Cause
+
+**Critical bug in `app.py` line 649** (params comparison guard).
+
+The `last_run_params` key is only set **after** processing completes (line 743). During the polling loop (`processing=True`), every `st.rerun()` re-executes the script and hits:
+
+```python
+if st.session_state.get('last_run_params') != current_params:
+    ...
+    st.session_state.processing = False   # ← BUG: resets while thread is running!
+```
+
+Because `last_run_params` is still `None` (not yet set), this condition is **always true** during polling. This resets `processing = False` on every rerun, causing line 662 to think "not processing" and spawn a **new background thread on every poll cycle**. Each new thread begins from scratch (FaceRestoreHelper init, face detection, etc.) but is immediately orphaned by the next cycle — the pipeline never completes.
+
+**Symptom:** User uploads an image, spinner shows "Starting..." indefinitely, result never appears.
+
+### Fix Applied
+
+Added `and not st.session_state.get('processing')` guard to the params-reset condition:
+
+```python
+# BEFORE (buggy):
+if st.session_state.get('last_run_params') != current_params:
+    st.session_state.processing = False  # always fires during polling!
+
+# AFTER (fixed):
+if st.session_state.get('last_run_params') != current_params and not st.session_state.get('processing'):
+    st.session_state.processing = False  # only fires when idle
+```
+
+Now the reset only triggers when idle. During active processing, the guard prevents the destructive reset, allowing the background thread to run to completion.
+
+### Code Changes
+- [MODIFY] [app.py](file:///d:/.gemini-scratch/custom-ai-enhancer/app.py) (Added `and not st.session_state.get('processing')` guard on line 649)
+
+### Git Commit & Push Status
+- **Status:** Pending commit.
