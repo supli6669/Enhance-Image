@@ -24,7 +24,7 @@ datasets:
     use_corrupt: true
     blur_kernel_size: 41
     use_motion_kernel: true
-    motion_kernel_prob: 0.05
+    motion_kernel_prob: 0.15
     kernel_list:
     - iso
     - aniso
@@ -36,13 +36,13 @@ datasets:
     - 10.0
     downsample_range:
     - 1.0
-    - 12.0
+    - 20.0
     noise_range:
     - 0.0
-    - 20.0
+    - 30.0
     jpeg_range:
-    - 50
-    - 100
+    - 10
+    - 70
     blur_sigma_large:
     - 1.0
     - 15.0
@@ -53,13 +53,13 @@ datasets:
     - 0.0
     - 30.0
     jpeg_range_large:
-    - 30
-    - 80
+    - 5
+    - 50
     latent_gt_path: null
     num_worker_per_gpu: 0
     batch_size_per_gpu: 1
-    dataset_enlarge_ratio: 1
-    prefetch_mode: cpu
+    dataset_enlarge_ratio: 5
+    prefetch_mode: null
 network_g:
   type: CodeFormer
   dim_embd: 512
@@ -97,7 +97,7 @@ path:
   param_key_g: params_ema
   strict_load_g: false
   pretrain_network_d: null
-  resume_state: D:\.gemini-scratch\custom-ai-enhancer\models\CodeFormer\experiments\20260708_201102_CodeFormer_stage3_custom\training_states\1600.state
+  resume_state: D:\.gemini-scratch\custom-ai-enhancer\models\CodeFormer\experiments\20260708_201102_CodeFormer_stage3_custom\training_states\2000.state
 train:
   use_hq_feat_loss: true
   feat_loss_weight: 1.0
@@ -121,11 +121,11 @@ train:
   scheduler:
     type: CosineAnnealingRestartLR
     periods:
-    - 150000
+    - 20000
     restart_weights:
     - 1
-    eta_min: 2.0e-05
-  total_iter: 20000
+    eta_min: 5.0e-06
+  total_iter: 2002
   warmup_iter: -1
   ema_decay: 0.997
   pixel_opt:

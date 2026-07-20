@@ -30,3 +30,25 @@ All AI agents working on this codebase must adhere strictly to these rules:
      ```
    - This will copy the latest `AGENTS.md` to the vault's Rules directory and update the vault timestamp.
    - Vault location: `D:\AgentBrain\`
+
+7. **Mandatory Sequential Model Improvement Roadmap**:
+   - All model-related work MUST follow the sequential phase order defined in the task list artifact:
+     `C:\Users\admin\.gemini\antigravity-ide\brain\0bf6bec8-6164-477e-a32d-6f0b9ef577c6\task.md`
+   - **Before starting any model improvement task**, read `task.md` and identify the first incomplete task (`[ ]`).
+   - Do **NOT** skip phases or implement out-of-order. Each phase builds on the previous:
+     - **Phase 1** — Config fixes (yml) — COMPLETED ✅
+     - **Phase 2** — Resume & complete training run (iter 2k → 20k)
+     - **Phase 3** — ArcFace identity loss integration
+     - **Phase 4** — Dataset expansion verification & game character mixing
+     - **Phase 5** — Static INT8 ONNX quantization with calibration
+     - **Phase 6** — Stage II transformer fine-tune (GPU only, HF Space/Colab)
+     - **Phase 7** — A/B test UI & model selection dropdown
+   - After completing a task, mark it `[x]` in `task.md` before proceeding to the next.
+   - Reference the full improvement rationale in:
+     `C:\Users\admin\.gemini\antigravity-ide\brain\0bf6bec8-6164-477e-a32d-6f0b9ef577c6\model_improvement_proposals.md`
+
+8. **Always Update task.md During Model Work**:
+   - Mark tasks `[/]` (in progress) when starting them.
+   - Mark tasks `[x]` (done) when verified complete.
+   - Add notes under each task if you discover important findings (e.g., actual iteration count, loss values, timing).
+   - This ensures seamless handover between sessions and agents.

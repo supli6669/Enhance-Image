@@ -2,7 +2,7 @@ import os
 import sys
 import cv2
 import torch
-torch.set_num_threads(4)
+torch.set_num_threads(8)  # Ryzen 7735HS has 8C/16T
 import yaml
 import subprocess
 import glob
@@ -60,7 +60,9 @@ def main():
             dataset = config["datasets"][phase]
             if device == "cpu":
                 dataset["num_worker_per_gpu"] = 0
-                dataset["prefetch_mode"] = "cpu"
+                # MUST be null on CPU — 'cpu' prefetch spawns multiprocessing
+                # workers which cause MemoryError/segfaults on Windows (Task 8).
+                dataset["prefetch_mode"] = None
             else:
                 dataset["num_worker_per_gpu"] = 4
                 
@@ -132,7 +134,7 @@ def main():
     # Force torch / BLAS backends to use limited CPU threads for stability
     for _k in ["OMP_NUM_THREADS", "MKL_NUM_THREADS", "OPENBLAS_NUM_THREADS",
                "NUMEXPR_NUM_THREADS", "VECLIB_MAXIMUM_THREADS"]:
-        env[_k] = "4"
+        env[_k] = "8"  # Match torch.set_num_threads — Ryzen 7735HS 8C/16T
     # Disable OpenCV threading and OpenCL runtime (prevents segfaults on Windows)
     env["OPENCV_OPENCL_RUNTIME"] = "disabled"
     env["OPENCV_THREAD_LIMIT"] = "1"
