@@ -52,3 +52,11 @@ All AI agents working on this codebase must adhere strictly to these rules:
    - Mark tasks `[x]` (done) when verified complete.
    - Add notes under each task if you discover important findings (e.g., actual iteration count, loss values, timing).
    - This ensures seamless handover between sessions and agents.
+
+9. **UI & Pipeline Threading & State Guidelines**:
+   - **Cache `get_training_status()`**: Always use `@st.cache_data(ttl=5)` for log reading functions so UI polling loops do not cause disk I/O flooding.
+   - **`FaceRestoreHelper` Cache Key**: Do **NOT** include `upscale` in `_face_helper_cache` keys. `upscale` factor only changes `warpAffine` matrix scaling, not the detector model weights.
+   - **Thread Pool Guard**: Only use `ThreadPoolExecutor` in `pipeline.py` when `len(face_helper.cropped_faces) > 1`. Single-face processing must avoid thread pool overhead.
+   - **Thread Parameter Snapshots**: Always snapshot Streamlit sidebar values into local variables (e.g., `_w`, `_detector`) before spawning background threads to prevent UI state re-binding issues.
+   - **Unified ONNX Caching**: Always use `_get_onnx_session()` for creating or retrieving ONNX inference sessions instead of custom `hasattr` checks.
+

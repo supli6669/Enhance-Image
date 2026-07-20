@@ -140,15 +140,13 @@ class LocalAIEnhancerPipeline:
         img_rgb = img_rgb.astype(np.float32) / 255.0
         img_input = np.transpose(img_rgb, (2, 0, 1))
         img_input = np.expand_dims(img_input, axis=0)
-        
-        if not hasattr(self, 'ort_session_re') or self.ort_session_re is None:
-            print("[Pipeline] Loading Real-ESRGAN ONNX Runtime Session...")
-            opts = ort.SessionOptions()
-            opts.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
-            self.ort_session_re = ort.InferenceSession(self.realesrgan_onnx_path, sess_options=opts, providers=_get_ort_providers())
-            
-        ort_inputs = {self.ort_session_re.get_inputs()[0].name: img_input}
-        ort_outs = self.ort_session_re.run(None, ort_inputs)
+
+        # B8 FIX: Use unified _get_onnx_session() cache instead of ad-hoc
+        # hasattr/None check, which would not survive garbage collection.
+        session = self._get_onnx_session(self.realesrgan_onnx_path)
+
+        ort_inputs = {session.get_inputs()[0].name: img_input}
+        ort_outs = session.run(None, ort_inputs)
         output_tensor = ort_outs[0]
         
         output = np.squeeze(output_tensor, axis=0)
@@ -312,7 +310,11 @@ class LocalAIEnhancerPipeline:
 
         # Set up FaceRestoreHelper for face processing
         os.environ['FACE_DETECTOR_PATH'] = os.path.join(project_dir, "weights", "facelib")
-        cache_key = (detection_model, upscale)
+        # B3 FIX: upscale is NOT part of FaceRestoreHelper initialisation — it only
+        # affects warpAffine geometry in paste_faces_custom_blend. Including upscale
+        # in the cache key caused a full model re-init (3-5 s) on every upscale
+        # factor change. Only the detection model matters for the helper instance.
+        cache_key = detection_model
         if cache_key not in self._face_helper_cache:
             print(f"[Pipeline] Creating new FaceRestoreHelper for {detection_model} (upscale={upscale})...")
             face_helper = FaceRestoreHelper(
@@ -397,7 +399,10 @@ class LocalAIEnhancerPipeline:
             
             self._report_progress("restoration", 0.8, "Face restoration complete")
         else:
-            if parallel:
+        # B2 FIX: Only use ThreadPoolExecutor when there are multiple faces.
+        # For single-face images (the common case), spawning a thread pool
+        # adds ~20 ms of overhead with zero parallelism benefit.
+        if parallel and len(face_helper.cropped_faces) > 1:
                 def _process_face(idx, cropped_face):
                     if self.use_onnx:
                         try:

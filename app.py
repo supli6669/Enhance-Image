@@ -326,8 +326,11 @@ document.addEventListener('keydown', function(e) {
     // Ctrl+S: Save settings (show toast)
     if (e.ctrlKey && e.key === 's') {
         e.preventDefault();
-        // Settings are automatically saved to session state
-        alert('Settings saved!');
+        const toast = document.createElement('div');
+        toast.textContent = '✨ Settings saved!';
+        toast.style.cssText = 'position:fixed;bottom:24px;right:24px;background:#8b5cf6;color:white;padding:10px 18px;border-radius:8px;font-weight:600;z-index:999999;box-shadow:0 4px 12px rgba(0,0,0,0.3);';
+        document.body.appendChild(toast);
+        setTimeout(() => toast.remove(), 2500);
     }
     // Esc: Cancel processing
     if (e.key === 'Escape') {
@@ -340,6 +343,7 @@ document.addEventListener('keydown', function(e) {
 </script>
 """, unsafe_allow_html=True)
 
+@st.cache_data(ttl=5, show_spinner=False)
 def get_training_status():
     import re
     import datetime
@@ -358,7 +362,8 @@ def get_training_status():
     if not log_files:
         return None
         
-    latest_log = log_files[0]
+    # B9 FIX: sort log files to get the newest log file
+    latest_log = sorted(log_files)[-1]
     try:
         with open(latest_log, "r", encoding="utf-8") as f:
             lines = f.readlines()[-30:]
@@ -377,7 +382,12 @@ def get_training_status():
                 if match:
                     epoch = int(match.group(1))
                     iteration = int(match.group(2).replace(",", ""))
-                    eta = eta_match.group(1) if eta_match else "Unknown"
+                    eta_raw = eta_match.group(1) if eta_match else "Unknown"
+                    # B6 FIX: Clean up negative ETA strings
+                    if "day" in eta_raw and "-" in eta_raw:
+                        eta = "Finishing..."
+                    else:
+                        eta = eta_raw
                     loss = float(loss_match.group(1)) if loss_match else 0.0
                     
                     # Extract timestamp at start of line: "2026-07-15 13:25:52"
@@ -942,6 +952,13 @@ with tab_batch:
         key="batch_uploader"
     )
     if uploaded_files:
+        # B5 FIX: Reset stale batch state if the uploaded file list changed
+        current_file_signature = [f"{f.name}_{f.size}" for f in uploaded_files]
+        if st.session_state.get('_last_batch_file_signature') != current_file_signature:
+            st.session_state._last_batch_file_signature = current_file_signature
+            st.session_state.batch_zip_data = None
+            st.session_state.batch_error = None
+
         # If not processing and no zip data, display start button
         if not st.session_state.get('batch_processing') and st.session_state.get('batch_zip_data') is None and st.session_state.get('batch_error') is None:
             if st.button("🚀 Process Batch", key="batch_button"):
@@ -974,6 +991,17 @@ with tab_batch:
                     st.session_state.batch_processing = False
                     st.stop()
                 
+                # B4 FIX: Snapshot all sidebar parameter values before passing to thread
+                _w = fidelity_weight
+                _detector = face_detector
+                _upscale = upscale_factor
+                _blend = blend_softness
+                _bg_upsampler = 'realesrgan' if bg_upscale_toggle else None
+                _det_thresh = det_threshold
+                _sharpen = sharpen_amount
+                _face_upsample = face_upscale_toggle
+                _face_restore = enable_face_restoration
+
                 # Queue IPC
                 batch_queue = queue.Queue()
                 st.session_state._batch_queue = batch_queue
@@ -998,17 +1026,17 @@ with tab_batch:
                                 
                                 result = pipeline.process_image(
                                     img_b,
-                                    w=fidelity_weight,
-                                    detection_model=face_detector,
-                                    upscale=upscale_factor,
-                                    blend_softness=blend_softness,
-                                    bg_upsampler='realesrgan' if bg_upscale_toggle else None,
-                                    det_threshold=det_threshold,
-                                    sharpen_amount=sharpen_amount,
-                                    face_upsample=face_upscale_toggle,
+                                    w=_w,
+                                    detection_model=_detector,
+                                    upscale=_upscale,
+                                    blend_softness=_blend,
+                                    bg_upsampler=_bg_upsampler,
+                                    det_threshold=_det_thresh,
+                                    sharpen_amount=_sharpen,
+                                    face_upsample=_face_upsample,
                                     parallel=True,
                                     batch_size=4,
-                                    face_restore=enable_face_restoration
+                                    face_restore=_face_restore
                                 )
                                 
                                 ok, buf = cv2.imencode(".png", result)

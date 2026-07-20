@@ -766,4 +766,35 @@ Changes to [train_custom.py](file:///d:/.gemini-scratch/custom-ai-enhancer/train
 
 ### Git Commit & Push Status
 - **Commit:** `7d99559` — "feat: add sequential model improvement roadmap (Phase 1 complete)"
-- **Status:** Pending push.
+- **Status:** Committed.
+
+---
+
+## Task 14: Codebase Bug Audit & Full Remediation (B1–B9)
+
+**Date:** 2026-07-20
+**Status:** ✅ Completed
+
+### Overview
+Audited `app.py` (1110 lines) and `pipeline.py` (635 lines) during background model training. Identified 9 bugs across state management, caching, threading, and UI performance, and fully remediated all 9. Formulated Rule 9 in `AGENTS.md` to prevent regression.
+
+### Remediation Details
+
+| Bug ID | Severity | File | Problem Description | Fix Applied |
+|--------|----------|------|---------------------|-------------|
+| **B1** | 🔴 Critical | `app.py` | `get_training_status()` ran on every 100ms UI rerun during processing, causing log file I/O flooding. | Added `@st.cache_data(ttl=5, show_spinner=False)` decorator to throttle log parsing. |
+| **B2** | 🔴 Critical | `pipeline.py` | `parallel=True` spawned `ThreadPoolExecutor` even for single-face images, adding ~20ms overhead. | Guarded thread pool execution with `len(face_helper.cropped_faces) > 1`. |
+| **B3** | 🟠 High | `pipeline.py` | `_face_helper_cache` included `upscale` factor in key, forcing full 3-5s model re-inits on upscale change. | Simplified cache key to `detection_model` only (`upscale` is handled in affine warp stage). |
+| **B4** | 🟠 High | `app.py` | Batch processing worker thread captured outer scope sidebar variables, leading to state mutation during execution. | Snapshotted all parameter variables (`_w`, `_detector`, etc.) before starting background thread. |
+| **B5** | 🟠 High | `app.py` | Uploading a new file batch retained previous batch's `batch_zip_data` in session state. | Added file signature tracking (`_last_batch_file_signature`) to reset zip state on input change. |
+| **B6** | 🟠 High | `app.py` | Negative ETA string (e.g. `-1 day, 23:59:26`) rendered directly in training dashboard. | Formatted negative ETA strings to display `"Finishing..."`. |
+| **B7** | 🟡 Medium | `app.py` | `Ctrl+S` shortcut triggered blocking `alert()` browser dialog. | Replaced `alert()` with a non-blocking floating toast notification DOM element. |
+| **B8** | 🟡 Medium | `pipeline.py` | Real-ESRGAN ONNX session used ad-hoc `hasattr` check instead of central cache. | Unified session loading via `_get_onnx_session()`. |
+| **B9** | 🟡 Medium | `app.py` | `get_training_status()` read `log_files[0]`, which was not guaranteed to be the newest log file. | Sorted `log_files` alphabetically by timestamp and selected `[-1]`. |
+
+### Rule Enforced
+Added **Rule 9** to `AGENTS.md` and synced with Obsidian Vault `D:\AgentBrain\`.
+
+### Git Commit & Push Status
+- **Status:** Pending commit.
+
