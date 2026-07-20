@@ -48,6 +48,10 @@ def main():
     print(f"Reading configuration from {config_path}...")
     with open(config_path, "r", encoding="utf-8") as f:
         config = yaml.safe_load(f)
+    
+    # Save original total_iter BEFORE any runtime overrides — we must restore
+    # this after writing so --verify mode never permanently corrupts the file.
+    original_total_iter = config.get("train", {}).get("total_iter", 20000)
         
     # Dynamically set GPU count
     config["num_gpu"] = num_gpus
@@ -113,49 +117,63 @@ def main():
         else:
             print(f"    Training from scratch to {config.get('train', {}).get('total_iter', 20000)}...")
     
-    # Write back the updated configuration
-    with open(config_path, "w", encoding="utf-8") as f:
-        yaml.dump(config, f, default_flow_style=False, sort_keys=False)
-    print(f"Updated configuration file: device={device.upper()}, num_gpu={num_gpus}, total_iter={config['train']['total_iter']}")
-    
-    # 5. Run the training process
-    train_script = os.path.join("basicsr", "train.py")
-    cmd = [
-        sys.executable,
-        train_script,
-        "-opt",
-        os.path.join("options", "CodeFormer_stage3_custom.yml"),
-        "--launcher",
-        "none"
-    ]
-    
-    # Add models/CodeFormer to PYTHONPATH
-    env = os.environ.copy()
-    # Force torch / BLAS backends to use limited CPU threads for stability
-    for _k in ["OMP_NUM_THREADS", "MKL_NUM_THREADS", "OPENBLAS_NUM_THREADS",
-               "NUMEXPR_NUM_THREADS", "VECLIB_MAXIMUM_THREADS"]:
-        env[_k] = "8"  # Match torch.set_num_threads — Ryzen 7735HS 8C/16T
-    # Disable OpenCV threading and OpenCL runtime (prevents segfaults on Windows)
-    env["OPENCV_OPENCL_RUNTIME"] = "disabled"
-    env["OPENCV_THREAD_LIMIT"] = "1"
-    cv2.setNumThreads(0)
-    # Let torch auto-detect CPU capabilities to avoid SIGILL/segfaults.
-    env["PYTHONPATH"] = os.path.pathsep.join([codeformer_dir, env.get("PYTHONPATH", "")])
-    
-    print("\nStarting training process. Command:")
-    print(" ".join(cmd))
-    print(f"Working directory: {codeformer_dir}")
-    print("------------------------------------------")
-    
+    # 5. Write runtime config to a TEMP yml file — NEVER modify the original.
+    #
+    # Strategy: write all runtime overrides (num_gpu, prefetch_mode, resume_state,
+    # total_iter) to a separate temp file. basicsr/train.py reads from that temp
+    # file. The canonical yml with all comments is never touched again.
+    #
+    # This fixes two bugs permanently:
+    #   (a) --verify mode used to persist total_iter=checkpoint+2 to disc, causing
+    #       the next full run to stop after only 2 iterations.
+    #   (b) yaml.dump was stripping all comments from the original yml every run.
+    import tempfile, shutil
+    tmp_fd, tmp_config_path = tempfile.mkstemp(suffix=".yml", prefix="cf_runtime_",
+                                                dir=os.path.join(codeformer_dir, "options"))
     try:
-        # Run subprocess under models/CodeFormer working directory
-        result = subprocess.run(cmd, cwd=codeformer_dir, env=env, check=True)
+        with os.fdopen(tmp_fd, "w", encoding="utf-8") as f:
+            yaml.dump(config, f, default_flow_style=False, sort_keys=False)
+        print(f"Runtime config written to temp file: {os.path.basename(tmp_config_path)}")
+        print(f"  device={device.upper()}, num_gpu={num_gpus}, total_iter={config['train']['total_iter']}")
+
+        # 6. Run the training process pointing at the temp config
+        train_script = os.path.join("basicsr", "train.py")
+        cmd = [
+            sys.executable,
+            train_script,
+            "-opt",
+            os.path.relpath(tmp_config_path, codeformer_dir),
+            "--launcher",
+            "none"
+        ]
+
+        # Environment setup — CPU stability settings (Task 8 findings)
+        env = os.environ.copy()
+        for _k in ["OMP_NUM_THREADS", "MKL_NUM_THREADS", "OPENBLAS_NUM_THREADS",
+                   "NUMEXPR_NUM_THREADS", "VECLIB_MAXIMUM_THREADS"]:
+            env[_k] = "8"  # Match torch.set_num_threads — Ryzen 7735HS 8C/16T
+        env["OPENCV_OPENCL_RUNTIME"] = "disabled"
+        env["OPENCV_THREAD_LIMIT"] = "1"
+        cv2.setNumThreads(0)
+        env["PYTHONPATH"] = os.path.pathsep.join([codeformer_dir, env.get("PYTHONPATH", "")])
+
+        print("\nStarting training process. Command:")
+        print(" ".join(cmd))
+        print(f"Working directory: {codeformer_dir}")
         print("------------------------------------------")
-        print("Training execution completed successfully!")
-    except subprocess.CalledProcessError as e:
-        print("------------------------------------------")
-        print(f"Training failed with exit code: {e.returncode}")
-        sys.exit(e.returncode)
+
+        try:
+            result = subprocess.run(cmd, cwd=codeformer_dir, env=env, check=True)
+            print("------------------------------------------")
+            print("Training execution completed successfully!")
+        except subprocess.CalledProcessError as e:
+            print("------------------------------------------")
+            print(f"Training failed with exit code: {e.returncode}")
+            sys.exit(e.returncode)
+    finally:
+        # Always clean up the temp file after the run (success or failure)
+        if os.path.exists(tmp_config_path):
+            os.remove(tmp_config_path)
 
 if __name__ == "__main__":
     main()
