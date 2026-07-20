@@ -103,6 +103,7 @@ train:
   feat_loss_weight: 1.0
   cross_entropy_loss: true
   entropy_loss_weight: 0.5
+  identity_loss_weight: 0.5
   scale_adaptive_gan_weight: 0.1
   optim_g:
     type: Adam

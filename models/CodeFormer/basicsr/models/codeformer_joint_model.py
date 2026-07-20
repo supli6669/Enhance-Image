@@ -92,6 +92,19 @@ class CodeFormerJointModel(SRModel):
         if train_opt.get('gan_opt'):
             self.cri_gan = build_loss(train_opt['gan_opt']).to(self.device)
 
+        self.identity_loss_weight = train_opt.get('identity_loss_weight', 0.0)
+        if self.identity_loss_weight > 0:
+            logger.info(f'Use ArcFace identity loss with weight: {self.identity_loss_weight}')
+            from facexlib.recognition.arcface_arch import Backbone
+            self.arcface = Backbone(num_layers=50, drop_ratio=0.6, mode='ir_se').to(self.device)
+            arcface_path = osp.join(self.opt['path'].get('root', '.'), 'weights', 'facelib', 'recognition_arcface_ir_se50.pth')
+            if not osp.exists(arcface_path):
+                arcface_path = 'weights/facelib/recognition_arcface_ir_se50.pth'
+            if osp.exists(arcface_path):
+                self.arcface.load_state_dict(torch.load(arcface_path, map_location=self.device), strict=True)
+            self.arcface.eval()
+            for param in self.arcface.parameters():
+                param.requires_grad = False
 
         self.fix_generator = train_opt.get('fix_generator', True)
         logger.info(f'fix_generator: {self.fix_generator}')
@@ -204,6 +217,18 @@ class CodeFormerJointModel(SRModel):
                     l_g_percep = self.cri_perceptual(self.output, self.gt)
                     l_g_total += l_g_percep
                     loss_dict['l_g_percep'] = l_g_percep
+
+                # identity loss (ArcFace)
+                if self.identity_loss_weight > 0 and hasattr(self, 'arcface'):
+                    gt_resized = F.interpolate(self.gt, (112, 112), mode='bilinear', align_corners=False)
+                    out_resized = F.interpolate(self.output, (112, 112), mode='bilinear', align_corners=False)
+                    gt_feat = self.arcface(gt_resized)
+                    out_feat = self.arcface(out_resized)
+                    gt_feat_norm = F.normalize(gt_feat, p=2, dim=1)
+                    out_feat_norm = F.normalize(out_feat, p=2, dim=1)
+                    l_g_identity = (1.0 - torch.sum(gt_feat_norm * out_feat_norm, dim=1)).mean() * self.identity_loss_weight
+                    l_g_total += l_g_identity
+                    loss_dict['l_g_identity'] = l_g_identity
 
                 # gan loss
                 if  current_iter > self.net_d_start_iter:
