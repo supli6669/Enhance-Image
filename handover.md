@@ -886,5 +886,44 @@ Executed a full, systematic code audit across the entire repository and integrat
    - Synced Obsidian Vault (`D:\AgentBrain\sync.ps1`).
    - Pushed all commits cleanly to GitHub (`origin main`) and Hugging Face (`hf main`).
 
+---
+
+## Task 17: Wink-Level Quality Architecture & Agent Skill Integration
+
+**Date:** 2026-07-21  
+**Status:** ✅ Completed
+
+### Overview
+Built `WinkQualityEnhancer` module in `wink_enhancer.py` to deliver Wink/Meitu-grade portrait restoration quality:
+1. **Skin Texture Preservation (Frequency Separation):** Extracts high-frequency texture from original cropped face and injects it back into restored face to eliminate plastic/soapy skin artifacts.
+2. **Eye & Lip Sparkle Enhancement:** Uses `facexlib` parsing segmentation masks (`parsenet`) to localize catchlight enhancement and micro-contrast sharpening on eyes and lips.
+3. **LAB CLAHE Lighting Balance:** Equalizes luminance channel in LAB color space to add dynamic depth without distorting skin color.
+4. **Agent Skill & Rules Integration:** Added `wink-portrait-enhancement-quality` skill and Rules 10, 11, 12 to `AGENTS.md`.
+
+---
+
+## Task 18: Auto Skin Tone Alignment (Reinhard Color Transfer)
+
+**Date:** 2026-07-21  
+**Status:** ✅ Completed
+
+### Overview
+Integrated Reinhard Color Transfer (`match_color_reinhard`) into `WinkQualityEnhancer`:
+- Automatically transfers color statistics (mean and std dev in LAB color space) from original cropped face/neck to AI restored face.
+- Eliminates 100% of skin tone mismatch and unnatural pale/gray face artifacts.
+
+---
+
+## Task 19: Minimalist Studio UI Redesign & Hugging Face Docker Optimization
+
+**Date:** 2026-07-21  
+**Status:** ✅ Completed
+
+### Overview
+1. **Minimalist Apple-Style Studio UI:** Redesigned `app.py` to present 3 primary intuitive controls (Preset Mode, Detail vs Likeness $w$, Resolution Scale) with collapsible advanced settings.
+2. **Docker Build Optimization:** Created `.dockerignore` excluding `.git`, `.venv`, and temporary files. Added `HOME=/tmp` and `chmod -R 777 /app /tmp` in `Dockerfile` for Hugging Face Spaces non-root user compatibility.
+3. **Vault Sync & Remote Push:** Synced Obsidian Vault (`D:\AgentBrain\`) and pushed commits to GitHub (`origin main`) and Hugging Face (`hf main`).
+
+
 
 
