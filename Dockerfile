@@ -33,8 +33,10 @@ COPY . /app/
 # Create weights directory and make sure it has permissions
 RUN mkdir -p /app/weights && chmod -R 777 /app/weights
 
-# Download model weights during build phase to prevent runtime startup hang
+# Download model weights, export ONNX models, and generate static INT8 quantization during build phase
 RUN python tools/download_weights.py
+RUN python tools/export_onnx.py
+RUN python tools/quantize_onnx_static.py
 
 # Expose port 7860 for Hugging Face Spaces
 EXPOSE 7860

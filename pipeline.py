@@ -404,10 +404,10 @@ class LocalAIEnhancerPipeline:
             
             self._report_progress("restoration", 0.8, "Face restoration complete")
         else:
-        # B2 FIX: Only use ThreadPoolExecutor when there are multiple faces.
-        # For single-face images (the common case), spawning a thread pool
-        # adds ~20 ms of overhead with zero parallelism benefit.
-        if parallel and len(face_helper.cropped_faces) > 1:
+            # B2 FIX: Only use ThreadPoolExecutor when there are multiple faces.
+            # For single-face images (the common case), spawning a thread pool
+            # adds ~20 ms of overhead with zero parallelism benefit.
+            if parallel and len(face_helper.cropped_faces) > 1:
                 def _process_face(idx, cropped_face):
                     if self.use_onnx:
                         try:

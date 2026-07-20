@@ -203,13 +203,6 @@ def train_pipeline(root_path):
             if current_iter % opt['logger']['save_checkpoint_freq'] == 0:
                 logger.info('Saving models and training states.')
                 model.save(epoch, current_iter)
-                import gc
-                gc.collect()
-
-            # Garbage collect periodically on CPU to prevent RAM memory leaks
-            if current_iter % 50 == 0:
-                import gc
-                gc.collect()
 
             # validation
             if opt.get('val') is not None and opt['datasets'].get('val') is not None \

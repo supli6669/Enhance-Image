@@ -39,6 +39,7 @@ def main():
         "weights/facelib/parsing_parsenet.pth": "https://github.com/sczhou/CodeFormer/releases/download/v0.1.0/parsing_parsenet.pth",
         "weights/facelib/yolov5l-face.pth": "https://github.com/sczhou/CodeFormer/releases/download/v0.1.0/yolov5l-face.pth",
         "weights/facelib/yolov5n-face.pth": "https://github.com/sczhou/CodeFormer/releases/download/v0.1.0/yolov5n-face.pth",
+        "weights/facelib/arcface_resnet18.pth": "https://github.com/sczhou/CodeFormer/releases/download/v0.1.0/arcface_resnet18.pth",
         "weights/realesrgan/RealESRGAN_x2plus.pth": "https://github.com/xinntao/Real-ESRGAN/releases/download/v0.2.1/RealESRGAN_x2plus.pth"
     }
     

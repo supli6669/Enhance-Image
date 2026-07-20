@@ -105,11 +105,12 @@ class CodeFormerJointModel(SRModel):
         self.setup_schedulers()
 
     def calculate_adaptive_weight(self, recon_loss, g_loss, last_layer, disc_weight_max):
-        recon_grads = torch.autograd.grad(recon_loss, last_layer, retain_graph=True)[0]
-        g_grads = torch.autograd.grad(g_loss, last_layer, retain_graph=True)[0]
+        recon_grads = torch.autograd.grad(recon_loss, last_layer, retain_graph=True)[0].detach()
+        g_grads = torch.autograd.grad(g_loss, last_layer, retain_graph=True)[0].detach()
 
         d_weight = torch.norm(recon_grads) / (torch.norm(g_grads) + 1e-4)
         d_weight = torch.clamp(d_weight, 0.0, disc_weight_max).detach()
+        del recon_grads, g_grads
         return d_weight
 
     def setup_optimizers(self):
