@@ -713,4 +713,57 @@ Now the reset only triggers when idle. During active processing, the guard preve
 - [MODIFY] [app.py](file:///d:/.gemini-scratch/custom-ai-enhancer/app.py) (Added `and not st.session_state.get('processing')` guard on line 649)
 
 ### Git Commit & Push Status
-- **Status:** Pending commit.
+- **Status:** Committed (bcf89b8).
+
+---
+
+## Task 13: Sequential Model Improvement Roadmap — Phase 1 Complete
+
+**Date:** 2026-07-20
+**Status:** 🔵 In Progress — Phase 1 done, Phase 2 running
+
+### Overview
+Established a mandatory sequential model improvement roadmap enforced via `AGENTS.md` Rule #7 and Rule #8. All future agents must follow phases in order and update `task.md`.
+
+### Key Findings During Audit
+- **Dataset:** `models/CodeFormer/datasets/ffhq/ffhq_512/` contains **26,939 images** (including game character subfolders) — already sufficient for training.
+- **Checkpoint:** `net_g_latest.pth` = iter **2,002** / 20,000. Training only 10% complete.
+- **Critical config bug found:** `scheduler.periods: [150000]` with `total_iter: 20000` → LR never annealed. Fixed to `periods: [20000]`.
+- **`train_custom.py` bug:** CPU branch was setting `prefetch_mode: 'cpu'` which overrides yml and spawns multiprocessing workers — causing the same segfault class as Task 8. Fixed to `None`.
+
+### Phase 1 Changes (Completed ✅)
+All changes to [CodeFormer_stage3_custom.yml](file:///d:/.gemini-scratch/custom-ai-enhancer/models/CodeFormer/options/CodeFormer_stage3_custom.yml):
+
+| Setting | Before | After | Reason |
+|---------|--------|-------|--------|
+| `scheduler.periods` | `[150000]` | `[20000]` | Match `total_iter` — LR annealing fix |
+| `eta_min` | `2.0e-05` | `5.0e-06` | Lower LR floor for better convergence |
+| `jpeg_range` | `[50, 100]` | `[10, 70]` | Heavier compression — real-world images |
+| `jpeg_range_large` | `[30, 80]` | `[5, 50]` | Heavier large-degradation JPEG |
+| `noise_range` | `[0.0, 20.0]` | `[0.0, 30.0]` | Stronger noise augmentation |
+| `downsample_range` | `[1.0, 12.0]` | `[1.0, 20.0]` | Wider blur range |
+| `motion_kernel_prob` | `0.05` | `0.15` | 3× more motion blur exposure |
+| `dataset_enlarge_ratio` | `1` | `5` | 5× more optimizer steps per epoch |
+| `prefetch_mode` | `cpu` | `null` | Prevent multiprocessing segfaults on CPU |
+
+Changes to [train_custom.py](file:///d:/.gemini-scratch/custom-ai-enhancer/train_custom.py):
+- `torch.set_num_threads` 4 → 8 (match Ryzen 7735HS 8C)
+- CPU branch `prefetch_mode` forced to `None` (not `'cpu'`)
+- `OMP_NUM_THREADS` etc. set to `8`
+
+### Roadmap Artifact Locations
+- **Task list:** `C:\Users\admin\.gemini\antigravity-ide\brain\0bf6bec8-6164-477e-a32d-6f0b9ef577c6\task.md`
+- **Proposals doc:** `C:\Users\admin\.gemini\antigravity-ide\brain\0bf6bec8-6164-477e-a32d-6f0b9ef577c6\model_improvement_proposals.md`
+
+### Phase Roadmap Summary
+- **Phase 1** ✅ Config fixes (yml + train_custom.py)
+- **Phase 2** 🔵 Resume training iter 2k → 20k
+- **Phase 3** ⏳ ArcFace identity loss
+- **Phase 4** ⏳ Dataset verification & mixing
+- **Phase 5** ⏳ Static INT8 ONNX quantization
+- **Phase 6** ⏳ Stage II fine-tune (GPU)
+- **Phase 7** ⏳ A/B test UI
+
+### Git Commit & Push Status
+- **Commit:** `7d99559` — "feat: add sequential model improvement roadmap (Phase 1 complete)"
+- **Status:** Pending push.
