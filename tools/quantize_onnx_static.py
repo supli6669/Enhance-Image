@@ -70,16 +70,33 @@ def quantize_static_model(model_path: str, output_path: str, calibration_folder:
         sys.exit(1)
 
     print(f"[Static Quant] Quantizing {model_path} -> {output_path}")
-    quantize_static(
-        model_input=model_path,
-        model_output=output_path,
-        calibration_data_reader=dr,
-        quant_format=QuantType.QInt8,
-        activation_type=QuantType.QUInt8,
-        weight_type=QuantType.QInt8,
-        use_external_data_format=True
-    )
-    print(f"[Static Quant] Completed successfully: {output_path}")
+    try:
+        quantize_static(
+            model_input=model_path,
+            model_output=output_path,
+            calibration_data_reader=dr,
+            quant_format=QuantType.QInt8,
+            activation_type=QuantType.QUInt8,
+            weight_type=QuantType.QInt8,
+            use_external_data_format=True
+        )
+        # Verify the quantized model can be loaded cleanly by ONNX Runtime
+        import onnxruntime as ort
+        opts = ort.SessionOptions()
+        opts.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
+        test_session = ort.InferenceSession(output_path, sess_options=opts, providers=['CPUExecutionProvider'])
+        print(f"[Static Quant] Verification passed! Model loaded successfully: {output_path}")
+    except Exception as e:
+        print(f"[Static Quant] Static quantization verification failed: {e}")
+        print(f"[Static Quant] Falling back to dynamic INT8 quantization...")
+        from onnxruntime.quantization import quantize_dynamic
+        quantize_dynamic(
+            model_input=model_path,
+            model_output=output_path,
+            weight_type=QuantType.QInt8,
+            use_external_data_format=True
+        )
+        print(f"[Static Quant] Dynamic INT8 quantization fallback completed: {output_path}")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Static INT8 quantization for CodeFormer ONNX with calibration.")
