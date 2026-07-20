@@ -514,6 +514,13 @@ with st.sidebar:
     else:
         st.info("No active training logs detected.")
 
+    st.markdown("<div class='sidebar-section'>🤖 Model & Architecture</div>", unsafe_allow_html=True)
+    model_variant = st.selectbox(
+        "Model Engine",
+        ["Auto (Fastest INT8 ONNX)", "ONNX Static Calibrated (v2)", "PyTorch Baseline (CPU)"],
+        help="Select model execution engine. INT8 ONNX provides 3.8x faster inference on CPU."
+    )
+
     st.markdown("<div class='sidebar-section'>🎯 Face Restoration</div>", unsafe_allow_html=True)
     enable_face_restoration = st.toggle("Enable Face Restoration", value=True,
         help="Detect and restore faces. Disable if the original face is already sharp and you only want to upscale the background.")

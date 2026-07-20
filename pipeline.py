@@ -59,7 +59,12 @@ class LocalAIEnhancerPipeline:
         
         # Check if ONNX models exist and should be used
         base_cf = os.path.join(project_dir, "weights", "CodeFormer", "codeformer")
-        codeformer_onnx_path = base_cf + "_int8.onnx" if os.path.exists(base_cf + "_int8.onnx") else base_cf + ".onnx"
+        if os.path.exists(base_cf + "_int8_v2.onnx"):
+            codeformer_onnx_path = base_cf + "_int8_v2.onnx"
+        elif os.path.exists(base_cf + "_int8.onnx"):
+            codeformer_onnx_path = base_cf + "_int8.onnx"
+        else:
+            codeformer_onnx_path = base_cf + ".onnx"
         self.use_onnx = HAS_ONNX and os.path.exists(codeformer_onnx_path)
         self.codeformer_onnx_path = codeformer_onnx_path
         
