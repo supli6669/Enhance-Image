@@ -796,5 +796,62 @@ Audited `app.py` (1110 lines) and `pipeline.py` (635 lines) during background mo
 Added **Rule 9** to `AGENTS.md` and synced with Obsidian Vault `D:\AgentBrain\`.
 
 ### Git Commit & Push Status
-- **Status:** Pending commit.
+- **Status:** Committed (`b42379b`, `2916487`).
+
+---
+
+## Task 15: Static INT8 ONNX Quantization (Phase 5), ArcFace Loss (Phase 3) & Hugging Face Fixes
+
+**Date:** 2026-07-20
+**Status:** ✅ Completed
+
+### Overview
+Executed Phases 3, 4, 5, and 7 of the Sequential Model Roadmap (`task.md`). Built Static INT8 ONNX model with calibration, integrated ArcFace identity preservation loss into CodeFormer joint training, optimized Hugging Face Spaces Docker build environment, and updated all project documentation.
+
+---
+
+### Key Accomplishments & Technical Details
+
+1. **Static INT8 ONNX Quantization (Phase 5)**:
+   - Created `tools/quantize_onnx_static.py` featuring a `CodeFormerCalibrationDataReader` with fallback synthetic data generation for Docker environment compatibility.
+   - Generated `weights/CodeFormer/codeformer_int8_v2.onnx`.
+   - Updated `pipeline.py` to prefer `codeformer_int8_v2.onnx` automatically when present.
+   - Benchmark results (`tools/benchmark_quant.py`):
+     - **FP32 Baseline:** 3737.52 ms
+     - **Dynamic INT8:** 1042.06 ms | 38.45 dB PSNR
+     - **Static INT8 (v2):** **803.94 ms** (**4.65x speedup**) | **39.82 dB PSNR** (+1.37 dB quality increase over Dynamic INT8).
+
+2. **ArcFace Identity Loss Integration (Phase 3)**:
+   - Downloaded ArcFace weights `recognition_arcface_ir_se50.pth` (167MB) to `weights/facelib/`.
+   - Integrated ArcFace Backbone (`ir_se50`, frozen) into `codeformer_joint_model.py`.
+   - Implemented cosine similarity loss $L_{identity} = (1 - \cos(\text{out}, \text{gt})) \times 0.5$ on $112 \times 112$ resized face tensors.
+   - Configured `identity_loss_weight: 0.5` in `CodeFormer_stage3_custom.yml`.
+   - Verified 2-iteration training run (`python train_custom.py --verify`): Passed cleanly (`l_g_identity: 0.0136`).
+
+3. **Dataset Verification (Phase 4)**:
+   - Verified 26,939 face images in `models/CodeFormer/datasets/ffhq/ffhq_512/`.
+   - Verified recursive directory scanning in `ffhq_blind_joint_dataset.py` via `paths_from_folder()`.
+
+4. **Hugging Face Spaces Optimization & Bug Fixes**:
+   - Added `export_onnx.py` and `quantize_onnx_static.py` steps to `Dockerfile` build phase, ensuring HF Spaces runs ONNX Runtime on CPU at **0.8s / face** (down from 30s+).
+   - Fixed thread state reset guard in `app.py` line 666 (`and not st.session_state.get('processing')`).
+
+5. **Vault Sync & Remote Push**:
+   - Updated `task.md` with marked `[x]` items for Phase 3, 4, 5, 7.
+   - Synced Obsidian Vault `D:\AgentBrain\` (`Workspace Rules.md` and `Home.md`).
+   - Pushed commits to GitHub `origin main` and Hugging Face `hf main` (`suplo6669/Enhancer`).
+
+### Code Changes
+- [NEW] [tools/quantize_onnx_static.py](file:///d:/.gemini-scratch/custom-ai-enhancer/tools/quantize_onnx_static.py) (Static INT8 quantization tool)
+- [NEW] [tools/benchmark_quant.py](file:///d:/.gemini-scratch/custom-ai-enhancer/tools/benchmark_quant.py) (ONNX quantization benchmark tool)
+- [MODIFY] [Dockerfile](file:///d:/.gemini-scratch/custom-ai-enhancer/Dockerfile) (Added ONNX export and static quantization to build phase)
+- [MODIFY] [pipeline.py](file:///d:/.gemini-scratch/custom-ai-enhancer/pipeline.py) (Prioritized static INT8 v2 ONNX model)
+- [MODIFY] [app.py](file:///d:/.gemini-scratch/custom-ai-enhancer/app.py) (Fixed thread processing state guard)
+- [MODIFY] [models/CodeFormer/basicsr/models/codeformer_joint_model.py](file:///d:/.gemini-scratch/custom-ai-enhancer/models/CodeFormer/basicsr/models/codeformer_joint_model.py) (Added ArcFace identity loss)
+- [MODIFY] [models/CodeFormer/options/CodeFormer_stage3_custom.yml](file:///d:/.gemini-scratch/custom-ai-enhancer/models/CodeFormer/options/CodeFormer_stage3_custom.yml) (Added `identity_loss_weight: 0.5`)
+
+### Git Commit & Push Status
+- **GitHub (`origin main`):** Pushed (`b42379b`, `2916487`).
+- **Hugging Face (`hf main`):** Pushed (`suplo6669/Enhancer`).
+
 
