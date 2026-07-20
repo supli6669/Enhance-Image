@@ -1,5 +1,6 @@
 import os
 import sys
+import gc
 import cv2
 import numpy as np
 import torch
@@ -656,4 +657,6 @@ class LocalAIEnhancerPipeline:
             upsample_img = cv2.addWeighted(upsample_img, 1.0 + sharpen_amount, blurred, -sharpen_amount, 0)
             upsample_img = np.clip(upsample_img, 0, 255).astype(np.uint8)
             
+        # Free intermediate memory allocations
+        gc.collect()
         return upsample_img

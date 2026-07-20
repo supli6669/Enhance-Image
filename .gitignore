@@ -43,3 +43,8 @@ temp/
 # Ignore built wheels directory
 wheels/
 
+# Logs and temporary files
+*.log
+*.bak
+temp_*
+
