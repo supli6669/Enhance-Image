@@ -41,11 +41,9 @@ class WinkQualityEnhancer:
                     skin_mask_resized = skin_mask
                 
                 # Skin category in facexlib parse mask is index 1
-                skin_binary = (skin_mask_resized == 1).astype(np.float32)[:, :, np.newaxis]
+                skin_binary = (skin_mask_resized == 1).astype(np.float32)
                 # Smooth mask edge
-                skin_binary = cv2.GaussianBlur(skin_binary, (5, 5), 0)
-                if len(skin_binary.shape) == 2:
-                    skin_binary = skin_binary[:, :, np.newaxis]
+                skin_binary = cv2.GaussianBlur(skin_binary, (5, 5), 0)[:, :, np.newaxis]
                 
                 blended = restored_face.astype(np.float32) + grain_layer * skin_binary
             else:
@@ -130,7 +128,44 @@ class WinkQualityEnhancer:
             print(f"[WinkEnhancer] LAB tone balance warning: {e}")
             return face_img
 
-    def enhance_face(self, restored_face: np.ndarray, cropped_original: np.ndarray = None, parse_mask: np.ndarray = None, wink_mode: bool = True, eye_enhancement: bool = True, skin_grain: float = 0.15) -> np.ndarray:
+    def match_color_reinhard(self, target_img: np.ndarray, source_img: np.ndarray, blend: float = 0.5) -> np.ndarray:
+        """
+        Reinhard Color Transfer: Match color statistics (mean and std dev in LAB space)
+        of target_img (restored AI face) to source_img (original cropped face/neck).
+        """
+        if source_img is None or blend <= 0.0:
+            return target_img
+
+        try:
+            if target_img.shape[:2] != source_img.shape[:2]:
+                source_res = cv2.resize(source_img, (target_img.shape[1], target_img.shape[0]), interpolation=cv2.INTER_LANCZOS4)
+            else:
+                source_res = source_img
+
+            target_lab = cv2.cvtColor(target_img, cv2.COLOR_BGR2LAB).astype(np.float32)
+            source_lab = cv2.cvtColor(source_res, cv2.COLOR_BGR2LAB).astype(np.float32)
+
+            t_mean, t_std = cv2.meanStdDev(target_lab)
+            s_mean, s_std = cv2.meanStdDev(source_lab)
+
+            t_mean = t_mean.flatten()
+            t_std = np.maximum(t_std.flatten(), 1e-5)
+            s_mean = s_mean.flatten()
+            s_std = s_std.flatten()
+
+            res_lab = np.zeros_like(target_lab)
+            for i in range(3):
+                res_lab[:, :, i] = ((target_lab[:, :, i] - t_mean[i]) * (s_std[i] / t_std[i])) + s_mean[i]
+
+            res_lab = np.clip(res_lab, 0, 255).astype(np.uint8)
+            matched_bgr = cv2.cvtColor(res_lab, cv2.COLOR_LAB2BGR)
+
+            return cv2.addWeighted(target_img, 1.0 - blend, matched_bgr, blend, 0)
+        except Exception as e:
+            print(f"[WinkEnhancer] Color match warning: {e}")
+            return target_img
+
+    def enhance_face(self, restored_face: np.ndarray, cropped_original: np.ndarray = None, parse_mask: np.ndarray = None, wink_mode: bool = True, eye_enhancement: bool = True, skin_grain: float = 0.15, color_match: bool = True) -> np.ndarray:
         """
         Master method to execute Wink-level enhancement pipeline on a restored face crop.
         """
@@ -139,15 +174,20 @@ class WinkQualityEnhancer:
 
         out_face = restored_face.copy()
 
-        # Step A: Skin tone & micro-contrast balance
+        # Step A: Reinhard Color Transfer (Auto Skin Tone Alignment to original face/neck)
+        if color_match and cropped_original is not None:
+            out_face = self.match_color_reinhard(out_face, cropped_original, blend=0.4)
+
+        # Step B: Skin tone & micro-contrast balance
         out_face = self.balance_skin_tone_lab(out_face)
 
-        # Step B: Eye & Lip local enhancement
+        # Step C: Eye & Lip local enhancement
         if eye_enhancement:
             out_face = self.enhance_eyes_and_lips(out_face, parse_mask=parse_mask)
 
-        # Step C: Real Skin Grain Injection (Frequency Separation)
+        # Step D: Real Skin Grain Injection (Frequency Separation)
         if skin_grain > 0.0 and cropped_original is not None:
             out_face = self.apply_skin_grain(out_face, cropped_original, skin_mask=parse_mask, grain_amount=skin_grain)
 
         return out_face
+

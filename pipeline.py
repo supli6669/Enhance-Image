@@ -244,7 +244,7 @@ class LocalAIEnhancerPipeline:
         with self.cf_onnx_lock:
             ort_outs = self.ort_session_cf.run(None, ort_inputs)
         return ort_outs[0]
-    def process_image(self, img, w=0.5, detection_model='retinaface_mobile0.25', upscale=2, blend_softness=0.5, bg_upsampler=None, det_threshold=0.5, sharpen_amount=0.0, face_upsample=False, batch_size=0, parallel=False, face_restore=True, wink_mode=True, eye_enhancement=True, skin_grain=0.15):
+    def process_image(self, img, w=0.5, detection_model='retinaface_mobile0.25', upscale=2, blend_softness=0.5, bg_upsampler=None, det_threshold=0.5, sharpen_amount=0.0, face_upsample=False, batch_size=0, parallel=False, face_restore=True, wink_mode=True, eye_enhancement=True, skin_grain=0.15, color_match=True):
         """
         Enhance an image using the local CodeFormer pipeline.
         
@@ -507,7 +507,8 @@ class LocalAIEnhancerPipeline:
             w=w,
             wink_mode=wink_mode,
             eye_enhancement=eye_enhancement,
-            skin_grain=skin_grain
+            skin_grain=skin_grain,
+            color_match=color_match
         )
         
         self._report_progress("blending", 1.0, "Blending complete!")
@@ -515,7 +516,7 @@ class LocalAIEnhancerPipeline:
         
         return enhanced_img
 
-    def paste_faces_custom_blend(self, face_helper, upscale, blend_softness, bg_img=None, sharpen_amount=0.0, face_upsample=False, w=0.5, wink_mode=True, eye_enhancement=True, skin_grain=0.15):
+    def paste_faces_custom_blend(self, face_helper, upscale, blend_softness, bg_img=None, sharpen_amount=0.0, face_upsample=False, w=0.5, wink_mode=True, eye_enhancement=True, skin_grain=0.15, color_match=True):
         """Custom implementation of face pasting with adjustable soft blending mask."""
         h, w_img, _ = face_helper.input_img.shape
         h_up, w_up = int(h * upscale), int(w_img * upscale)
@@ -553,8 +554,10 @@ class LocalAIEnhancerPipeline:
                     parse_mask=parse_mask,
                     wink_mode=wink_mode,
                     eye_enhancement=eye_enhancement,
-                    skin_grain=skin_grain
+                    skin_grain=skin_grain,
+                    color_match=color_match
                 )
+
             
             if upscale > 1:
                 # Upscale the restored face using Real-ESRGAN to maintain super-resolution sharpness if enabled

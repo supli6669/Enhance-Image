@@ -565,6 +565,8 @@ with st.sidebar:
         help="Enable Wink-level post-processing: skin texture preservation, eye/lip sparkle, and LAB tone balancing.")
     enable_eye_enhancement = st.checkbox("Eye & Lip Sparkle", value=True,
         help="Local contrast and catchlight enhancement on eyes and lips using facial parsing masks.")
+    enable_color_match = st.checkbox("Auto Skin Tone Alignment (Reinhard)", value=True,
+        help="Automatically match color palette and lighting statistics of restored face to original skin/neck tone.")
     skin_grain_amount = st.slider("Skin Grain Retention", 0.0, 0.5, 0.15, 0.05,
         help="Frequency separation texture injection to keep natural skin pores and eliminate plastic/soapy face look.")
 
@@ -671,6 +673,7 @@ with tab_single:
             'face_restore': enable_face_restoration,
             'wink_mode': enable_wink_mode,
             'eye_enhancement': enable_eye_enhancement,
+            'color_match': enable_color_match,
             'skin_grain': skin_grain_amount
         }
         
@@ -728,6 +731,7 @@ with tab_single:
                             face_restore=enable_face_restoration,
                             wink_mode=enable_wink_mode,
                             eye_enhancement=enable_eye_enhancement,
+                            color_match=enable_color_match,
                             skin_grain=skin_grain_amount
                         )
                         if pipeline.cancel_flag:
