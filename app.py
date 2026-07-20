@@ -560,6 +560,14 @@ with st.sidebar:
     bg_upscale_toggle = st.toggle("Real-ESRGAN Background Upscale", value=False,
         help="Upscale the entire image background (not just faces). ⚠️ Slow on CPU. Use only if you need to upscale the whole image.")
 
+    st.markdown("<div class='sidebar-section'>✨ Wink Beauty & Details</div>", unsafe_allow_html=True)
+    enable_wink_mode = st.toggle("Wink Quality Engine", value=True,
+        help="Enable Wink-level post-processing: skin texture preservation, eye/lip sparkle, and LAB tone balancing.")
+    enable_eye_enhancement = st.checkbox("Eye & Lip Sparkle", value=True,
+        help="Local contrast and catchlight enhancement on eyes and lips using facial parsing masks.")
+    skin_grain_amount = st.slider("Skin Grain Retention", 0.0, 0.5, 0.15, 0.05,
+        help="Frequency separation texture injection to keep natural skin pores and eliminate plastic/soapy face look.")
+
     st.markdown("<div class='sidebar-section'>🔬 Post-Processing</div>", unsafe_allow_html=True)
     sharpen_amount = st.slider("Sharpness Boost", 0.0, 1.0, st.session_state.get('sharpen_amount', 0.0), 0.05,
         help="Unsharp mask filter to enhance edge sharpness. 0.0 = disabled. Use sparingly (0.1-0.3) to avoid over-sharpening artifacts.", key="sharpen_amount")
@@ -660,7 +668,10 @@ with tab_single:
             'det_threshold': det_threshold,
             'sharpen_amount': sharpen_amount,
             'face_upsample': face_upscale_toggle,
-            'face_restore': enable_face_restoration
+            'face_restore': enable_face_restoration,
+            'wink_mode': enable_wink_mode,
+            'eye_enhancement': enable_eye_enhancement,
+            'skin_grain': skin_grain_amount
         }
         
         if st.session_state.get('last_run_params') != current_params and not st.session_state.get('processing'):
@@ -714,7 +725,10 @@ with tab_single:
                             face_upsample=face_upscale_toggle,
                             parallel=True,
                             batch_size=4,
-                            face_restore=enable_face_restoration
+                            face_restore=enable_face_restoration,
+                            wink_mode=enable_wink_mode,
+                            eye_enhancement=enable_eye_enhancement,
+                            skin_grain=skin_grain_amount
                         )
                         if pipeline.cancel_flag:
                             return

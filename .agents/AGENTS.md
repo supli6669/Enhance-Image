@@ -60,3 +60,7 @@ All AI agents working on this codebase must adhere strictly to these rules:
    - **Thread Parameter Snapshots**: Always snapshot Streamlit sidebar values into local variables (e.g., `_w`, `_detector`) before spawning background threads to prevent UI state re-binding issues.
    - **Unified ONNX Caching**: Always use `_get_onnx_session()` for creating or retrieving ONNX inference sessions instead of custom `hasattr` checks.
 
+10. **Wink-Level Quality Architecture Rules**:
+   - **Parsing-Guided Post-Processing**: Face detail enhancement (eyes, lips, skin) MUST use facial parsing masks (`facexlib` segmentation) to localize effects. Never apply global unsharp masking or aggressive sharpening across the whole face crop.
+   - **OpenCV/NumPy Only for Post-Processing**: All face post-processing (skin grain, eye sparkle, LAB tone balance) MUST use vectorized OpenCV/NumPy operations (`WinkQualityEnhancer`). Do NOT introduce additional heavy neural network models for post-processing to keep latency < 0.05s per face on CPU.
+   - **Real Skin Grain Preservation**: Always maintain frequency separation texture injection from original face crops (default `skin_grain=0.15`) so faces never suffer from soapy or plastic skin artifacts.

@@ -37,6 +37,7 @@ for p in (codeformer_dir, tools_dir):
 from basicsr.utils import img2tensor, tensor2img
 from basicsr.utils.registry import ARCH_REGISTRY
 from facelib.utils.face_restoration_helper import FaceRestoreHelper
+from wink_enhancer import WinkQualityEnhancer
 
 class LocalAIEnhancerPipeline:
     def __init__(self, device=None, progress_callback=None):
@@ -53,6 +54,7 @@ class LocalAIEnhancerPipeline:
         
         self.progress_callback = progress_callback
         self.cancel_flag = False
+        self.wink_enhancer = WinkQualityEnhancer()
             
         print(f"[Pipeline] Initializing pipeline on device: {self.device}")
         
@@ -242,7 +244,7 @@ class LocalAIEnhancerPipeline:
         with self.cf_onnx_lock:
             ort_outs = self.ort_session_cf.run(None, ort_inputs)
         return ort_outs[0]
-    def process_image(self, img, w=0.5, detection_model='retinaface_mobile0.25', upscale=2, blend_softness=0.5, bg_upsampler=None, det_threshold=0.5, sharpen_amount=0.0, face_upsample=False, batch_size=0, parallel=False, face_restore=True):
+    def process_image(self, img, w=0.5, detection_model='retinaface_mobile0.25', upscale=2, blend_softness=0.5, bg_upsampler=None, det_threshold=0.5, sharpen_amount=0.0, face_upsample=False, batch_size=0, parallel=False, face_restore=True, wink_mode=True, eye_enhancement=True, skin_grain=0.15):
         """
         Enhance an image using the local CodeFormer pipeline.
         
@@ -502,7 +504,10 @@ class LocalAIEnhancerPipeline:
             bg_img=bg_img,
             sharpen_amount=sharpen_amount,
             face_upsample=face_upsample,
-            w=w
+            w=w,
+            wink_mode=wink_mode,
+            eye_enhancement=eye_enhancement,
+            skin_grain=skin_grain
         )
         
         self._report_progress("blending", 1.0, "Blending complete!")
@@ -510,7 +515,7 @@ class LocalAIEnhancerPipeline:
         
         return enhanced_img
 
-    def paste_faces_custom_blend(self, face_helper, upscale, blend_softness, bg_img=None, sharpen_amount=0.0, face_upsample=False, w=0.5):
+    def paste_faces_custom_blend(self, face_helper, upscale, blend_softness, bg_img=None, sharpen_amount=0.0, face_upsample=False, w=0.5, wink_mode=True, eye_enhancement=True, skin_grain=0.15):
         """Custom implementation of face pasting with adjustable soft blending mask."""
         h, w_img, _ = face_helper.input_img.shape
         h_up, w_up = int(h * upscale), int(w_img * upscale)
@@ -528,6 +533,28 @@ class LocalAIEnhancerPipeline:
         for idx, (restored_face, inverse_affine) in enumerate(zip(face_helper.restored_faces, face_helper.inverse_affine_matrices)):
             inv_aff = inverse_affine.copy()
             cropped_face = face_helper.cropped_faces[idx]
+            
+            # Apply Wink-level quality post-processing (skin grain, eye sparkle, LAB tone balance)
+            if wink_mode and hasattr(self, 'wink_enhancer'):
+                parse_mask = None
+                if hasattr(face_helper, 'face_parse') and face_helper.face_parse is not None:
+                    try:
+                        with torch.no_grad():
+                            face_t = img2tensor(restored_face / 255.0, bgr2rgb=True, float32=True).unsqueeze(0).to(self.device)
+                            normalize(face_t, (0.5, 0.5, 0.5), (0.5, 0.5, 0.5), inplace=True)
+                            out_parse = face_helper.face_parse(face_t)[0]
+                            parse_mask = out_parse.argmax(dim=0).cpu().numpy()
+                    except Exception:
+                        parse_mask = None
+
+                restored_face = self.wink_enhancer.enhance_face(
+                    restored_face,
+                    cropped_original=cropped_face,
+                    parse_mask=parse_mask,
+                    wink_mode=wink_mode,
+                    eye_enhancement=eye_enhancement,
+                    skin_grain=skin_grain
+                )
             
             if upscale > 1:
                 # Upscale the restored face using Real-ESRGAN to maintain super-resolution sharpness if enabled
