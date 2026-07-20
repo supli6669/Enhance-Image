@@ -1,6 +1,4 @@
-﻿# CPU-only base dependencies (torch, torchvision, numpy are pre-installed in Dockerfile)
-
-# Basicsr & CodeFormer requirements
+# CPU-only base dependencies
 addict
 future
 yapf
@@ -14,5 +12,4 @@ onnxruntime
 
 # Web UI and image processing
 streamlit
-streamlit-image-comparison
-opencv-python-headless
+opencv-python
