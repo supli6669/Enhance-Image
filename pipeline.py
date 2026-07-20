@@ -18,11 +18,12 @@ def _get_ort_providers():
         return []
     try:
         available = ort.get_available_providers()
-        preferred = ['OpenVINOExecutionProvider', 'CPUExecutionProvider']
+        preferred = ['CUDAExecutionProvider', 'CPUExecutionProvider']
         providers = [p for p in preferred if p in available]
         return providers if providers else ['CPUExecutionProvider']
     except Exception:
         return ['CPUExecutionProvider']
+
 
 # Ensure CodeFormer and tools directories are on sys.path
 project_dir = os.path.dirname(os.path.abspath(__file__))
@@ -59,15 +60,33 @@ class LocalAIEnhancerPipeline:
         
         # Check if ONNX models exist and should be used
         base_cf = os.path.join(project_dir, "weights", "CodeFormer", "codeformer")
-        if os.path.exists(base_cf + "_int8_v2.onnx"):
-            codeformer_onnx_path = base_cf + "_int8_v2.onnx"
-        elif os.path.exists(base_cf + "_int8.onnx"):
-            codeformer_onnx_path = base_cf + "_int8.onnx"
-        else:
-            codeformer_onnx_path = base_cf + ".onnx"
-        self.use_onnx = HAS_ONNX and os.path.exists(codeformer_onnx_path)
-        self.codeformer_onnx_path = codeformer_onnx_path
+        onnx_candidates = [
+            base_cf + "_int8_v2.onnx",
+            base_cf + "_int8.onnx",
+            base_cf + ".onnx"
+        ]
         
+        self.use_onnx = False
+        self.ort_session_cf = None
+        self.codeformer_onnx_path = None
+
+        if HAS_ONNX:
+            opts = ort.SessionOptions()
+            opts.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
+            for candidate in onnx_candidates:
+                if os.path.exists(candidate):
+                    try:
+                        print(f"[Pipeline] Attempting to load ONNX model: {candidate}")
+                        session = ort.InferenceSession(candidate, sess_options=opts, providers=_get_ort_providers())
+                        self.ort_session_cf = session
+                        self.codeformer_onnx_path = candidate
+                        self.use_onnx = True
+                        print(f"[Pipeline] Successfully loaded ONNX model: {candidate}")
+                        break
+                    except Exception as e:
+                        print(f"[Pipeline] Warning: Failed to load ONNX model {candidate}: {e}")
+                        # If a candidate fails, continue trying the next candidate
+
         base_re = os.path.join(project_dir, "weights", "realesrgan", "realesrgan")
         self.realesrgan_onnx_path = base_re + "_int8.onnx" if os.path.exists(base_re + "_int8.onnx") else base_re + ".onnx"
         self.use_re_onnx = HAS_ONNX and os.path.exists(self.realesrgan_onnx_path)
@@ -76,13 +95,9 @@ class LocalAIEnhancerPipeline:
         self._onnx_session_cache = {}
         
         if self.use_onnx:
-            print(f"[Pipeline] ONNX models detected! Using ONNX Runtime for CodeFormer inference.")
-            opts = ort.SessionOptions()
-            opts.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
-            self.ort_session_cf = ort.InferenceSession(codeformer_onnx_path, sess_options=opts, providers=_get_ort_providers())
             self.net = None
-            print("[Pipeline] CodeFormer ONNX model loaded successfully.")
         else:
+            print("[Pipeline] ONNX disabled or unavailable. Falling back to PyTorch model.")
             # Load CodeFormer network architecture
             self.net = ARCH_REGISTRY.get('CodeFormer')(
                 dim_embd=512, 

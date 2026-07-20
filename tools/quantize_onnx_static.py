@@ -9,7 +9,7 @@ from onnxruntime.quantization import quantize_static, CalibrationDataReader, Qua
 
 class CodeFormerCalibrationDataReader(CalibrationDataReader):
     """Calibration Data Reader for ONNX Runtime static quantization of CodeFormer."""
-    def __init__(self, calibration_folder: str, w_val: float = 0.5, max_samples: int = 30):
+    def __init__(self, calibration_folder: str, w_val: float = 0.5, max_samples: int = 5):
         super().__init__()
         valid_exts = ('.png', '.jpg', '.jpeg', '.webp')
         self.image_paths = [
@@ -69,26 +69,15 @@ def quantize_static_model(model_path: str, output_path: str, calibration_folder:
         print(f"[ERROR] Calibration folder is empty or invalid: {calibration_folder}")
         sys.exit(1)
 
-    # Pre-compute shape inference to file to avoid loading entire 370MB external data into RAM
-    inferred_model_path = model_path.replace(".onnx", "_inferred.onnx")
-    print(f"[Static Quant] Inferring shapes to {inferred_model_path}...")
-    try:
-        onnx.shape_inference.infer_shapes_path(model_path, inferred_model_path)
-        input_for_quant = inferred_model_path
-    except Exception as e:
-        print(f"[Static Quant] Warning during shape inference: {e}. Falling back to input model.")
-        input_for_quant = model_path
-
-    print(f"[Static Quant] Quantizing {input_for_quant} -> {output_path}")
+    print(f"[Static Quant] Quantizing {model_path} -> {output_path}")
     quantize_static(
-        model_input=input_for_quant,
+        model_input=model_path,
         model_output=output_path,
         calibration_data_reader=dr,
         quant_format=QuantType.QInt8,
         activation_type=QuantType.QUInt8,
         weight_type=QuantType.QInt8,
-        use_external_data_format=True,
-        extra_options={"DisableShapeInference": True}
+        use_external_data_format=True
     )
     print(f"[Static Quant] Completed successfully: {output_path}")
 
