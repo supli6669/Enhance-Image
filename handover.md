@@ -1017,16 +1017,26 @@ Ran `tools/benchmark.py` and `tools/test_pipeline.py`:
 
 ### Empirical Verification Results
 - **Dataset Image Count**: Verified **26,939 face images** on disk (FFHQ + Game Characters mix).
-- **Dataset Loader Test**: Ran `tools/test_dataset_loader.py` with `FFHQBlindJointDataset`.
-- **Dataset Expansion Factor**: Enlarge ratio $5\times$ yields **134,695 training items/epoch**.
-- **Tensor Verification**:
-  - `gt` shape: `[3, 512, 512]`, range `[-1.0, 1.0]`
-  - `in` shape: `[3, 512, 512]`, range `[-1.0, 1.0]`
-- **`exit code 0`** verified cleanly.
+---
+
+## Task 18: Phase 7 A/B Model & Preset Pipeline Verification
+
+**Date:** 2026-07-22  
+**Status:** ✅ Completed
+
+### Empirical Verification Results
+- **Pipeline Test Harness**: Created [`tools/test_ab_ui_pipeline.py`](file:///d:/.gemini-scratch/custom-ai-enhancer/tools/test_ab_ui_pipeline.py).
+- **Preset Mode Test Matrix**:
+  - 🎭 `default`: Processed 4 faces, output shape $(1024, 1622, 3)$ — PASSED ✅
+  - 📸 `portrait`: Fidelity $w=0.6$, skin grain active, output shape $(1024, 1622, 3)$ — PASSED ✅
+  - 📜 `old_photo`: Fidelity $w=0.85$, color match active, output shape $(1024, 1622, 3)$ — PASSED ✅
+  - 🎮 `game_character`: Fidelity $w=0.3$, zero grain, output shape $(1024, 1622, 3)$ — PASSED ✅
+- **`exit code 0`** verified cleanly across all presets.
 
 ### Git Commit & Push Status
 - All changes committed and pushed to `origin/main` (GitHub) and `hf/main` (Hugging Face Spaces).
 - Obsidian Vault synced (`D:\AgentBrain\`).
+
 
 
 
