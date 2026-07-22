@@ -1008,9 +1008,26 @@ Ran `tools/benchmark.py` and `tools/test_pipeline.py`:
   - Total iter time: **`52.25 seconds/iter`**
   - **`exit code 0`** verified cleanly.
 
+---
+
+## Task 17: Phase 4 Dataset Expansion & Game Character Mixing Verification
+
+**Date:** 2026-07-22  
+**Status:** ✅ Completed
+
+### Empirical Verification Results
+- **Dataset Image Count**: Verified **26,939 face images** on disk (FFHQ + Game Characters mix).
+- **Dataset Loader Test**: Ran `tools/test_dataset_loader.py` with `FFHQBlindJointDataset`.
+- **Dataset Expansion Factor**: Enlarge ratio $5\times$ yields **134,695 training items/epoch**.
+- **Tensor Verification**:
+  - `gt` shape: `[3, 512, 512]`, range `[-1.0, 1.0]`
+  - `in` shape: `[3, 512, 512]`, range `[-1.0, 1.0]`
+- **`exit code 0`** verified cleanly.
+
 ### Git Commit & Push Status
 - All changes committed and pushed to `origin/main` (GitHub) and `hf/main` (Hugging Face Spaces).
 - Obsidian Vault synced (`D:\AgentBrain\`).
+
 
 
 
