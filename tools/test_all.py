@@ -52,16 +52,17 @@ def main():
     print("             SUMMARY TEST REPORT CARD             ")
     print("==================================================")
     for script, passed in results.items():
-        status_str = "✅ PASSED" if passed else "❌ FAILED"
+        status_str = "[OK] PASSED" if passed else "[FAIL] FAILED"
         print(f"  - {script:<30}: {status_str}")
         
     print("==================================================")
     if all_passed:
-        print("🎉 ALL VERIFICATION SUITES PASSED WITH EXIT CODE 0!")
+        print("ALL VERIFICATION SUITES PASSED WITH EXIT CODE 0!")
         sys.exit(0)
     else:
-        print("❌ ONE OR MORE VERIFICATION SUITES FAILED.")
+        print("ONE OR MORE VERIFICATION SUITES FAILED.")
         sys.exit(1)
+
 
 if __name__ == "__main__":
     main()
