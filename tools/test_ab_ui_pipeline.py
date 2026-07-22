@@ -29,7 +29,7 @@ def test_ab_ui_pipeline():
     
     for preset in presets:
         print(f"\nTesting Pipeline Execution with Preset Mode: '{preset}'...")
-        res_img, restored_faces, _ = pipeline.process_image(
+        res_img = pipeline.process_image(
             img,
             w=0.6,
             upscale=2,
@@ -42,9 +42,9 @@ def test_ab_ui_pipeline():
             enable_skin=True,
             sharpen_amount=0.2
         )
-        face_count = len(restored_faces) if restored_faces else 0
         assert res_img is not None, f"Failed to process image with preset {preset}"
-        print(f"  Preset '{preset}' Passed! Detected faces: {face_count}, Output shape: {res_img.shape}")
+        print(f"  Preset '{preset}' Passed! Output shape: {res_img.shape}")
+
 
         
     print("\nSUCCESS: Phase 7 A/B Model & Preset Pipeline test completed with exit code 0!")
