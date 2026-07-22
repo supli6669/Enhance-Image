@@ -1019,23 +1019,21 @@ Ran `tools/benchmark.py` and `tools/test_pipeline.py`:
 - **Dataset Image Count**: Verified **26,939 face images** on disk (FFHQ + Game Characters mix).
 ---
 
-## Task 18: Phase 7 A/B Model & Preset Pipeline Verification
+## Task 19: Phase 6 Stage II Transformer Fine-Tune Configuration & Setup Verification
 
 **Date:** 2026-07-22  
 **Status:** ✅ Completed
 
 ### Empirical Verification Results
-- **Pipeline Test Harness**: Created [`tools/test_ab_ui_pipeline.py`](file:///d:/.gemini-scratch/custom-ai-enhancer/tools/test_ab_ui_pipeline.py).
-- **Preset Mode Test Matrix**:
-  - 🎭 `default`: Processed 4 faces, output shape $(1024, 1622, 3)$ — PASSED ✅
-  - 📸 `portrait`: Fidelity $w=0.6$, skin grain active, output shape $(1024, 1622, 3)$ — PASSED ✅
-  - 📜 `old_photo`: Fidelity $w=0.85$, color match active, output shape $(1024, 1622, 3)$ — PASSED ✅
-  - 🎮 `game_character`: Fidelity $w=0.3$, zero grain, output shape $(1024, 1622, 3)$ — PASSED ✅
-- **`exit code 0`** verified cleanly across all presets.
+- **Option Configuration**: Created [`models/CodeFormer/options/CodeFormer_stage2_custom.yml`](file:///d:/.gemini-scratch/custom-ai-enhancer/models/CodeFormer/options/CodeFormer_stage2_custom.yml).
+- **Standalone VQGAN Weights**: Downloaded `weights/facelib/vqgan_code1024.pth` (243.26 MB) via `tools/download_weights.py`.
+- **Model Architecture Harness**: Created [`tools/test_stage2_config.py`](file:///d:/.gemini-scratch/custom-ai-enhancer/tools/test_stage2_config.py).
+- **Architecture Verification**: `CodeFormerIdxModel` initialized and verified cleanly with **`exit code 0`**.
 
 ### Git Commit & Push Status
 - All changes committed and pushed to `origin/main` (GitHub) and `hf/main` (Hugging Face Spaces).
 - Obsidian Vault synced (`D:\AgentBrain\`).
+
 
 
 

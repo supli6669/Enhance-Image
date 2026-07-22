@@ -38,9 +38,10 @@ def main():
         "weights/facelib/detection_mobilenet0.25_Final.pth": "https://github.com/sczhou/CodeFormer/releases/download/v0.1.0/detection_mobilenet0.25_Final.pth",
         "weights/facelib/parsing_parsenet.pth": "https://github.com/sczhou/CodeFormer/releases/download/v0.1.0/parsing_parsenet.pth",
         "weights/facelib/yolov5l-face.pth": "https://github.com/sczhou/CodeFormer/releases/download/v0.1.0/yolov5l-face.pth",
-        "weights/facelib/yolov5n-face.pth": "https://github.com/sczhou/CodeFormer/releases/download/v0.1.0/yolov5n-face.pth",
-        "weights/facelib/arcface_resnet18.pth": "https://github.com/sczhou/CodeFormer/releases/download/v0.1.0/arcface_resnet18.pth",
+        "weights/facelib/vqgan_code1024.pth": "https://github.com/sczhou/CodeFormer/releases/download/v0.1.0/vqgan_code1024.pth",
         "weights/realesrgan/RealESRGAN_x2plus.pth": "https://github.com/xinntao/Real-ESRGAN/releases/download/v0.2.1/RealESRGAN_x2plus.pth"
+
+
     }
     
     for rel_path, url in weights_to_download.items():
