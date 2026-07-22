@@ -1,4 +1,4 @@
----
+ ---
 name: streamlit-thread-state-guidelines
 description: Architectural rules and patterns for Streamlit background threading, thread-safe queue IPC, cached function guards, session_state initialization, and progress polling in AI web applications.
 ---

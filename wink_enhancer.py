@@ -35,17 +35,20 @@ class WinkQualityEnhancer:
             grain_layer = (high_freq * grain_amount).clip(-128, 127)
 
             if skin_mask is not None:
-                if skin_mask.shape[:2] != restored_face.shape[:2]:
-                    skin_mask_resized = cv2.resize(skin_mask.astype(np.uint8), (restored_face.shape[1], restored_face.shape[0]), interpolation=cv2.INTER_NEAREST)
+                skin_mask_2d = np.squeeze(skin_mask)
+                if skin_mask_2d.ndim == 2:
+                    if skin_mask_2d.shape != restored_face.shape[:2]:
+                        skin_mask_resized = cv2.resize(skin_mask_2d.astype(np.uint8), (restored_face.shape[1], restored_face.shape[0]), interpolation=cv2.INTER_NEAREST)
+                    else:
+                        skin_mask_resized = skin_mask_2d
+                    
+                    # Skin category in facexlib parse mask is index 1
+                    skin_binary = (skin_mask_resized == 1).astype(np.float32)
+                    # Smooth mask edge
+                    skin_binary = cv2.GaussianBlur(skin_binary, (5, 5), 0)[:, :, np.newaxis]
+                    blended = restored_face.astype(np.float32) + grain_layer * skin_binary
                 else:
-                    skin_mask_resized = skin_mask
-                
-                # Skin category in facexlib parse mask is index 1
-                skin_binary = (skin_mask_resized == 1).astype(np.float32)
-                # Smooth mask edge
-                skin_binary = cv2.GaussianBlur(skin_binary, (5, 5), 0)[:, :, np.newaxis]
-                
-                blended = restored_face.astype(np.float32) + grain_layer * skin_binary
+                    blended = restored_face.astype(np.float32) + grain_layer
             else:
                 blended = restored_face.astype(np.float32) + grain_layer
 
@@ -64,11 +67,17 @@ class WinkQualityEnhancer:
             return cv2.addWeighted(face_img, 1.15, blur, -0.15, 0)
 
         try:
+            parse_mask_2d = np.squeeze(parse_mask)
+            if parse_mask_2d.ndim != 2:
+                blur = cv2.GaussianBlur(face_img, (0, 0), 2.0)
+                return cv2.addWeighted(face_img, 1.15, blur, -0.15, 0)
+
             h, w = face_img.shape[:2]
-            if parse_mask.shape[:2] != (h, w):
-                parse_mask_res = cv2.resize(parse_mask.astype(np.uint8), (w, h), interpolation=cv2.INTER_NEAREST)
+            if parse_mask_2d.shape[:2] != (h, w):
+                parse_mask_res = cv2.resize(parse_mask_2d.astype(np.uint8), (w, h), interpolation=cv2.INTER_NEAREST)
             else:
-                parse_mask_res = parse_mask
+                parse_mask_res = parse_mask_2d
+
 
             # Facial feature mask IDs in facexlib:
             # 4: Left Eye, 5: Right Eye, 6: Glasses, 11: Upper Lip, 12: Lower Lip, 13: Inner Mouth
