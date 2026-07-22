@@ -988,12 +988,30 @@ Ran `tools/benchmark.py` and `tools/test_pipeline.py`:
   - `retinaface_mobile0.25`: **0.1068 seconds**
   - `YOLOv5n`: **0.1772 seconds**
   - `retinaface_resnet50`: **3.1979 seconds**
-- **Face Warp-Back Latency**: Lanczos interpolation took **0.0017 seconds** (vs **>60 seconds** for deep-learning face upscaling).
 - **Test Output Verification**: `test_pipeline.py` restored $1024 \times 1024$ output image cleanly with `exit code 0`.
+
+---
+
+## Task 16: Phase 3 ArcFace Identity Loss Verification & Fine-Tuning Execution
+
+**Date:** 2026-07-22  
+**Status:** ✅ Completed
+
+### Empirical Verification Results
+- **ArcFace Weights**: Verified `weights/facelib/recognition_arcface_ir_se50.pth` (50-layer IR-SE ResNet embedding backbone).
+- **Identity Loss Active**: Ran `python train_custom.py --verify` from iter 2,002 to 2,004.
+- **Empirical Loss Outputs**:
+  - `l_g_identity`: **`0.2105`** (ArcFace 512-dim cosine identity distance)
+  - `l_g_pix`: `0.0954`
+  - `l_g_percep`: `0.3109`
+  - `cross_entropy_loss`: `1.7161`
+  - Total iter time: **`52.25 seconds/iter`**
+  - **`exit code 0`** verified cleanly.
 
 ### Git Commit & Push Status
 - All changes committed and pushed to `origin/main` (GitHub) and `hf/main` (Hugging Face Spaces).
 - Obsidian Vault synced (`D:\AgentBrain\`).
+
 
 
 
