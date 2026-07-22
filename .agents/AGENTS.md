@@ -64,3 +64,8 @@ All AI agents working on this codebase must adhere strictly to these rules:
    - **Parsing-Guided Post-Processing**: Face detail enhancement (eyes, lips, skin) MUST use facial parsing masks (`facexlib` segmentation) to localize effects. Never apply global unsharp masking or aggressive sharpening across the whole face crop.
    - **OpenCV/NumPy Only for Post-Processing**: All face post-processing (skin grain, eye sparkle, LAB tone balance) MUST use vectorized OpenCV/NumPy operations (`WinkQualityEnhancer`). Do NOT introduce additional heavy neural network models for post-processing to keep latency < 0.05s per face on CPU.
    - **Real Skin Grain Preservation**: Always maintain frequency separation texture injection from original face crops (default `skin_grain=0.15`) so faces never suffer from soapy or plastic skin artifacts.
+
+11. **Mandatory Git Commit & Push Rule**:
+    - At the end of every session, task completion, or whenever significant code/documentation changes are made, agents MUST stage, commit, and push all modified files (`git add .`, `git commit -m "..."`, `git push origin main` and `git push hf main` if applicable).
+    - Always ensure `handover.md` and project documentation are updated and committed alongside code changes so that future agents and sessions maintain seamless continuity.
+

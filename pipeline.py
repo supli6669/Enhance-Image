@@ -19,11 +19,12 @@ def _get_ort_providers():
         return []
     try:
         available = ort.get_available_providers()
-        preferred = ['CUDAExecutionProvider', 'CPUExecutionProvider']
+        preferred = ['DmlExecutionProvider', 'OpenVINOExecutionProvider', 'CUDAExecutionProvider', 'CPUExecutionProvider']
         providers = [p for p in preferred if p in available]
         return providers if providers else ['CPUExecutionProvider']
     except Exception:
         return ['CPUExecutionProvider']
+
 
 
 # Ensure CodeFormer and tools directories are on sys.path
@@ -244,7 +245,9 @@ class LocalAIEnhancerPipeline:
         with self.cf_onnx_lock:
             ort_outs = self.ort_session_cf.run(None, ort_inputs)
         return ort_outs[0]
-    def process_image(self, img, w=0.5, detection_model='retinaface_mobile0.25', upscale=2, blend_softness=0.5, bg_upsampler=None, det_threshold=0.5, sharpen_amount=0.0, face_upsample=False, batch_size=0, parallel=False, face_restore=True, wink_mode=True, eye_enhancement=True, skin_grain=0.15, color_match=True):
+
+    def process_image(self, img, w=0.5, detection_model='retinaface_mobile0.25', upscale=2, blend_softness=0.5, bg_upsampler=None, det_threshold=0.5, sharpen_amount=0.0, face_upsample=False, batch_size=0, parallel=False, face_restore=True, wink_mode=True, eye_enhancement=True, skin_grain=0.15, color_match=True, enable_eyes=True, enable_lips=True, enable_skin=True, preset_mode='Custom'):
+
         """
         Enhance an image using the local CodeFormer pipeline.
         
@@ -262,6 +265,35 @@ class LocalAIEnhancerPipeline:
         Returns:
             numpy.ndarray: Enhanced output image in BGR format.
         """
+        # Apply Preset parameters if specific preset mode is selected
+        if preset_mode == 'Modern Portrait':
+            w = 0.6
+            wink_mode = True
+            eye_enhancement = True
+            skin_grain = 0.15
+            color_match = True
+            enable_eyes = True
+            enable_lips = True
+            enable_skin = True
+        elif preset_mode == 'Old Photo Restoration':
+            w = 0.85
+            wink_mode = True
+            eye_enhancement = True
+            skin_grain = 0.05
+            color_match = True
+            enable_eyes = True
+            enable_lips = True
+            enable_skin = True
+        elif preset_mode == 'Game / Anime Character':
+            w = 0.3
+            wink_mode = True
+            eye_enhancement = False
+            skin_grain = 0.0
+            color_match = False
+            enable_eyes = False
+            enable_lips = False
+            enable_skin = False
+
         # 1. Handle background upsampling first
         bg_img = None
         if bg_upsampler == 'realesrgan':
@@ -333,10 +365,6 @@ class LocalAIEnhancerPipeline:
 
         # Set up FaceRestoreHelper for face processing
         os.environ['FACE_DETECTOR_PATH'] = os.path.join(project_dir, "weights", "facelib")
-        # B3 FIX: upscale is NOT part of FaceRestoreHelper initialisation — it only
-        # affects warpAffine geometry in paste_faces_custom_blend. Including upscale
-        # in the cache key caused a full model re-init (3-5 s) on every upscale
-        # factor change. Only the detection model matters for the helper instance.
         cache_key = detection_model
         if cache_key not in self._face_helper_cache:
             print(f"[Pipeline] Creating new FaceRestoreHelper for {detection_model} (upscale={upscale})...")
@@ -349,7 +377,6 @@ class LocalAIEnhancerPipeline:
                 use_parse=True,
                 device=self.device
             )
-            
             # Modify confidence threshold dynamically on the underlying detector
             if hasattr(face_helper, 'face_detector'):
                 detector = face_helper.face_detector
@@ -367,131 +394,109 @@ class LocalAIEnhancerPipeline:
             self._face_helper_cache[cache_key] = face_helper
         else:
             face_helper = self._face_helper_cache[cache_key]
-            
+
         # Update threshold dynamically
         if hasattr(face_helper, 'face_detector'):
             face_helper.face_detector.custom_det_threshold = det_threshold
-
+        
+        # Reset per-image helper state
         face_helper.clean_all()
         face_helper.read_image(img)
         
-        # 2. Detect face landmarks and align/crop faces
+        # 2. Detect and align faces
         self._report_progress("detection", 0.1, f"Detecting faces with {detection_model}...")
-        print(f"[Pipeline] Running face detection model: {detection_model} with threshold: {det_threshold}...")
-        num_det_faces = face_helper.get_face_landmarks_5(
+        num_faces = face_helper.get_face_landmarks_5(
             only_center_face=False, 
             resize=640, 
             eye_dist_threshold=5
         )
-        print(f"[Pipeline] Detected {num_det_faces} faces.")
-        self._report_progress("detection", 0.3, f"Detected {num_det_faces} faces")
 
-        if num_det_faces == 0:
+        print(f"[Pipeline] Detected {num_faces} face(s).")
+        self._report_progress("detection", 0.5, f"Detected {num_faces} face(s)")
+        
+        if num_faces == 0:
+            print("[Pipeline] No faces detected in input image.")
+            self._report_progress("complete", 1.0, "No faces detected. Returning background.")
             if bg_img is not None:
                 return bg_img
-            # Return resized background if no faces are detected and no AI upscaler used
             h, w_img, _ = img.shape
             return cv2.resize(img, (w_img * upscale, h * upscale), interpolation=cv2.INTER_LANCZOS4)
             
         face_helper.align_warp_face()
+        print(f"[Pipeline] Cropped {len(face_helper.cropped_faces)} face(s).")
         
-        # 2. Process each cropped face through CodeFormer
-        self._report_progress("restoration", 0.1, f"Restoring {num_det_faces} face(s)...")
-        if batch_size > 1 and self.use_onnx:
-            faces_t = []
-            for cropped_face in face_helper.cropped_faces:
-                cropped_face_t = img2tensor(cropped_face / 255.0, bgr2rgb=True, float32=True)
-                normalize(cropped_face_t, (0.5, 0.5, 0.5), (0.5, 0.5, 0.5), inplace=True)
-                faces_t.append(cropped_face_t)
-            faces_np = torch.stack(faces_t).numpy()
-            
-            # Process in batches
-            all_restored = []
-            for i in range(0, len(faces_np), batch_size):
-                batch = faces_np[i:i+batch_size]
-                out_batch = self.run_onnx_batch(batch, w)
-                all_restored.append(out_batch)
-            
-            output = np.concatenate(all_restored, axis=0)
-            for i in range(output.shape[0]):
-                res = np.squeeze(output[i], axis=0)
-                res = np.clip(res, -1.0, 1.0)
-                res = (res + 1.0) / 2.0 * 255.0
-                res = np.transpose(res, (1, 2, 0))
-                face_helper.add_restored_face(cv2.cvtColor(res.astype(np.uint8), cv2.COLOR_RGB2BGR), face_helper.cropped_faces[i])
-            
-            self._report_progress("restoration", 0.8, "Face restoration complete")
-        else:
-            # B2 FIX: Only use ThreadPoolExecutor when there are multiple faces.
-            # For single-face images (the common case), spawning a thread pool
-            # adds ~20 ms of overhead with zero parallelism benefit.
-            if parallel and len(face_helper.cropped_faces) > 1:
-                def _process_face(idx, cropped_face):
-                    if self.use_onnx:
-                        try:
-                            cropped_face_t = img2tensor(cropped_face / 255.0, bgr2rgb=True, float32=True)
-                            normalize(cropped_face_t, (0.5, 0.5, 0.5), (0.5, 0.5, 0.5), inplace=True)
-                            cropped_face_np = cropped_face_t.unsqueeze(0).numpy()
-                            output = self.run_onnx_batch(cropped_face_np, w)
-                            output = np.squeeze(output, axis=0)
-                            output = np.clip(output, -1.0, 1.0)
-                            output = (output + 1.0) / 2.0 * 255.0
-                            output = np.transpose(output, (1, 2, 0))
-                            restored = cv2.cvtColor(output.astype(np.uint8), cv2.COLOR_RGB2BGR)
-                        except Exception as error:
-                            print(f"[Pipeline] Failed CodeFormer ONNX inference for face index {idx}: {error}")
-                            restored = cropped_face.copy()
-                    else:
+        # Restore faces using CodeFormer model
+        self._report_progress("restoration", 0.1, f"Restoring {len(face_helper.cropped_faces)} face(s) (w={w})...")
+        
+        # Process faces
+        if parallel and len(face_helper.cropped_faces) > 1:
+            print(f"[Pipeline] Processing {len(face_helper.cropped_faces)} faces in parallel...")
+            def _process_face(idx, cropped_face):
+                if self.use_onnx:
+                    try:
                         cropped_face_t = img2tensor(cropped_face / 255.0, bgr2rgb=True, float32=True)
                         normalize(cropped_face_t, (0.5, 0.5, 0.5), (0.5, 0.5, 0.5), inplace=True)
-                        cropped_face_t = cropped_face_t.unsqueeze(0).to(self.device)
-                        try:
-                            with torch.no_grad():
-                                output = self.net(cropped_face_t, w=w, adain=True)[0]
-                                restored = tensor2img(output, rgb2bgr=True, min_max=(-1, 1))
-                        except Exception as error:
-                            print(f"[Pipeline] Failed CodeFormer inference for face index {idx}: {error}")
-                            restored = tensor2img(cropped_face_t, rgb2bgr=True, min_max=(-1, 1))
-                    restored = restored.astype('uint8')
-                    return idx, restored
+                        cropped_face_np = cropped_face_t.unsqueeze(0).numpy()
+                        output = self.run_onnx_batch(cropped_face_np, w)
+                        output = np.squeeze(output, axis=0)
+                        output = np.clip(output, -1.0, 1.0)
+                        output = (output + 1.0) / 2.0 * 255.0
+                        output = np.transpose(output, (1, 2, 0))
+                        restored = cv2.cvtColor(output.astype(np.uint8), cv2.COLOR_RGB2BGR)
+                    except Exception as error:
+                        print(f"[Pipeline] Failed CodeFormer ONNX inference for face index {idx}: {error}")
+                        restored = cropped_face.copy()
+                else:
+                    cropped_face_t = img2tensor(cropped_face / 255.0, bgr2rgb=True, float32=True)
+                    normalize(cropped_face_t, (0.5, 0.5, 0.5), (0.5, 0.5, 0.5), inplace=True)
+                    cropped_face_t = cropped_face_t.unsqueeze(0).to(self.device)
+                    try:
+                        with torch.no_grad():
+                            output = self.net(cropped_face_t, w=w, adain=True)[0]
+                            restored = tensor2img(output, rgb2bgr=True, min_max=(-1, 1))
+                    except Exception as error:
+                        print(f"[Pipeline] Failed CodeFormer inference for face index {idx}: {error}")
+                        restored = tensor2img(cropped_face_t, rgb2bgr=True, min_max=(-1, 1))
+                restored = restored.astype('uint8')
+                return idx, restored
 
-                from concurrent.futures import ThreadPoolExecutor
-                with ThreadPoolExecutor() as executor:
-                    results = list(executor.map(lambda args: _process_face(*args), enumerate(face_helper.cropped_faces)))
-                for idx, restored_face in sorted(results):
-                    face_helper.add_restored_face(restored_face, face_helper.cropped_faces[idx])
-            else:
-                for idx, cropped_face in enumerate(face_helper.cropped_faces):
-                    if self.use_onnx:
-                        try:
-                            cropped_face_t = img2tensor(cropped_face / 255.0, bgr2rgb=True, float32=True)
-                            normalize(cropped_face_t, (0.5, 0.5, 0.5), (0.5, 0.5, 0.5), inplace=True)
-                            cropped_face_np = cropped_face_t.unsqueeze(0).numpy()
-                            output = self.run_onnx_batch(cropped_face_np, w)
-                            output = np.squeeze(output, axis=0)
-                            output = np.clip(output, -1.0, 1.0)
-                            output = (output + 1.0) / 2.0 * 255.0
-                            output = np.transpose(output, (1, 2, 0))
-                            restored = cv2.cvtColor(output.astype(np.uint8), cv2.COLOR_RGB2BGR)
-                        except Exception as error:
-                            print(f"[Pipeline] Failed CodeFormer ONNX inference for face index {idx}: {error}")
-                            restored = cropped_face.copy()
-                    else:
+            from concurrent.futures import ThreadPoolExecutor
+            with ThreadPoolExecutor() as executor:
+                results = list(executor.map(lambda args: _process_face(*args), enumerate(face_helper.cropped_faces)))
+            for idx, restored_face in sorted(results):
+                face_helper.add_restored_face(restored_face, face_helper.cropped_faces[idx])
+        else:
+            for idx, cropped_face in enumerate(face_helper.cropped_faces):
+                if self.use_onnx:
+                    try:
                         cropped_face_t = img2tensor(cropped_face / 255.0, bgr2rgb=True, float32=True)
                         normalize(cropped_face_t, (0.5, 0.5, 0.5), (0.5, 0.5, 0.5), inplace=True)
-                        cropped_face_t = cropped_face_t.unsqueeze(0).to(self.device)
-                        try:
-                            with torch.no_grad():
-                                output = self.net(cropped_face_t, w=w, adain=True)[0]
-                                restored = tensor2img(output, rgb2bgr=True, min_max=(-1, 1))
-                        except Exception as error:
-                            print(f"[Pipeline] Failed CodeFormer inference for face index {idx}: {error}")
-                            restored = tensor2img(cropped_face_t, rgb2bgr=True, min_max=(-1, 1))
-                    restored = restored.astype('uint8')
-                    face_helper.add_restored_face(restored, cropped_face)
-            
-            self._report_progress("restoration", 0.8, "Face restoration complete")
-            
+                        cropped_face_np = cropped_face_t.unsqueeze(0).numpy()
+                        output = self.run_onnx_batch(cropped_face_np, w)
+                        output = np.squeeze(output, axis=0)
+                        output = np.clip(output, -1.0, 1.0)
+                        output = (output + 1.0) / 2.0 * 255.0
+                        output = np.transpose(output, (1, 2, 0))
+                        restored = cv2.cvtColor(output.astype(np.uint8), cv2.COLOR_RGB2BGR)
+                    except Exception as error:
+                        print(f"[Pipeline] Failed CodeFormer ONNX inference for face index {idx}: {error}")
+                        restored = cropped_face.copy()
+                else:
+                    cropped_face_t = img2tensor(cropped_face / 255.0, bgr2rgb=True, float32=True)
+                    normalize(cropped_face_t, (0.5, 0.5, 0.5), (0.5, 0.5, 0.5), inplace=True)
+                    cropped_face_t = cropped_face_t.unsqueeze(0).to(self.device)
+                    try:
+                        with torch.no_grad():
+                            output = self.net(cropped_face_t, w=w, adain=True)[0]
+                            restored = tensor2img(output, rgb2bgr=True, min_max=(-1, 1))
+                    except Exception as error:
+                        print(f"[Pipeline] Failed CodeFormer inference for face index {idx}: {error}")
+                        restored = tensor2img(cropped_face_t, rgb2bgr=True, min_max=(-1, 1))
+                restored = restored.astype('uint8')
+                face_helper.add_restored_face(restored, cropped_face)
+        
+        self._report_progress("restoration", 0.8, "Face restoration complete")
+        
         # 3. Paste restored faces back into input image with custom soft blending
         self._report_progress("blending", 0.1, f"Blending {len(face_helper.restored_faces)} face(s)...")
         print(f"[Pipeline] Seamlessly pasting {len(face_helper.restored_faces)} restored faces back...")
@@ -508,7 +513,10 @@ class LocalAIEnhancerPipeline:
             wink_mode=wink_mode,
             eye_enhancement=eye_enhancement,
             skin_grain=skin_grain,
-            color_match=color_match
+            color_match=color_match,
+            enable_eyes=enable_eyes,
+            enable_lips=enable_lips,
+            enable_skin=enable_skin
         )
         
         self._report_progress("blending", 1.0, "Blending complete!")
@@ -516,7 +524,7 @@ class LocalAIEnhancerPipeline:
         
         return enhanced_img
 
-    def paste_faces_custom_blend(self, face_helper, upscale, blend_softness, bg_img=None, sharpen_amount=0.0, face_upsample=False, w=0.5, wink_mode=True, eye_enhancement=True, skin_grain=0.15, color_match=True):
+    def paste_faces_custom_blend(self, face_helper, upscale, blend_softness, bg_img=None, sharpen_amount=0.0, face_upsample=False, w=0.5, wink_mode=True, eye_enhancement=True, skin_grain=0.15, color_match=True, enable_eyes=True, enable_lips=True, enable_skin=True):
         """Custom implementation of face pasting with adjustable soft blending mask."""
         h, w_img, _ = face_helper.input_img.shape
         h_up, w_up = int(h * upscale), int(w_img * upscale)
@@ -555,8 +563,14 @@ class LocalAIEnhancerPipeline:
                     wink_mode=wink_mode,
                     eye_enhancement=eye_enhancement,
                     skin_grain=skin_grain,
-                    color_match=color_match
+                    color_match=color_match,
+                    enable_eyes=enable_eyes,
+                    enable_lips=enable_lips,
+                    enable_skin=enable_skin,
+                    sharpen_amount=sharpen_amount
                 )
+
+
 
             
             if upscale > 1:

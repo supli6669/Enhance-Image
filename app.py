@@ -234,8 +234,14 @@ with st.sidebar:
         det_thresh = st.slider("Detection Threshold", 0.1, 1.0, 0.5, 0.05)
         wink_mode = st.toggle("Wink Quality Engine", value=default_wink)
         skin_grain = st.slider("Skin Grain Retention", 0.0, 0.5, default_grain, 0.05)
+        sharpen_val = st.slider("🔥 Extra Sharpness Boost", 0.0, 1.0, 0.2, 0.05, help="Multi-scale edge-aware adaptive sharpening")
         color_match = st.checkbox("Auto Skin Tone Alignment", value=default_color)
-        eye_enhancement = st.checkbox("Eye & Lip Sparkle", value=default_eye)
+        
+        st.markdown("**🎭 Facial Organ Enhancements**")
+        enable_eyes = st.checkbox("👁️ Eye Sparkle & Contrast Boost", value=default_eye)
+        enable_lips = st.checkbox("👄 Lip Saturation & Definition", value=True)
+        enable_skin = st.checkbox("💆 Real Skin Grain Retention", value=True)
+
         bg_upscale = st.toggle("Real-ESRGAN Background Upscale", value=False)
         face_upscale = st.toggle("Real-ESRGAN Face Upscale", value=False)
 
@@ -263,8 +269,11 @@ if uploaded_file is not None:
         'thresh': det_thresh,
         'wink': wink_mode,
         'grain': skin_grain,
+        'sharpen': sharpen_val,
         'color': color_match,
-        'eye': eye_enhancement,
+        'eye': enable_eyes,
+        'lip': enable_lips,
+        'skin': enable_skin,
         'bg_up': bg_upscale,
         'face_up': face_upscale
     }
@@ -300,13 +309,18 @@ if uploaded_file is not None:
                         blend_softness=0.5,
                         bg_upsampler='realesrgan' if bg_upscale else None,
                         det_threshold=det_thresh,
+                        sharpen_amount=sharpen_val,
                         face_upsample=face_upscale,
                         parallel=True,
                         wink_mode=wink_mode,
-                        eye_enhancement=eye_enhancement,
+                        eye_enhancement=enable_eyes,
                         skin_grain=skin_grain,
-                        color_match=color_match
+                        color_match=color_match,
+                        enable_eyes=enable_eyes,
+                        enable_lips=enable_lips,
+                        enable_skin=enable_skin
                     )
+
                     res_queue.put({
                         'type': 'result',
                         'enhanced_img': res,
@@ -380,6 +394,22 @@ if uploaded_file is not None:
 
         st.markdown("<br>", unsafe_allow_html=True)
 
+        # AI Quality Score Report Card
+        if pipeline and hasattr(pipeline, 'wink_enhancer'):
+            q_report = pipeline.wink_enhancer.calculate_quality_report(input_img, enhanced_img)
+            st.markdown("#### 📊 AI Quality Score Report")
+            q1, q2, q3, q4 = st.columns(4)
+            with q1:
+                st.markdown(f'<div class="metric-badge"><div class="metric-label">Sharpness Gain</div><div class="metric-val" style="color: #34d399;">+{q_report["sharpness_gain_pct"]}%</div></div>', unsafe_allow_html=True)
+            with q2:
+                st.markdown(f'<div class="metric-badge"><div class="metric-label">Original Sharpness</div><div class="metric-val">{q_report["orig_sharpness"]}</div></div>', unsafe_allow_html=True)
+            with q3:
+                st.markdown(f'<div class="metric-badge"><div class="metric-label">Enhanced Sharpness</div><div class="metric-val">{q_report["enh_sharpness"]}</div></div>', unsafe_allow_html=True)
+            with q4:
+                st.markdown(f'<div class="metric-badge"><div class="metric-label">Skin Tone Match</div><div class="metric-val" style="color: #60a5fa;">{q_report["tone_fidelity_pct"]}%</div></div>', unsafe_allow_html=True)
+
+        st.markdown("<br>", unsafe_allow_html=True)
+
         # Side-by-Side Comparison Display
         c_orig, c_enh = st.columns(2)
         with c_orig:
@@ -401,6 +431,7 @@ if uploaded_file is not None:
                 file_name=f"enhanced_{uploaded_file.name}",
                 mime="image/png"
             )
+
 else:
     # Empty State Guide
     st.markdown("""
