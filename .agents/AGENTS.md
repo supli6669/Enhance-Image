@@ -69,3 +69,14 @@ All AI agents working on this codebase must adhere strictly to these rules:
     - At the end of every session, task completion, or whenever significant code/documentation changes are made, agents MUST stage, commit, and push all modified files (`git add .`, `git commit -m "..."`, `git push origin main` and `git push hf main` if applicable).
     - Always ensure `handover.md` and project documentation are updated and committed alongside code changes so that future agents and sessions maintain seamless continuity.
 
+12. **Strict Plan & Implementation Alignment Rule**:
+    - All future agents MUST strictly execute according to approved implementation plans (`implementation_plan.md`) and task roadmaps (`task.md`).
+    - Agents MUST NOT skip steps, deviate from approved architecture, or introduce unverified scope creep.
+    - Mark tasks `[/]` when starting, and only mark `[x]` after empirical verification confirms full functionality.
+
+13. **Mandatory Empirical Verification & Zero-Bug Guard**:
+    - Agents MUST NOT claim a task is resolved, a bug is fixed, or a feature is working without running verification scripts (e.g. `python tools/test_pipeline.py`, test harnesses) and confirming `exit code 0`.
+    - NEVER mask symptoms, swallow exceptions with silent `try...except: pass`, or return fake fallback data.
+    - Always inspect error stack traces before attempting code fixes.
+
+
