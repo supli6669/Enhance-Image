@@ -504,7 +504,8 @@ Performed a full static code audit of [`app.py`](file:///d:/.gemini-scratch/cust
 | B8 | ✅ Fixed | 🟡 Medium | app.py | Training dashboard regex only captures `cross_entropy_loss` — Real-ESRGAN runs show `0.0` |
 | B9 | ✅ Fixed | 🟡 Medium | app.py | Keyboard shortcut `Esc` uses `button:contains()` — invalid CSS, Cancel never fires |
 | B10 | ✅ Fixed | 🟢 Low | app.py | `split_img` computed twice — once in Split Screen view, once in Download section |
-| B11 | ❌ Open | 🟢 Low | Dockerfile | `patch_and_install_basicsr.py` does `git clone` at build time — fails on slow/offline network |
+| B11 | ✅ Fixed | 🟢 Low | Dockerfile | `patch_and_install_basicsr.py` supports base64 wheel & local `models/CodeFormer/basicsr` fallback |
+
 | B12 | ✅ Fixed | 🟢 Low | app.py | CSS `li::before { display:flex }` on pseudo-element — non-standard, visual glitch in some browsers |
 
 ---
