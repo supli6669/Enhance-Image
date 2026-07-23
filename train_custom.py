@@ -3,6 +3,8 @@ import sys
 import cv2
 import torch
 torch.set_num_threads(8)  # Ryzen 7735HS has 8C/16T
+# oneDNN can be unstable on the Ryzen CPU during BasicSR training.
+torch.backends.mkldnn.enabled = False
 import yaml
 import subprocess
 import glob
