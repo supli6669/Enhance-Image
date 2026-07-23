@@ -1144,6 +1144,33 @@ and GPU training capacity. Do not substitute training images for the benchmark
 or run the remaining ~18k CPU iterations; that would invalidate the quality
 gate and consume roughly eleven days at the recorded CPU speed.
 
+### Automated Local Solution
+
+`tools/prepare_benchmark.py` now deterministically selects 500 portraits from
+the real-image folders (`faces`, `pinterest`), creates paired synthetic LQ/HQ
+samples, and emits `benchmarks/holdout_paths.txt`. The resulting paths must be
+excluded from the Stage III training dataset before training is resumed.
+
+The dataset loader and `train_custom.py` enforce this exclusion whenever the
+local manifest is present.
+
+### 2026-07-23 Local Execution Result
+
+- Selected 500 deterministic hold-out portraits from 6,480 candidates in the
+  real-image folders.
+- Generated and validated 500 synthetic LQ/HQ pairs.
+- Leakage check passed: 8,791 remaining training paths and zero overlap with
+  the 500 hold-out paths.
+
+### Required External Step: GPU Training
+
+The local benchmark is ready. Before a GPU job can be submitted, the project
+owner must enable billing on the selected provider, create a scoped write token,
+and choose private storage for checkpoints and benchmark data. Hugging Face Jobs
+with an A10G-class GPU is the preferred target because it supports resumable,
+pay-as-you-go container jobs. Do not upload private benchmark portraits to the
+public Space repository.
+
 
 
 

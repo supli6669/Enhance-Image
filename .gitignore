@@ -33,6 +33,8 @@ ehthumbs.db
 # User inputs and output results
 benchmarks/inputs/
 benchmarks/references/
+benchmarks/manifest.csv
+benchmarks/holdout_paths.txt
 results/
 output/
 input/

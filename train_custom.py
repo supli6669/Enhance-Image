@@ -48,6 +48,17 @@ def main():
     print(f"Reading configuration from {config_path}...")
     with open(config_path, "r", encoding="utf-8") as f:
         config = yaml.safe_load(f)
+
+    # Keep the deterministic benchmark holdout out of all training phases.
+    # It is intentionally ignored by Git because it may identify private data;
+    # create it with tools/prepare_benchmark.py before training.
+    holdout_manifest = os.path.join(project_dir, "benchmarks", "holdout_paths.txt")
+    if os.path.isfile(holdout_manifest):
+        for dataset in config.get("datasets", {}).values():
+            dataset["exclude_manifest"] = holdout_manifest
+        print(f"Excluding benchmark holdout from training: {holdout_manifest}")
+    else:
+        print("WARNING: benchmark holdout manifest not found; refusing quality claims for this run.")
     
     # Save original total_iter BEFORE any runtime overrides — we must restore
     # this after writing so --verify mode never permanently corrupts the file.
