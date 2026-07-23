@@ -1054,6 +1054,96 @@ Created and executed master test runner [`tools/test_all.py`](file:///d:/.gemini
 
 
 
+---
+
+## Task 21: Sequential Model Quality Workflow (Baseline Gate)
+
+**Date:** 2026-07-23
+**Status:** IN PROGRESS - Phase 0 implemented; benchmark data curation required before training resumes
+
+### Objective
+
+Improve real-portrait restoration quality without introducing identity drift,
+over-smoothed skin, or artificial eyes/teeth. A model checkpoint must no longer
+be selected from training loss alone.
+
+### Fixed Sequence and Exit Gates
+
+1. **Phase 0 — Benchmark curation (current):** create a held-out, fixed set of
+   300–500 real portraits. Include JPEG compression, blur, noise, low light,
+   old photographs and severe degradation. Never overlap this set with training
+   data. Validate the manifest before any quality claim:
+
+   ```powershell
+   python tools/evaluate_restoration.py --manifest benchmarks/manifest.csv --dry-run
+   ```
+
+   Exit gate: every path is valid; categories are represented; paired HQ
+   references are present where possible; a human reviewer approves the set.
+
+2. **Phase 1 — Baseline:** run the current deployed checkpoint on the fixed
+   set and archive side-by-side outputs. Record latency, PSNR/SSIM for paired
+   samples, LPIPS, ArcFace cosine identity, and a human artifact review for
+   eyes, skin, teeth, hair and skin tone.
+
+   Exit gate: baseline report is versioned and is the comparison point for all
+   later checkpoints.
+
+3. **Phase 2 — Data correction:** separate real portrait data from game/anime
+   data. For the real-portrait model, train mainly on real faces and match the
+   synthetic degradation mix to benchmark categories.
+
+   Exit gate: dataset split and composition are documented; no benchmark image
+   appears in training.
+
+4. **Phase 3 — Stage III CFT fine-tune:** resume only after Phases 0–2 pass.
+   Keep ArcFace identity loss enabled and choose checkpoints by the benchmark,
+   not training loss. Use GPU for the remaining run: the recorded CPU rate of
+   about 52 seconds/iteration makes a full continuation impractical.
+
+   Exit gate: candidate has no identity regression, no PSNR/SSIM regression on
+   paired data, and wins the human A/B review. Otherwise stop and adjust data
+   or degradation, rather than continuing training.
+
+5. **Phase 4 — Stage II fine-tune:** run only after a Stage III candidate
+   passes. Start with a lower learning rate and retain rollback checkpoints.
+
+   Exit gate: same quality gate as Phase 3, plus latency compatible with the
+   deployed CPU target.
+
+6. **Phase 5 — Deployment:** export and benchmark the approved checkpoint,
+   then run `tools/test_all.py` before replacing the deployed weight.
+
+### Implemented Guardrails
+
+- Added `benchmarks/manifest.example.csv` and `benchmarks/README.md` to define
+  the held-out set without committing private images.
+- Added `tools/evaluate_restoration.py --dry-run` to fail closed for missing,
+  duplicate, malformed, or unsupported benchmark entries.
+- Added `tools/test_evaluation_workflow.py` to the master test suite so the
+  benchmark gate cannot silently regress.
+- Added `benchmarks/inputs/` and `benchmarks/references/` to `.gitignore`.
+
+### Next Required Human Input
+
+Curate and approve `benchmarks/manifest.csv` plus the private benchmark images.
+Do not restart long training until Phase 0 passes.
+
+### 2026-07-23 Readiness Check
+
+- CUDA GPU detected: **No** (`torch.cuda.is_available() == False`).
+- Curated benchmark manifest: **Not present**.
+- Curated benchmark images: **0**.
+- Existing repository inference examples: **45**, but they have no paired HQ
+  references and are therefore suitable only for smoke/A-B checks, not for
+  checkpoint selection or a quality claim.
+
+**Decision:** the repository workflow is ready and Phase 0 guardrails are
+implemented, but Phases 1-5 are blocked pending a reviewed held-out benchmark
+and GPU training capacity. Do not substitute training images for the benchmark
+or run the remaining ~18k CPU iterations; that would invalidate the quality
+gate and consume roughly eleven days at the recorded CPU speed.
+
 
 
 

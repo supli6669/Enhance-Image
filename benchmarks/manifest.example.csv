@@ -1,0 +1,3 @@
+id,input_path,reference_path,category,notes
+portrait_001,inputs/portrait_001_lq.jpg,references/portrait_001_hq.jpg,jpeg_compression,Aligned real portrait
+portrait_002,inputs/portrait_002_lq.jpg,,old_photo,No ground truth; include in human and identity review
