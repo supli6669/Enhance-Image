@@ -5,10 +5,47 @@ import os
 import time
 import threading
 import queue
+import re
 from io import BytesIO
+from PIL import Image, UnidentifiedImageError
 from pipeline import LocalAIEnhancerPipeline
 
 project_dir = os.path.dirname(os.path.abspath(__file__))
+MAX_UPLOAD_BYTES = 15 * 1024 * 1024
+MAX_IMAGE_PIXELS = 16_000_000
+
+
+def load_uploaded_image(uploaded_file):
+    """Validate upload limits before handing image bytes to OpenCV."""
+    file_data = uploaded_file.getvalue()
+    if len(file_data) > MAX_UPLOAD_BYTES:
+        raise ValueError("Image is too large. Please upload a file smaller than 15 MB.")
+
+    try:
+        with Image.open(BytesIO(file_data)) as image:
+            width, height = image.size
+            if width * height > MAX_IMAGE_PIXELS:
+                raise ValueError(
+                    "Image resolution is too large. Please upload an image up to 16 megapixels."
+                )
+            image.verify()
+    except (UnidentifiedImageError, OSError, Image.DecompressionBombError) as error:
+        raise ValueError("Could not decode image file. Please upload a valid portrait image.") from error
+
+    decoded_image = cv2.imdecode(np.frombuffer(file_data, dtype=np.uint8), cv2.IMREAD_COLOR)
+    if decoded_image is None:
+        raise ValueError("Could not decode image file. Please upload a valid portrait image.")
+    if decoded_image.shape[0] * decoded_image.shape[1] > MAX_IMAGE_PIXELS:
+        raise ValueError("Image resolution is too large. Please upload an image up to 16 megapixels.")
+    return decoded_image
+
+
+def enhanced_filename(original_name):
+    """Produce a download-safe PNG filename without trusting the upload path."""
+    base_name = os.path.basename(original_name.replace("\\", "/"))
+    stem, _ = os.path.splitext(base_name)
+    safe_stem = re.sub(r"[^A-Za-z0-9._-]+", "_", stem).strip("._")
+    return f"enhanced_{safe_stem or 'portrait'}.png"
 
 # ── Page Configuration ──────────────────────────────────────────────────────────
 st.set_page_config(
@@ -253,12 +290,10 @@ st.markdown('<div class="hero-sub">Restore blurry portraits, skin texture & eye 
 uploaded_file = st.file_uploader("Upload portrait photo (PNG, JPG, WEBP)", type=["png", "jpg", "jpeg", "webp"])
 
 if uploaded_file is not None:
-    # Decode Image
-    file_bytes = np.asarray(bytearray(uploaded_file.read()), dtype=np.uint8)
-    input_img = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
-
-    if input_img is None:
-        st.error("Could not decode image file. Please upload a valid portrait image.")
+    try:
+        input_img = load_uploaded_image(uploaded_file)
+    except ValueError as error:
+        st.error(str(error))
         st.stop()
 
     current_params = {
@@ -287,8 +322,13 @@ if uploaded_file is not None:
     # Trigger processing thread if output is None
     if st.session_state.enhanced_img is None and st.session_state.get('processing_error') is None:
         if not st.session_state.get('processing'):
+            if pipeline is None:
+                st.session_state.processing_error = "AI pipeline is unavailable. Please try again later."
+                st.rerun()
+
             st.session_state.processing = True
-            st.session_state.start_time = time.time()
+            request_start_time = time.time()
+            st.session_state.start_time = request_start_time
             
             res_queue = queue.Queue()
             st.session_state._result_queue = res_queue
@@ -296,41 +336,49 @@ if uploaded_file is not None:
             def local_progress_callback(stage, progress, message):
                 res_queue.put({'type': 'progress', 'stage': stage, 'progress': progress, 'message': message})
 
-            if pipeline:
-                pipeline.progress_callback = local_progress_callback
+            process_args = {
+                'w': w_val,
+                'detection_model': face_detector,
+                'upscale': upscale_val,
+                'blend_softness': 0.5,
+                'bg_upsampler': 'realesrgan' if bg_upscale else None,
+                'det_threshold': det_thresh,
+                'sharpen_amount': sharpen_val,
+                'face_upsample': face_upscale,
+                'parallel': True,
+                'wink_mode': wink_mode,
+                'eye_enhancement': enable_eyes,
+                'skin_grain': skin_grain,
+                'color_match': color_match,
+                'enable_eyes': enable_eyes,
+                'enable_lips': enable_lips,
+                'enable_skin': enable_skin,
+                'progress_callback': local_progress_callback,
+            }
 
-            def _worker():
+            def _worker(
+                request_image=input_img.copy(),
+                request_params=current_params.copy(),
+                request_args=process_args.copy(),
+                request_queue=res_queue,
+                request_started_at=request_start_time,
+            ):
                 try:
                     res = pipeline.process_image(
-                        input_img,
-                        w=w_val,
-                        detection_model=face_detector,
-                        upscale=upscale_val,
-                        blend_softness=0.5,
-                        bg_upsampler='realesrgan' if bg_upscale else None,
-                        det_threshold=det_thresh,
-                        sharpen_amount=sharpen_val,
-                        face_upsample=face_upscale,
-                        parallel=True,
-                        wink_mode=wink_mode,
-                        eye_enhancement=enable_eyes,
-                        skin_grain=skin_grain,
-                        color_match=color_match,
-                        enable_eyes=enable_eyes,
-                        enable_lips=enable_lips,
-                        enable_skin=enable_skin
+                        request_image,
+                        **request_args,
                     )
 
-                    res_queue.put({
+                    request_queue.put({
                         'type': 'result',
                         'enhanced_img': res,
-                        'duration': time.time() - st.session_state.get('start_time', time.time()),
-                        'params': current_params
+                        'duration': time.time() - request_started_at,
+                        'params': request_params
                     })
                 except Exception as ex:
                     import traceback
                     traceback.print_exc()
-                    res_queue.put({'type': 'error', 'error': str(ex)})
+                    request_queue.put({'type': 'error', 'error': str(ex)})
 
             threading.Thread(target=_worker, daemon=True).start()
 
@@ -428,7 +476,7 @@ if uploaded_file is not None:
             st.download_button(
                 label="⬇️ Download Enhanced HD Image",
                 data=encoded_buf.tobytes(),
-                file_name=f"enhanced_{uploaded_file.name}",
+                file_name=enhanced_filename(uploaded_file.name),
                 mime="image/png"
             )
 

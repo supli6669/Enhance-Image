@@ -29,7 +29,7 @@ This project is configured to run out-of-the-box both **locally** on your CPU/GP
 ## Local Execution Instructions
 
 ### Prerequisites
-- Python 3.10, 3.11, 3.12, or 3.13
+- Python 3.11
 - Git
 
 ### Setup
@@ -40,9 +40,9 @@ This project is configured to run out-of-the-box both **locally** on your CPU/GP
    .venv\Scripts\activate      # On Windows (PowerShell/CMD)
    source .venv/bin/activate   # On Linux/macOS
    ```
-3. Run the custom BasicSR package patching script (required for Python 3.12+):
+3. Run the custom BasicSR package patching script:
    ```bash
-   python patch_and_install_basicsr.py
+   python tools/patch_and_install_basicsr.py
    ```
 4. Install the remaining requirements:
    ```bash
@@ -60,9 +60,22 @@ Open `http://localhost:8501` in your browser. The app will automatically downloa
 
 ## Hugging Face Spaces Deployment
 
-To deploy this app on **Hugging Face Spaces** for free:
-1. Log in to [Hugging Face](https://huggingface.co/) and create a new **Space**.
-2. Set the **SDK** to **Streamlit**.
-3. Choose the **Free CPU Basic** tier (includes 16GB RAM, which is sufficient for running PyTorch CPU inference).
-4. Connect this GitHub repository directly to the Space, or push the repository files to the Hugging Face Git remote.
-5. Hugging Face will read the metadata frontmatter in this `README.md` file, install the libraries listed in `requirements.txt`, and automatically start the app. The pretrained weights will be downloaded programmatically at startup.
+This repository deploys as a **Docker Space**, not a Streamlit SDK Space. The
+Dockerfile installs the pinned Python 3.11 CPU runtime and starts Streamlit on
+port `7860`.
+
+1. Log in to [Hugging Face](https://huggingface.co/) and create a new Space.
+2. Set the Space SDK to **Docker** and select a CPU hardware tier appropriate
+   for CodeFormer inference.
+3. Push this repository to the Space. Keep Git LFS enabled: the tracked
+   `weights/CodeFormer/codeformer.pth` model is required at build/runtime.
+4. Wait for the Space build to complete, then open the Space URL. Additional
+   optional model files are downloaded by the application only if unavailable.
+
+### GitHub Actions sync
+
+The included workflow syncs `main` to the configured Hugging Face Space and
+uploads Git LFS objects first. Add a Hugging Face **write** token as the GitHub
+Actions secret `HF_TOKEN`; do not place a token in a Git remote URL or commit it
+to the repository. The sync intentionally does not force-push, so resolve any
+divergent Space changes before running it again.

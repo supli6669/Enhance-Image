@@ -5,6 +5,7 @@ import cv2
 import numpy as np
 import torch
 import threading
+from contextvars import ContextVar
 from concurrent.futures import ThreadPoolExecutor
 from torchvision.transforms.functional import normalize
 
@@ -40,6 +41,11 @@ from basicsr.utils.registry import ARCH_REGISTRY
 from facelib.utils.face_restoration_helper import FaceRestoreHelper
 from wink_enhancer import WinkQualityEnhancer
 
+# The Streamlit app caches one pipeline instance.  Keep callback state in the
+# calling context rather than on that shared instance so progress cannot leak
+# between users/requests.
+_active_progress_callback = ContextVar("active_progress_callback", default=None)
+
 class LocalAIEnhancerPipeline:
     def __init__(self, device=None, progress_callback=None):
         """Initialize the CodeFormer model and helper pipeline.
@@ -53,6 +59,8 @@ class LocalAIEnhancerPipeline:
         else:
             self.device = torch.device(device)
         
+        # Retain the constructor argument as a backwards-compatible default.
+        # New callers should pass ``progress_callback`` to ``process_image``.
         self.progress_callback = progress_callback
         self.cancel_flag = False
         self.wink_enhancer = WinkQualityEnhancer()
@@ -134,6 +142,10 @@ class LocalAIEnhancerPipeline:
         # Cache for FaceRestoreHelper instances
         self._face_helper_cache = {}
         
+        # Serialise a complete request: FaceRestoreHelper, the model caches and
+        # post-processors all hold mutable per-image state.
+        self._processing_lock = threading.RLock()
+
         # Threading lock for concurrent ONNX inference sessions
         self.cf_onnx_lock = threading.Lock()
 
@@ -142,8 +154,20 @@ class LocalAIEnhancerPipeline:
     
     def _report_progress(self, stage, progress, message):
         """Report progress to callback if available."""
-        if self.progress_callback:
-            self.progress_callback(stage, progress, message)
+        callback = _active_progress_callback.get()
+        if callback is None:
+            callback = self._default_progress_callback
+        if callback:
+            callback(stage, progress, message)
+
+    @property
+    def progress_callback(self):
+        """Legacy default callback; prefer ``process_image(..., progress_callback=...)``."""
+        return self._default_progress_callback
+
+    @progress_callback.setter
+    def progress_callback(self, callback):
+        self._default_progress_callback = callback
     
     def _check_cancelled(self):
         """Check if processing was cancelled by user."""
@@ -246,7 +270,27 @@ class LocalAIEnhancerPipeline:
             ort_outs = self.ort_session_cf.run(None, ort_inputs)
         return ort_outs[0]
 
-    def process_image(self, img, w=0.5, detection_model='retinaface_mobile0.25', upscale=2, blend_softness=0.5, bg_upsampler=None, det_threshold=0.5, sharpen_amount=0.0, face_upsample=False, batch_size=0, parallel=False, face_restore=True, wink_mode=True, eye_enhancement=True, skin_grain=0.15, color_match=True, enable_eyes=True, enable_lips=True, enable_skin=True, preset_mode='Custom'):
+    def process_image(self, img, w=0.5, detection_model='retinaface_mobile0.25', upscale=2, blend_softness=0.5, bg_upsampler=None, det_threshold=0.5, sharpen_amount=0.0, face_upsample=False, batch_size=0, parallel=False, face_restore=True, wink_mode=True, eye_enhancement=True, skin_grain=0.15, color_match=True, enable_eyes=True, enable_lips=True, enable_skin=True, preset_mode='Custom', progress_callback=None):
+
+        """Enhance one image without sharing request-specific state.
+
+        ``progress_callback`` is scoped to this call.  The constructor callback
+        remains supported as a legacy default for code that already uses it.
+        """
+        callback = self._default_progress_callback if progress_callback is None else progress_callback
+        with self._processing_lock:
+            callback_token = _active_progress_callback.set(callback)
+            try:
+                return self._process_image(
+                    img, w, detection_model, upscale, blend_softness, bg_upsampler,
+                    det_threshold, sharpen_amount, face_upsample, batch_size, parallel,
+                    face_restore, wink_mode, eye_enhancement, skin_grain, color_match,
+                    enable_eyes, enable_lips, enable_skin, preset_mode,
+                )
+            finally:
+                _active_progress_callback.reset(callback_token)
+
+    def _process_image(self, img, w=0.5, detection_model='retinaface_mobile0.25', upscale=2, blend_softness=0.5, bg_upsampler=None, det_threshold=0.5, sharpen_amount=0.0, face_upsample=False, batch_size=0, parallel=False, face_restore=True, wink_mode=True, eye_enhancement=True, skin_grain=0.15, color_match=True, enable_eyes=True, enable_lips=True, enable_skin=True, preset_mode='Custom'):
 
         """
         Enhance an image using the local CodeFormer pipeline.

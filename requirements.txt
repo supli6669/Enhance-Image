@@ -1,15 +1,24 @@
-# CPU-only base dependencies
-addict
-future
-yapf
-gdown
+# PyTorch and torchvision are installed in Dockerfile from the official CPU index.
+# Keep NumPy below 2.0 for BasicSR/CodeFormer compatibility.
+numpy==1.26.4
 
-# ML/CV libraries
-facexlib
-lpips
-onnx
-onnxruntime
+# BasicSR / CodeFormer runtime dependencies
+addict==2.4.0
+future==1.0.0
+gdown==5.2.0
+lmdb==1.5.1
+Pillow==10.4.0
+PyYAML==6.0.2
+scikit-image==0.24.0
+scipy==1.14.1
+yapf==0.40.2
 
-# Web UI and image processing
-streamlit
-opencv-python
+# ML and CV runtime
+facexlib==0.3.0
+lpips==0.1.4
+onnx==1.16.2
+onnxruntime==1.18.1
+opencv-python-headless==4.10.0.84
+
+# Web UI
+streamlit==1.38.0
