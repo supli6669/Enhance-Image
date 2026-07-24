@@ -6,6 +6,8 @@ import time
 import threading
 import queue
 import re
+import glob
+from datetime import datetime, timezone
 from io import BytesIO
 from PIL import Image, UnidentifiedImageError
 from pipeline import LocalAIEnhancerPipeline
@@ -46,6 +48,88 @@ def enhanced_filename(original_name):
     stem, _ = os.path.splitext(base_name)
     safe_stem = re.sub(r"[^A-Za-z0-9._-]+", "_", stem).strip("._")
     return f"enhanced_{safe_stem or 'portrait'}.png"
+
+
+TRAIN_LOG_GLOB = os.path.join(project_dir, "models", "CodeFormer", "experiments", "*_CodeFormer_stage3_custom", "train_*.log")
+TRAIN_STATE_GLOB = os.path.join(
+    project_dir, "models", "CodeFormer", "experiments", "*_CodeFormer_stage3_custom", "training_states", "*.state"
+)
+TRAIN_TOTAL_ITERATIONS = 20_000
+
+
+@st.cache_data(ttl=10, show_spinner=False)
+def get_training_status(log_glob, state_glob):
+    """Read only the recent training log; safe to call during a live CPU run."""
+    records = []
+    log_mtime = None
+    try:
+        log_paths = glob.glob(log_glob)
+        if not log_paths:
+            return records, log_mtime, (None, None)
+        log_path = max(log_paths, key=os.path.getmtime)
+        log_mtime = os.path.getmtime(log_path)
+        with open(log_path, "rb") as handle:
+            handle.seek(0, os.SEEK_END)
+            handle.seek(max(0, handle.tell() - 350_000))
+            text = handle.read().decode("utf-8", errors="replace")
+        pattern = re.compile(
+            r"iter:\s*([\d,]+).*?eta:\s*(.*?),\s*time.*?"
+            r"l_g_pix:\s*([\deE+\-.]+).*?l_g_percep:\s*([\deE+\-.]+).*?"
+            r"l_g_identity:\s*([\deE+\-.]+)"
+        )
+        for match in pattern.finditer(text):
+            records.append({
+                "iteration": int(match.group(1).replace(",", "")),
+                "eta": match.group(2).strip(),
+                "pixel_loss": float(match.group(3)),
+                "perceptual_loss": float(match.group(4)),
+                "identity_loss": float(match.group(5)),
+            })
+    except OSError:
+        pass
+
+    checkpoints = []
+    for path in glob.glob(state_glob):
+        try:
+            checkpoints.append((int(os.path.splitext(os.path.basename(path))[0]), os.path.getmtime(path)))
+        except (OSError, ValueError):
+            continue
+    latest_checkpoint = max(checkpoints, default=(None, None), key=lambda value: value[0])
+    return records[-100:], log_mtime, latest_checkpoint
+
+
+def render_training_dashboard():
+    records, log_mtime, latest_checkpoint = get_training_status(TRAIN_LOG_GLOB, TRAIN_STATE_GLOB)
+    latest = records[-1] if records else None
+    is_running = bool(log_mtime and (datetime.now(timezone.utc).timestamp() - log_mtime < 180))
+
+    st.markdown("<div class='training-panel'><div class='training-kicker'>LIVE TRAINING CONTROL ROOM</div><h2>CodeFormer CPU Training</h2><p>Read-only monitor — viewing this dashboard does not pause or compete with training.</p></div>", unsafe_allow_html=True)
+    if st.button("↻ Refresh training data", key="refresh_training"):
+        get_training_status.clear()
+        st.rerun()
+
+    if not latest:
+        st.info("No training metrics found yet. Start training or refresh after the first iteration.")
+        return
+
+    progress = min(latest["iteration"] / TRAIN_TOTAL_ITERATIONS, 1.0)
+    st.progress(progress, text=f"Iteration {latest['iteration']:,} / {TRAIN_TOTAL_ITERATIONS:,} ({progress:.1%})")
+    c1, c2, c3, c4 = st.columns(4)
+    status_label = "● RUNNING" if is_running else "● PAUSED / STOPPED"
+    status_color = "#34d399" if is_running else "#fbbf24"
+    with c1:
+        st.markdown(f"<div class='metric-badge'><div class='metric-label'>Status</div><div class='metric-val' style='color:{status_color}'>{status_label}</div></div>", unsafe_allow_html=True)
+    with c2:
+        st.markdown(f"<div class='metric-badge'><div class='metric-label'>ETA</div><div class='metric-val'>{latest['eta']}</div></div>", unsafe_allow_html=True)
+    with c3:
+        checkpoint = latest_checkpoint[0] if latest_checkpoint[0] is not None else "—"
+        st.markdown(f"<div class='metric-badge'><div class='metric-label'>Last Checkpoint</div><div class='metric-val'>{checkpoint}</div></div>", unsafe_allow_html=True)
+    with c4:
+        st.markdown(f"<div class='metric-badge'><div class='metric-label'>Identity Loss</div><div class='metric-val'>{latest['identity_loss']:.4f}</div></div>", unsafe_allow_html=True)
+
+    chart_data = [{"iteration": row["iteration"], "Pixel loss": row["pixel_loss"], "Perceptual loss": row["perceptual_loss"], "Identity loss": row["identity_loss"]} for row in records]
+    st.markdown("#### Loss trends (latest 100 iterations)")
+    st.line_chart(chart_data, x="iteration", y=["Pixel loss", "Perceptual loss", "Identity loss"], color=["#a78bfa", "#f472b6", "#34d399"], height=260)
 
 # ── Page Configuration ──────────────────────────────────────────────────────────
 st.set_page_config(
@@ -172,6 +256,17 @@ div.stDownloadButton > button:hover {
     font-weight: 700;
     margin-top: 4px;
 }
+
+.training-panel {
+    margin: 14px 0 20px;
+    padding: 22px 24px;
+    border: 1px solid rgba(167, 139, 250, 0.3);
+    border-radius: 18px;
+    background: linear-gradient(120deg, rgba(124, 58, 237, 0.20), rgba(219, 39, 119, 0.10));
+}
+.training-panel h2 { margin: 4px 0; color: #fff; font-size: 1.45rem; }
+.training-panel p { margin: 0; color: #c4b5fd; }
+.training-kicker { color: #f9a8d4; font-size: .72rem; font-weight: 800; letter-spacing: .12em; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -194,11 +289,8 @@ for key, default in [
 def get_pipeline():
     return LocalAIEnhancerPipeline()
 
-try:
-    pipeline = get_pipeline()
-except Exception as e:
-    st.error(f"Failed to initialize AI Pipeline: {e}")
-    pipeline = None
+# The dashboard must not initialise the heavy model while CPU training is live.
+pipeline = None
 
 # ── Sidebar Controls (Minimalist & Clean) ───────────────────────────────────────
 with st.sidebar:
@@ -286,6 +378,9 @@ with st.sidebar:
 st.markdown('<div class="hero-title">AI Portrait Enhancer</div>', unsafe_allow_html=True)
 st.markdown('<div class="hero-sub">Restore blurry portraits, skin texture & eye detail with studio-level clarity</div>', unsafe_allow_html=True)
 
+with st.expander("📈 Training Dashboard", expanded=True):
+    render_training_dashboard()
+
 # ── File Upload Section ────────────────────────────────────────────────────────
 uploaded_file = st.file_uploader("Upload portrait photo (PNG, JPG, WEBP)", type=["png", "jpg", "jpeg", "webp"])
 
@@ -295,6 +390,13 @@ if uploaded_file is not None:
     except ValueError as error:
         st.error(str(error))
         st.stop()
+
+    if pipeline is None:
+        try:
+            pipeline = get_pipeline()
+        except Exception as error:
+            st.error(f"Failed to initialize AI Pipeline: {error}")
+            st.stop()
 
     current_params = {
         'img_name': uploaded_file.name,
