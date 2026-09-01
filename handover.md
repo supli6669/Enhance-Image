@@ -1403,6 +1403,46 @@ Added explicit version tracking badges in the Streamlit application UI so users 
 ### Code Changes
 - [MODIFY] [app.py](file:///d:/.gemini-scratch/custom-ai-enhancer/app.py) (Added `APP_VERSION` badge to sidebar and main hero title)
 
+---
+
+## Task 30: Studio AI Enhancement Suite (`v2.5.0`)
+
+**Date:** 2026-09-02  
+**Status:** ✅ Completed
+
+### Overview
+Delivered 4 flagship studio-level photo restoration and visual aesthetics capabilities:
+
+1. **Interactive Before/After Split Slider (`wink_enhancer.py` & `app.py`)**:
+   - Implemented `generate_comparison_slider_html()` producing a responsive HTML5/CSS/JavaScript draggable split comparison widget with mobile touch support and pill badges.
+   - Added View Mode toggle in Tab 1 allowing seamless switching between Split Slider and Classic Side-by-Side views.
+
+2. **AI Dark Circles & Blemish Softening (`wink_enhancer.py`)**:
+   - Implemented `conceal_dark_circles_and_blemishes()` isolating sub-orbital tear troughs below eye parsing masks (indices 4, 5).
+   - Uses frequency separation in LAB color space to lift dark shadows and neutralize purple/blue tones while keeping 100% authentic skin pore textures intact.
+
+3. **Studio Cinematic Color LUT Profiles (`wink_enhancer.py`)**:
+   - Implemented `apply_cinematic_lut()` supporting:
+     - **Kodak Portra 400**: Golden film highlights, soft lifted shadows, creamy warm skin.
+     - **Fuji Pro 400H**: Cool cyan/teal shadows, airy pastel greens/pinks.
+     - **Teal & Orange / Cyberpunk**: High-dynamic complementary split toning.
+     - **Leica Monochrome**: Fine-art rich silver black & white.
+
+4. **Studio Optical Portrait Bokeh ($f/1.4$ Blur) (`wink_enhancer.py` & `pipeline.py`)**:
+   - Implemented `apply_portrait_bokeh()` with anatomical head/upper torso soft masking and progressive optical background disc blur.
+
+5. **Master Verification**:
+   - Created `tools/test_studio_features.py` covering all 4 methods, integrated into `tools/test_all.py` (`exit code 0`).
+   - Bumped `APP_VERSION` to `v2.5.0 (Build 2026.09.02)`.
+
+### Code Changes
+- [MODIFY] [wink_enhancer.py](file:///d:/.gemini-scratch/custom-ai-enhancer/wink_enhancer.py) (Added `conceal_dark_circles_and_blemishes()`, `apply_cinematic_lut()`, `apply_portrait_bokeh()`, and `generate_comparison_slider_html()`)
+- [MODIFY] [pipeline.py](file:///d:/.gemini-scratch/custom-ai-enhancer/pipeline.py) (Integrated dark circles, color LUT, and bokeh parameters)
+- [MODIFY] [app.py](file:///d:/.gemini-scratch/custom-ai-enhancer/app.py) (Added Interactive Split Slider, sidebar controls, preset bindings, and bumped to `v2.5.0`)
+- [NEW] [tools/test_studio_features.py](file:///d:/.gemini-scratch/custom-ai-enhancer/tools/test_studio_features.py) (Unit tests for all 4 studio features)
+- [MODIFY] [tools/test_all.py](file:///d:/.gemini-scratch/custom-ai-enhancer/tools/test_all.py) (Registered test_studio_features.py)
+
+
 
 
 

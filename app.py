@@ -303,7 +303,7 @@ def get_pipeline():
 # The dashboard must not initialise the heavy model while CPU training is live.
 pipeline = None
 
-APP_VERSION = "v2.4.0 (Build 2026.09.02)"
+APP_VERSION = "v2.5.0 (Build 2026.09.02)"
 
 # ── Sidebar Controls (Minimalist & Clean) ───────────────────────────────────────
 with st.sidebar:
@@ -351,6 +351,9 @@ with st.sidebar:
         default_skin = cp.get('skin', True)
         default_teeth = cp.get('teeth', True)
         default_tone_glow = cp.get('tone_glow', True)
+        default_dark_circles = cp.get('dark_circles', True)
+        default_bokeh = cp.get('bokeh', 0.0)
+        default_lut = cp.get('lut', 'None')
         default_chromatic = cp.get('chromatic', False)
         default_detector = cp.get('detector', 'retinaface_mobile0.25')
         pipeline_preset_mode = 'Custom'
@@ -366,6 +369,9 @@ with st.sidebar:
         default_skin = True
         default_teeth = True
         default_tone_glow = True
+        default_dark_circles = True
+        default_bokeh = 0.0
+        default_lut = "None"
         default_chromatic = False
         default_detector = "retinaface_mobile0.25"
         pipeline_preset_mode = 'Modern Portrait'
@@ -381,6 +387,9 @@ with st.sidebar:
         default_skin = False
         default_teeth = False
         default_tone_glow = False
+        default_dark_circles = False
+        default_bokeh = 0.0
+        default_lut = "None"
         default_chromatic = False
         default_detector = "retinaface_mobile0.25"
         pipeline_preset_mode = 'Custom'
@@ -396,6 +405,9 @@ with st.sidebar:
         default_skin = True
         default_teeth = True
         default_tone_glow = True
+        default_dark_circles = True
+        default_bokeh = 0.0
+        default_lut = "Kodak Portra 400 (Warm Gold)"
         default_chromatic = True
         default_detector = "retinaface_mobile0.25"
         pipeline_preset_mode = 'Old Photo Restoration'
@@ -411,6 +423,9 @@ with st.sidebar:
         default_skin = False
         default_teeth = False
         default_tone_glow = False
+        default_dark_circles = False
+        default_bokeh = 0.0
+        default_lut = "Teal & Orange / Cyberpunk"
         default_chromatic = False
         default_detector = "retinaface_mobile0.25"
         pipeline_preset_mode = 'Game / Anime Character'
@@ -426,6 +441,9 @@ with st.sidebar:
         default_skin = True
         default_teeth = True
         default_tone_glow = True
+        default_dark_circles = True
+        default_bokeh = 0.0
+        default_lut = "None"
         default_chromatic = False
         default_detector = "retinaface_mobile0.25"
         pipeline_preset_mode = 'Custom'
@@ -465,6 +483,14 @@ with st.sidebar:
         enable_skin = st.checkbox("💆 Real Skin Grain Retention", value=default_skin)
         enable_teeth = st.checkbox("🦷 Natural Teeth Whitening", value=default_teeth)
         enable_tone_glow = st.checkbox("✨ Studio Skin Glow & White Balance", value=default_tone_glow)
+        enable_dark_circles = st.checkbox("🌿 Under-Eye Dark Circles & Blemish Concealer", value=default_dark_circles)
+
+        st.markdown("**🎨 Studio Color & Optics**")
+        lut_options = ["None", "Kodak Portra 400 (Warm Gold)", "Fuji Pro 400H (Pastel Jade)", "Teal & Orange / Cyberpunk", "Leica Monochrome (B&W)"]
+        lut_idx = lut_options.index(default_lut) if default_lut in lut_options else 0
+        color_lut_val = st.selectbox("Cinematic Film LUT", lut_options, index=lut_idx)
+        lut_intensity = st.slider("LUT Intensity", 0.0, 1.0, 1.0, 0.05) if color_lut_val != "None" else 1.0
+        bokeh_val = st.slider("📷 Studio Portrait Bokeh (f/1.4 Blur)", 0.0, 1.0, default_bokeh, 0.05, help="Simulate wide-aperture shallow depth of field background blur")
 
         chromatic_fix = st.toggle("🌈 Chromatic Aberration Correction", value=default_chromatic, help="Radial channel realignment for old lenses and color fringing")
         bg_upscale = st.toggle("Real-ESRGAN Background Upscale", value=False)
@@ -488,6 +514,10 @@ with st.sidebar:
                 'skin': enable_skin,
                 'teeth': enable_teeth,
                 'tone_glow': enable_tone_glow,
+                'dark_circles': enable_dark_circles,
+                'lut': color_lut_val,
+                'lut_intensity': lut_intensity,
+                'bokeh': bokeh_val,
                 'chromatic': chromatic_fix
             }
             st.success(f"Saved custom preset: '{p_name}'")
@@ -559,6 +589,10 @@ with tab_photo:
             'skin': enable_skin,
             'teeth': enable_teeth,
             'tone_glow': enable_tone_glow,
+            'dark_circles': enable_dark_circles,
+            'lut': color_lut_val,
+            'lut_intensity': lut_intensity,
+            'bokeh': bokeh_val,
             'chromatic': chromatic_fix,
             'bg_up': bg_upscale,
             'face_up': face_upscale
@@ -607,6 +641,10 @@ with tab_photo:
                     'enable_skin': enable_skin,
                     'enable_teeth': enable_teeth,
                     'enable_tone_glow': enable_tone_glow,
+                    'enable_dark_circles': enable_dark_circles,
+                    'color_lut': color_lut_val,
+                    'lut_intensity': lut_intensity,
+                    'bokeh_strength': bokeh_val,
                     'chromatic_aberration': chromatic_fix,
                     'progress_callback': local_progress_callback,
                 }
@@ -711,17 +749,31 @@ with tab_photo:
                 with q4:
                     st.markdown(f'<div class="metric-badge"><div class="metric-label">Skin Tone Match</div><div class="metric-val" style="color: #60a5fa;">{q_report["tone_fidelity_pct"]}%</div></div>', unsafe_allow_html=True)
 
-            st.markdown("<br>", unsafe_allow_html=True)
+            # Comparison Display (Interactive Split Slider or Side-by-Side)
+            view_col1, view_col2 = st.columns([1, 1])
+            with view_col1:
+                st.markdown("#### ✨ Visual Comparison")
+            with view_col2:
+                comparison_mode = st.radio(
+                    "View Mode",
+                    ["🎚️ Interactive Split Slider", "🔲 Side-by-Side"],
+                    horizontal=True,
+                    label_visibility="collapsed"
+                )
 
-            # Side-by-Side Comparison Display
-            c_orig, c_enh = st.columns(2)
-            with c_orig:
-                st.markdown("##### 📷 Original Image")
-                st.image(cv2.cvtColor(input_img, cv2.COLOR_BGR2RGB), use_container_width=True)
+            if comparison_mode == "🎚️ Interactive Split Slider" and pipeline and hasattr(pipeline, 'wink_enhancer'):
+                slider_html = pipeline.wink_enhancer.generate_comparison_slider_html(input_img, enhanced_img, slider_id="portrait-split-slider")
+                comp_height = int(min(850, max(420, (in_h / in_w) * 750 + 30))) if in_w > 0 else 550
+                st.components.v1.html(slider_html, height=comp_height)
+            else:
+                c_orig, c_enh = st.columns(2)
+                with c_orig:
+                    st.markdown("##### 📷 Original Image")
+                    st.image(cv2.cvtColor(input_img, cv2.COLOR_BGR2RGB), use_container_width=True)
 
-            with c_enh:
-                st.markdown("##### ✨ Wink Enhanced HD")
-                st.image(cv2.cvtColor(enhanced_img, cv2.COLOR_BGR2RGB), use_container_width=True)
+                with c_enh:
+                    st.markdown("##### ✨ Wink Enhanced HD")
+                    st.image(cv2.cvtColor(enhanced_img, cv2.COLOR_BGR2RGB), use_container_width=True)
 
             st.markdown("<br>", unsafe_allow_html=True)
 

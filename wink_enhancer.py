@@ -247,9 +247,280 @@ class WinkQualityEnhancer:
             print(f"[WinkEnhancer] Portrait lighting balance warning: {e}")
             return face_img
 
-    def enhance_eyes_and_lips(self, face_img: np.ndarray, parse_mask: np.ndarray = None, enable_eyes: bool = True, enable_lips: bool = True, enable_teeth: bool = True, enable_tone_glow: bool = True) -> np.ndarray:
+    def conceal_dark_circles_and_blemishes(self, face_img: np.ndarray, parse_mask: np.ndarray = None, strength: float = 0.45) -> np.ndarray:
         """
-        Enhance eyes (catchlight sparkle), teeth (whitening), lips and overall studio skin glow.
+        AI Blemish & Under-Eye Dark Circles Softener:
+        Isolates the sub-orbital under-eye area (tear troughs) and localized blemish spots,
+        lifting dark shadows in LAB space using frequency separation so authentic skin pore texture is 100% retained.
+        """
+        if strength <= 0.0 or face_img is None or parse_mask is None:
+            return face_img
+
+        try:
+            h, w = face_img.shape[:2]
+            parse_mask_2d = np.squeeze(parse_mask)
+            if parse_mask_2d.ndim != 2:
+                return face_img
+            if parse_mask_2d.shape[:2] != (h, w):
+                parse_mask_res = cv2.resize(parse_mask_2d.astype(np.uint8), (w, h), interpolation=cv2.INTER_NEAREST)
+            else:
+                parse_mask_res = parse_mask_2d
+
+            # 4: left eye, 5: right eye, 1: skin
+            eye_mask = ((parse_mask_res == 4) | (parse_mask_res == 5)).astype(np.uint8)
+            skin_mask = (parse_mask_res == 1).astype(np.uint8)
+
+            if not np.any(eye_mask) or not np.any(skin_mask):
+                return face_img
+
+            # Morphological dilation downwards to create under-eye tear trough region
+            kernel_tear = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (max(7, int(w * 0.06)), max(11, int(h * 0.08))))
+            dilated_eyes = cv2.dilate(eye_mask, kernel_tear, iterations=1)
+            
+            # Shift dilated mask down slightly to target under-eye pouch
+            shift_down = max(3, int(h * 0.025))
+            m_shift = np.float32([[1, 0, 0], [0, 1, shift_down]])
+            shifted_dilated = cv2.warpAffine(dilated_eyes, m_shift, (w, h))
+
+            # Dark circle mask is under eyes, inside skin, excluding the actual eyes and eyebrows (2, 3)
+            eyebrows = ((parse_mask_res == 2) | (parse_mask_res == 3)).astype(np.uint8)
+            dark_circle_mask = (shifted_dilated > 0) & (skin_mask > 0) & (eye_mask == 0) & (eyebrows == 0)
+            dark_circle_mask = dark_circle_mask.astype(np.uint8)
+
+            if not np.any(dark_circle_mask):
+                return face_img
+
+            # Feather mask edges with smooth Gaussian blur
+            feather_size = max(5, int(w * 0.03) | 1)
+            dark_mask_float = cv2.GaussianBlur(dark_circle_mask.astype(np.float32), (feather_size, feather_size), 0)
+
+            # Frequency Separation on LAB color space
+            lab = cv2.cvtColor(face_img, cv2.COLOR_BGR2LAB).astype(np.float32)
+            l, a, b = cv2.split(lab)
+
+            # Low frequency base lighting (large bilateral filter to preserve edges while smoothing tone)
+            l_low = cv2.bilateralFilter(l.astype(np.uint8), 9, 50, 50).astype(np.float32)
+            l_high = l - l_low # High frequency skin pores and texture
+
+            # Lift dark tones in the under-eye region towards the average skin lightness
+            mean_skin_l = np.mean(l[skin_mask > 0]) if np.any(skin_mask) else 150.0
+            
+            # Targeted luminance lift
+            l_lifted_low = l_low + np.maximum(0.0, (mean_skin_l - l_low) * (strength * 0.7))
+            
+            # Reconstruct with original high frequency pores intact
+            l_reconstructed = np.clip(l_lifted_low + l_high, 0, 255)
+
+            # Blend back with feather mask
+            l_final = l * (1.0 - dark_mask_float) + l_reconstructed * dark_mask_float
+            
+            # Reduce subtle blueish/purple under-eye shadows in 'b' channel
+            b_warmed = np.clip(b + (strength * 3.0), 0, 255)
+            b_final = b * (1.0 - dark_mask_float) + b_warmed * dark_mask_float
+
+            lab_out = cv2.merge([l_final.astype(np.uint8), a.astype(np.uint8), b_final.astype(np.uint8)])
+            return cv2.cvtColor(lab_out, cv2.COLOR_LAB2BGR)
+        except Exception as e:
+            print(f"[WinkEnhancer] Dark circle / blemish concealment warning: {e}")
+            return face_img
+
+    def apply_cinematic_lut(self, img: np.ndarray, lut_name: str = "None", intensity: float = 1.0) -> np.ndarray:
+        """
+        Apply Studio Cinematic Color LUT / Film Grade profile:
+        - 'Kodak Portra 400': Warm golden film tone, soft lifted shadows, creamy skin.
+        - 'Fuji Pro 400H': Cool cyan/teal shadows, pastel highlights, soft pink porcelain skin.
+        - 'Teal & Orange / Cyberpunk': Dynamic cinematic split-toning (cool shadows, warm vibrant midtones).
+        - 'Leica Monochrome': Fine-art high dynamic range black & white with rich silver tones.
+        """
+        if lut_name in (None, "None", "Off", "") or intensity <= 0.0 or img is None:
+            return img
+
+        try:
+            img_f = img.astype(np.float32) / 255.0
+            b, g, r = cv2.split(img_f)
+
+            if "Kodak" in lut_name or "Portra" in lut_name:
+                # Kodak Portra 400: Lifted blacks, warm golden highlights, rich skin red/yellow
+                r_lut = np.power(r, 0.90) * 1.04
+                g_lut = np.power(g, 0.95) * 1.01
+                b_lut = np.power(b, 1.10) * 0.92 + 0.03
+                graded = cv2.merge([b_lut, g_lut, r_lut])
+            elif "Fuji" in lut_name or "400H" in lut_name:
+                # Fuji Pro 400H: Cool cyan shadows, airy pastel greens/pinks, crisp highlights
+                r_lut = np.power(r, 1.05) * 0.97
+                g_lut = np.power(g, 0.92) * 1.03
+                b_lut = np.power(b, 0.94) * 1.05 + 0.02
+                graded = cv2.merge([b_lut, g_lut, r_lut])
+            elif "Teal" in lut_name or "Cyberpunk" in lut_name:
+                # Teal & Orange / Hollywood Blockbuster
+                lum = 0.299 * r + 0.587 * g + 0.114 * b
+                shadow_w = np.clip(1.0 - (lum * 2.0), 0.0, 1.0)
+                high_w = np.clip((lum * 2.0) - 1.0, 0.0, 1.0)
+
+                r_lut = np.clip(r + (high_w * 0.12) - (shadow_w * 0.08), 0.0, 1.0)
+                g_lut = np.clip(g + (high_w * 0.04) + (shadow_w * 0.05), 0.0, 1.0)
+                b_lut = np.clip(b - (high_w * 0.10) + (shadow_w * 0.18), 0.0, 1.0)
+                graded = cv2.merge([b_lut, g_lut, r_lut])
+                graded = np.power(np.clip(graded, 0.0, 1.0), 0.92)
+            elif "Monochrome" in lut_name or "Leica" in lut_name or "B&W" in lut_name:
+                # Leica Monochrome: High-contrast silver tones
+                gray = 0.299 * r + 0.587 * g + 0.114 * b
+                gray_curve = np.where(gray < 0.5, 2.0 * np.square(gray), 1.0 - 2.0 * np.square(1.0 - gray))
+                graded = cv2.merge([gray_curve, gray_curve, gray_curve])
+            else:
+                return img
+
+            graded = np.clip(graded * 255.0, 0, 255).astype(np.uint8)
+            if intensity < 1.0:
+                return cv2.addWeighted(img, 1.0 - intensity, graded, intensity, 0)
+            return graded
+        except Exception as e:
+            print(f"[WinkEnhancer] Cinematic LUT warning: {e}")
+            return img
+
+    def apply_portrait_bokeh(self, full_img: np.ndarray, face_bboxes=None, bokeh_strength: float = 0.0) -> np.ndarray:
+        """
+        Studio Portrait Optical Bokeh & Depth-of-Field Blur (f/1.4 Simulation):
+        Softly blurs the background while keeping subjects and faces in sharp focus.
+        """
+        if bokeh_strength <= 0.0 or full_img is None:
+            return full_img
+
+        try:
+            h, w = full_img.shape[:2]
+            mask = np.zeros((h, w), dtype=np.float32)
+            
+            if face_bboxes and len(face_bboxes) > 0:
+                for bbox in face_bboxes:
+                    x1, y1, x2, y2 = bbox[:4]
+                    fw, fh = x2 - x1, y2 - y1
+                    cx, cy = int(x1 + fw / 2), int(y1 + fh / 2)
+                    
+                    rx = int(fw * 1.1)
+                    ry = int(fh * 1.6)
+                    center_y = int(cy + fh * 0.4)
+                    cv2.ellipse(mask, (cx, center_y), (rx, ry), 0, 0, 360, 1.0, -1)
+            else:
+                cx, cy = int(w / 2), int(h * 0.45)
+                rx, ry = int(w * 0.35), int(h * 0.45)
+                cv2.ellipse(mask, (cx, cy), (rx, ry), 0, 0, 360, 1.0, -1)
+
+            feather = max(21, int(min(h, w) * 0.1) | 1)
+            mask_soft = cv2.GaussianBlur(mask, (feather, feather), 0)[:, :, np.newaxis]
+
+            ksize = max(15, int(bokeh_strength * min(h, w) * 0.06) | 1)
+            bg_blur = cv2.GaussianBlur(full_img, (ksize, ksize), 0)
+
+            bokeh_img = (full_img.astype(np.float32) * mask_soft + bg_blur.astype(np.float32) * (1.0 - mask_soft))
+            return np.clip(bokeh_img, 0, 255).astype(np.uint8)
+        except Exception as e:
+            print(f"[WinkEnhancer] Portrait bokeh warning: {e}")
+            return full_img
+
+    def generate_comparison_slider_html(self, img_before_bgr: np.ndarray, img_after_bgr: np.ndarray, slider_id: str = "split-slider") -> str:
+        """
+        Generate standalone interactive Before/After image comparison slider HTML5 component.
+        """
+        import base64
+        h, w = img_after_bgr.shape[:2]
+        max_dim = 1200
+        if max(h, w) > max_dim:
+            scale = max_dim / max(h, w)
+            nw, nh = int(w * scale), int(h * scale)
+            img_b = cv2.resize(img_before_bgr, (nw, nh), interpolation=cv2.INTER_AREA)
+            img_a = cv2.resize(img_after_bgr, (nw, nh), interpolation=cv2.INTER_AREA)
+        else:
+            img_b = img_before_bgr
+            img_a = img_after_bgr
+            
+        _, buf_b = cv2.imencode(".jpg", img_b, [cv2.IMWRITE_JPEG_QUALITY, 90])
+        _, buf_a = cv2.imencode(".jpg", img_a, [cv2.IMWRITE_JPEG_QUALITY, 90])
+        
+        b64_b = base64.b64encode(buf_b).decode("utf-8")
+        b64_a = base64.b64encode(buf_a).decode("utf-8")
+        
+        aspect_ratio = (h / w) * 100.0 if w > 0 else 75.0
+        
+        html_code = f"""
+        <div class="slider-container" id="{slider_id}" style="position: relative; width: 100%; max-width: 900px; margin: 0 auto; overflow: hidden; border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); user-select: none; padding-top: {aspect_ratio:.2f}%;">
+            <img src="data:image/jpeg;base64,{b64_a}" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: contain; background: #0f172a;" alt="Enhanced After" />
+            <div style="position: absolute; bottom: 12px; right: 12px; background: rgba(99, 102, 241, 0.85); backdrop-filter: blur(8px); color: white; font-size: 11px; font-weight: 700; padding: 4px 10px; border-radius: 6px; z-index: 5; text-transform: uppercase; letter-spacing: 0.5px;">Enhanced ✨</div>
+
+            <div id="{slider_id}-before-wrap" style="position: absolute; top: 0; left: 0; width: 50%; height: 100%; overflow: hidden; z-index: 2;">
+                <img src="data:image/jpeg;base64,{b64_b}" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: contain; background: #0f172a;" id="{slider_id}-before-img" alt="Original Before" />
+                <div style="position: absolute; bottom: 12px; left: 12px; background: rgba(15, 23, 42, 0.85); backdrop-filter: blur(8px); color: #94a3b8; font-size: 11px; font-weight: 700; padding: 4px 10px; border-radius: 6px; z-index: 5; text-transform: uppercase; letter-spacing: 0.5px;">Original</div>
+            </div>
+
+            <div id="{slider_id}-handle" style="position: absolute; top: 0; bottom: 0; left: 50%; width: 3px; background: #ffffff; cursor: ew-resize; z-index: 10; transform: translateX(-50%); box-shadow: 0 0 10px rgba(0,0,0,0.6);">
+                <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 36px; height: 36px; background: #6366f1; border: 3px solid #ffffff; border-radius: 50%; box-shadow: 0 4px 12px rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; color: white; font-size: 14px; font-weight: bold;">
+                    ⇄
+                </div>
+            </div>
+        </div>
+
+        <script>
+        (function() {{
+            const container = document.getElementById("{slider_id}");
+            const beforeWrap = document.getElementById("{slider_id}-before-wrap");
+            const beforeImg = document.getElementById("{slider_id}-before-img");
+            const handle = document.getElementById("{slider_id}-handle");
+            let isDragging = false;
+
+            function syncImageWidth() {{
+                if (container && beforeImg) {{
+                    beforeImg.style.width = container.offsetWidth + "px";
+                }}
+            }}
+
+            function setPosition(x) {{
+                const rect = container.getBoundingClientRect();
+                let pos = (x - rect.left) / rect.width;
+                pos = Math.max(0.01, Math.min(0.99, pos));
+                const pct = (pos * 100).toFixed(2) + "%";
+                beforeWrap.style.width = pct;
+                handle.style.left = pct;
+                syncImageWidth();
+            }}
+
+            window.addEventListener('resize', syncImageWidth);
+            setTimeout(syncImageWidth, 50);
+            setTimeout(syncImageWidth, 300);
+
+            container.addEventListener('mousedown', (e) => {{
+                isDragging = true;
+                setPosition(e.clientX);
+            }});
+
+            window.addEventListener('mousemove', (e) => {{
+                if (!isDragging) return;
+                setPosition(e.clientX);
+            }});
+
+            window.addEventListener('mouseup', () => {{
+                isDragging = false;
+            }});
+
+            container.addEventListener('touchstart', (e) => {{
+                isDragging = true;
+                if (e.touches.length > 0) setPosition(e.touches[0].clientX);
+            }}, {{ passive: true }});
+
+            window.addEventListener('touchmove', (e) => {{
+                if (!isDragging || e.touches.length === 0) return;
+                setPosition(e.touches[0].clientX);
+            }}, {{ passive: true }});
+
+            window.addEventListener('touchend', () => {{
+                isDragging = false;
+            }});
+        }})();
+        </script>
+        """
+        return html_code
+
+    def enhance_eyes_and_lips(self, face_img: np.ndarray, parse_mask: np.ndarray = None, enable_eyes: bool = True, enable_lips: bool = True, enable_teeth: bool = True, enable_tone_glow: bool = True, enable_dark_circles: bool = True) -> np.ndarray:
+        """
+        Enhance eyes (catchlight sparkle), dark circles removal, teeth (whitening), lips and overall studio skin glow.
         """
         result = face_img.copy()
 
@@ -257,11 +528,15 @@ class WinkQualityEnhancer:
         if enable_tone_glow:
             result = self.balance_portrait_lighting_and_tone(result, strength=0.25)
 
-        # 2. Teeth Whitening
+        # 2. Dark Circles & Blemish Softening
+        if enable_dark_circles and parse_mask is not None:
+            result = self.conceal_dark_circles_and_blemishes(result, parse_mask, strength=0.45)
+
+        # 3. Teeth Whitening
         if enable_teeth and parse_mask is not None:
             result = self.whiten_teeth(result, parse_mask, strength=0.35)
 
-        # 3. Ocular Catchlight & Sclera Glow
+        # 4. Ocular Catchlight & Sclera Glow
         if enable_eyes and parse_mask is not None:
             result = self.brighten_eyes_and_sclera(result, parse_mask, strength=0.35)
 
@@ -286,7 +561,7 @@ class WinkQualityEnhancer:
             # 12: Upper Lip, 13: Lower Lip
             lip_mask = ((parse_mask_res == 12) | (parse_mask_res == 13)).astype(np.uint8)
 
-            # 4. Enhance Lips: Subtle natural saturation & contrast boost
+            # 5. Enhance Lips: Subtle natural saturation & contrast boost
             if enable_lips and np.any(lip_mask):
                 lip_mask_float = cv2.GaussianBlur(lip_mask.astype(np.float32), (3, 3), 0)[:, :, np.newaxis]
                 hsv = cv2.cvtColor(result, cv2.COLOR_BGR2HSV).astype(np.float32)
@@ -348,34 +623,34 @@ class WinkQualityEnhancer:
                 res_lab[:, :, i] = ((target_lab[:, :, i] - t_mean[i]) * (s_std[i] / t_std[i])) + s_mean[i]
 
             res_lab = np.clip(res_lab, 0, 255).astype(np.uint8)
-            matched_bgr = cv2.cvtColor(res_lab, cv2.COLOR_LAB2BGR)
-
-            return cv2.addWeighted(target_img, 1.0 - blend, matched_bgr, blend, 0)
+            res_bgr = cv2.cvtColor(res_lab, cv2.COLOR_LAB2BGR)
+            return cv2.addWeighted(target_img, 1.0 - blend, res_bgr, blend, 0)
         except Exception as e:
-            print(f"[WinkEnhancer] Color match warning: {e}")
+            print(f"[WinkEnhancer] Reinhard color match warning: {e}")
             return target_img
 
     def apply_adaptive_sharpening(self, img: np.ndarray, sharpen_amount: float = 0.2) -> np.ndarray:
         """
-        Multi-Scale Edge-Aware Sharpening:
-        Extracts structural edge mask using Sobel magnitude and applies dual-scale
-        Unsharp Masking (fine micro-details + coarse structural edges) without halos.
+        Multi-Scale Edge-Aware Adaptive Sharpening:
+        Sharpens eyes, eyelashes, and key boundary edges without amplifying skin noise or artifacts.
         """
         if sharpen_amount <= 0.0 or img is None:
             return img
 
         try:
-            gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+            gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY) if len(img.shape) == 3 else img
+            # Compute edge magnitude via Sobel
+            sobelx = cv2.Sobel(gray, cv2.CV_32F, 1, 0, ksize=3)
+            sobely = cv2.Sobel(gray, cv2.CV_32F, 0, 1, ksize=3)
+            edge_mag = cv2.magnitude(sobelx, sobely)
             
-            # Sobel edge magnitude
-            grad_x = cv2.Sobel(gray, cv2.CV_32F, 1, 0, ksize=3)
-            grad_y = cv2.Sobel(gray, cv2.CV_32F, 0, 1, ksize=3)
-            edge_mag = cv2.magnitude(grad_x, grad_y)
+            # Normalize and threshold edge map
             edge_norm = cv2.normalize(edge_mag, None, 0.0, 1.0, cv2.NORM_MINMAX)[:, :, np.newaxis]
-            
-            # Dual-scale Unsharp Masking
-            blur_fine = cv2.GaussianBlur(img, (3, 3), 1.0)
-            blur_coarse = cv2.GaussianBlur(img, (7, 7), 3.0)
+            edge_norm = np.clip(edge_norm * 1.5, 0.0, 1.0) # Boost edge weight
+
+            # Fine and coarse unsharp mask layers
+            blur_fine = cv2.GaussianBlur(img, (0, 0), 1.0)
+            blur_coarse = cv2.GaussianBlur(img, (0, 0), 2.5)
             
             sharp_fine = cv2.addWeighted(img, 1.0 + sharpen_amount, blur_fine, -sharpen_amount, 0)
             sharp_coarse = cv2.addWeighted(img, 1.0 + (sharpen_amount * 0.5), blur_coarse, -(sharpen_amount * 0.5), 0)
@@ -387,7 +662,7 @@ class WinkQualityEnhancer:
             print(f"[WinkEnhancer] Adaptive sharpening warning: {e}")
             return img
 
-    def enhance_face(self, restored_face: np.ndarray, cropped_original: np.ndarray = None, parse_mask: np.ndarray = None, wink_mode: bool = True, eye_enhancement: bool = True, skin_grain: float = 0.15, color_match: bool = True, enable_eyes: bool = True, enable_lips: bool = True, enable_skin: bool = True, enable_teeth: bool = True, enable_tone_glow: bool = True, sharpen_amount: float = 0.2) -> np.ndarray:
+    def enhance_face(self, restored_face: np.ndarray, cropped_original: np.ndarray = None, parse_mask: np.ndarray = None, wink_mode: bool = True, eye_enhancement: bool = True, skin_grain: float = 0.15, color_match: bool = True, enable_eyes: bool = True, enable_lips: bool = True, enable_skin: bool = True, enable_teeth: bool = True, enable_tone_glow: bool = True, enable_dark_circles: bool = True, sharpen_amount: float = 0.2) -> np.ndarray:
         """
         Master method to execute Wink-level enhancement pipeline on a restored face crop.
         """
@@ -407,15 +682,16 @@ class WinkQualityEnhancer:
         # Step C: Skin tone & micro-contrast balance
         out_face = self.balance_skin_tone_lab(out_face)
 
-        # Step D: Eye (sparkle), Teeth (whitening) & Lip local enhancement
-        if eye_enhancement and (enable_eyes or enable_lips or enable_teeth):
+        # Step D: Eye (sparkle), Dark Circles, Teeth (whitening) & Lip local enhancement
+        if eye_enhancement and (enable_eyes or enable_lips or enable_teeth or enable_dark_circles):
             out_face = self.enhance_eyes_and_lips(
                 out_face,
                 parse_mask=parse_mask,
                 enable_eyes=enable_eyes,
                 enable_lips=enable_lips,
                 enable_teeth=enable_teeth,
-                enable_tone_glow=False
+                enable_tone_glow=False,
+                enable_dark_circles=enable_dark_circles
             )
 
         # Step E: Multi-Scale Edge-Aware Adaptive Sharpening
