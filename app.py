@@ -465,233 +465,351 @@ with st.sidebar:
 st.markdown('<div class="hero-title">AI Portrait Enhancer</div>', unsafe_allow_html=True)
 st.markdown('<div class="hero-sub">Restore blurry portraits, skin texture & eye detail with studio-level clarity</div>', unsafe_allow_html=True)
 
-with st.expander("📈 Training Dashboard", expanded=True):
+with st.expander("📈 Training Dashboard", expanded=False):
     render_training_dashboard()
 
-# ── File Upload Section ────────────────────────────────────────────────────────
-uploaded_file = st.file_uploader("Upload portrait photo (PNG, JPG, WEBP)", type=["png", "jpg", "jpeg", "webp"])
+tab_photo, tab_video, tab_benchmark = st.tabs([
+    "📸 Portrait Enhancement",
+    "🎥 Video AI Restoration",
+    "📊 Benchmark & Quality Explorer"
+])
 
-if uploaded_file is not None:
-    try:
-        input_img = load_uploaded_image(uploaded_file)
-    except ValueError as error:
-        st.error(str(error))
-        st.stop()
+# ═══════════════════════════════════════════════════════════════════════════════
+# TAB 1: SINGLE PORTRAIT RESTORATION
+# ═══════════════════════════════════════════════════════════════════════════════
+with tab_photo:
+    uploaded_file = st.file_uploader("Upload portrait photo (PNG, JPG, WEBP)", type=["png", "jpg", "jpeg", "webp"], key="photo_uploader")
 
-    if pipeline is None:
+    if uploaded_file is not None:
         try:
-            pipeline = get_pipeline()
-        except Exception as error:
-            st.error(f"Failed to initialize AI Pipeline: {error}")
+            input_img = load_uploaded_image(uploaded_file)
+        except ValueError as error:
+            st.error(str(error))
             st.stop()
 
-    current_params = {
-        'img_name': uploaded_file.name,
-        'w': w_val,
-        'upscale': upscale_val,
-        'detector': face_detector,
-        'thresh': det_thresh,
-        'wink': wink_mode,
-        'grain': skin_grain,
-        'sharpen': sharpen_val,
-        'color': color_match,
-        'eye': enable_eyes,
-        'lip': enable_lips,
-        'skin': enable_skin,
-        'bg_up': bg_upscale,
-        'face_up': face_upscale
-    }
+        if pipeline is None:
+            try:
+                pipeline = get_pipeline()
+            except Exception as error:
+                st.error(f"Failed to initialize AI Pipeline: {error}")
+                st.stop()
 
-    # Parameters change guard: reset output state if parameters change while idle
-    if st.session_state.get('last_run_params') != current_params and not st.session_state.get('processing'):
-        st.session_state.enhanced_img = None
-        st.session_state.processing_error = None
-        st.session_state.process_duration = None
+        current_params = {
+            'img_name': uploaded_file.name,
+            'w': w_val,
+            'upscale': upscale_val,
+            'detector': face_detector,
+            'thresh': det_thresh,
+            'wink': wink_mode,
+            'grain': skin_grain,
+            'sharpen': sharpen_val,
+            'color': color_match,
+            'eye': enable_eyes,
+            'lip': enable_lips,
+            'skin': enable_skin,
+            'bg_up': bg_upscale,
+            'face_up': face_upscale
+        }
 
-    # Trigger processing thread if output is None
-    if st.session_state.enhanced_img is None and st.session_state.get('processing_error') is None:
-        if not st.session_state.get('processing'):
-            if pipeline is None:
-                st.session_state.processing_error = "AI pipeline is unavailable. Please try again later."
-                st.rerun()
-
-            st.session_state.processing = True
-            request_start_time = time.time()
-            st.session_state.start_time = request_start_time
-            
-            res_queue = queue.Queue()
-            st.session_state._result_queue = res_queue
-
-            def local_progress_callback(stage, progress, message):
-                res_queue.put({'type': 'progress', 'stage': stage, 'progress': progress, 'message': message})
-
-            process_args = {
-                'w': w_val,
-                'detection_model': face_detector,
-                'upscale': upscale_val,
-                'blend_softness': 0.5,
-                'bg_upsampler': 'realesrgan' if bg_upscale else None,
-                'det_threshold': det_thresh,
-                'sharpen_amount': sharpen_val,
-                'face_upsample': face_upscale,
-                'parallel': True,
-                'preset_mode': pipeline_preset_mode,
-                'wink_mode': wink_mode,
-                'eye_enhancement': enable_eyes,
-                'skin_grain': skin_grain,
-                'color_match': color_match,
-                'enable_eyes': enable_eyes,
-                'enable_lips': enable_lips,
-                'enable_skin': enable_skin,
-                'progress_callback': local_progress_callback,
-            }
-
-            def _worker(
-                request_image=input_img.copy(),
-                request_params=current_params.copy(),
-                request_args=process_args.copy(),
-                request_queue=res_queue,
-                request_started_at=request_start_time,
-            ):
-                try:
-                    res = pipeline.process_image(
-                        request_image,
-                        **request_args,
-                    )
-
-                    request_queue.put({
-                        'type': 'result',
-                        'enhanced_img': res,
-                        'duration': time.time() - request_started_at,
-                        'params': request_params
-                    })
-                except Exception as ex:
-                    import traceback
-                    traceback.print_exc()
-                    request_queue.put({'type': 'error', 'error': str(ex)})
-
-            threading.Thread(target=_worker, daemon=True).start()
-
-    # Poll Queue for updates
-    if st.session_state.get('processing'):
-        res_queue = st.session_state.get('_result_queue')
-        if res_queue:
-            while not res_queue.empty():
-                msg = res_queue.get_nowait()
-                if msg['type'] == 'progress':
-                    st.session_state.progress_state = msg
-                elif msg['type'] == 'result':
-                    st.session_state.enhanced_img = msg['enhanced_img']
-                    st.session_state.process_duration = msg['duration']
-                    st.session_state.last_run_params = msg['params']
-                    st.session_state.processing = False
-                    st.session_state.progress_state = None
-                    st.rerun()
-                elif msg['type'] == 'error':
-                    st.session_state.processing_error = msg['error']
-                    st.session_state.processing = False
-                    st.session_state.progress_state = None
-                    st.rerun()
-
-        # Render Progress UI
-        p_state = st.session_state.get('progress_state') or {}
-        stage_msg = p_state.get('message', 'Processing image with AI...')
-        prog_val = p_state.get('progress', 0.1)
-
-        st.markdown("<br>", unsafe_allow_html=True)
-        st.progress(float(prog_val))
-        st.info(f"✨ {stage_msg}")
-        time.sleep(0.3)
-        st.rerun()
-
-    # Render Errors if any
-    if st.session_state.get('processing_error'):
-        st.error(f"Processing Error: {st.session_state.processing_error}")
-        if st.button("🔄 Try Again"):
+        # Parameters change guard: reset output state if parameters change while idle
+        if st.session_state.get('last_run_params') != current_params and not st.session_state.get('processing'):
+            st.session_state.enhanced_img = None
             st.session_state.processing_error = None
-            st.session_state.processing = False
+            st.session_state.process_duration = None
+
+        # Trigger processing thread if output is None
+        if st.session_state.enhanced_img is None and st.session_state.get('processing_error') is None:
+            if not st.session_state.get('processing'):
+                if pipeline is None:
+                    st.session_state.processing_error = "AI pipeline is unavailable. Please try again later."
+                    st.rerun()
+
+                st.session_state.processing = True
+                request_start_time = time.time()
+                st.session_state.start_time = request_start_time
+                
+                res_queue = queue.Queue()
+                st.session_state._result_queue = res_queue
+
+                def local_progress_callback(stage, progress, message):
+                    res_queue.put({'type': 'progress', 'stage': stage, 'progress': progress, 'message': message})
+
+                process_args = {
+                    'w': w_val,
+                    'detection_model': face_detector,
+                    'upscale': upscale_val,
+                    'blend_softness': 0.5,
+                    'bg_upsampler': 'realesrgan' if bg_upscale else None,
+                    'det_threshold': det_thresh,
+                    'sharpen_amount': sharpen_val,
+                    'face_upsample': face_upscale,
+                    'parallel': True,
+                    'preset_mode': pipeline_preset_mode,
+                    'wink_mode': wink_mode,
+                    'eye_enhancement': enable_eyes,
+                    'skin_grain': skin_grain,
+                    'color_match': color_match,
+                    'enable_eyes': enable_eyes,
+                    'enable_lips': enable_lips,
+                    'enable_skin': enable_skin,
+                    'progress_callback': local_progress_callback,
+                }
+
+                def _worker(
+                    request_image=input_img.copy(),
+                    request_params=current_params.copy(),
+                    request_args=process_args.copy(),
+                    request_queue=res_queue,
+                    request_started_at=request_start_time,
+                ):
+                    try:
+                        res = pipeline.process_image(
+                            request_image,
+                            **request_args,
+                        )
+
+                        request_queue.put({
+                            'type': 'result',
+                            'enhanced_img': res,
+                            'duration': time.time() - request_started_at,
+                            'params': request_params
+                        })
+                    except Exception as ex:
+                        import traceback
+                        traceback.print_exc()
+                        request_queue.put({'type': 'error', 'error': str(ex)})
+
+                threading.Thread(target=_worker, daemon=True).start()
+
+        # Poll Queue for updates
+        if st.session_state.get('processing'):
+            res_queue = st.session_state.get('_result_queue')
+            if res_queue:
+                while not res_queue.empty():
+                    msg = res_queue.get_nowait()
+                    if msg['type'] == 'progress':
+                        st.session_state.progress_state = msg
+                    elif msg['type'] == 'result':
+                        st.session_state.enhanced_img = msg['enhanced_img']
+                        st.session_state.process_duration = msg['duration']
+                        st.session_state.last_run_params = msg['params']
+                        st.session_state.processing = False
+                        st.session_state.progress_state = None
+                        st.rerun()
+                    elif msg['type'] == 'error':
+                        st.session_state.processing_error = msg['error']
+                        st.session_state.processing = False
+                        st.session_state.progress_state = None
+                        st.rerun()
+
+            # Render Progress UI
+            p_state = st.session_state.get('progress_state') or {}
+            stage_msg = p_state.get('message', 'Processing image with AI...')
+            prog_val = p_state.get('progress', 0.1)
+
+            st.markdown("<br>", unsafe_allow_html=True)
+            st.progress(float(prog_val))
+            st.info(f"✨ {stage_msg}")
+            time.sleep(0.3)
             st.rerun()
 
-    # Render Results Section
-    enhanced_img = st.session_state.get('enhanced_img')
-    if enhanced_img is not None:
-        st.markdown("<hr>", unsafe_allow_html=True)
+        # Render Errors if any
+        if st.session_state.get('processing_error'):
+            st.error(f"Processing Error: {st.session_state.processing_error}")
+            if st.button("🔄 Try Again"):
+                st.session_state.processing_error = None
+                st.session_state.processing = False
+                st.rerun()
 
-        # Image Stats Bar
-        in_h, in_w = input_img.shape[:2]
-        out_h, out_w = enhanced_img.shape[:2]
-        duration = st.session_state.get('process_duration', 0.0)
+        # Render Results Section
+        enhanced_img = st.session_state.get('enhanced_img')
+        if enhanced_img is not None:
+            st.markdown("<hr>", unsafe_allow_html=True)
 
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            st.markdown(f'<div class="metric-badge"><div class="metric-label">Original Size</div><div class="metric-val">{in_w}×{in_h} px</div></div>', unsafe_allow_html=True)
-        with col2:
-            st.markdown(f'<div class="metric-badge"><div class="metric-label">Enhanced Size</div><div class="metric-val">{out_w}×{out_h} px</div></div>', unsafe_allow_html=True)
-        with col3:
-            st.markdown(f'<div class="metric-badge"><div class="metric-label">Speed (CPU)</div><div class="metric-val">{duration:.2f} s</div></div>', unsafe_allow_html=True)
+            # Image Stats Bar
+            in_h, in_w = input_img.shape[:2]
+            out_h, out_w = enhanced_img.shape[:2]
+            duration = st.session_state.get('process_duration', 0.0)
 
-        st.markdown("<br>", unsafe_allow_html=True)
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.markdown(f'<div class="metric-badge"><div class="metric-label">Original Size</div><div class="metric-val">{in_w}×{in_h} px</div></div>', unsafe_allow_html=True)
+            with col2:
+                st.markdown(f'<div class="metric-badge"><div class="metric-label">Enhanced Size</div><div class="metric-val">{out_w}×{out_h} px</div></div>', unsafe_allow_html=True)
+            with col3:
+                st.markdown(f'<div class="metric-badge"><div class="metric-label">Speed (CPU)</div><div class="metric-val">{duration:.2f} s</div></div>', unsafe_allow_html=True)
 
-        # AI Quality Score Report Card
-        if pipeline and hasattr(pipeline, 'wink_enhancer'):
-            q_report = pipeline.wink_enhancer.calculate_quality_report(input_img, enhanced_img)
-            st.markdown("#### 📊 AI Quality Score Report")
-            q1, q2, q3, q4 = st.columns(4)
-            with q1:
-                st.markdown(f'<div class="metric-badge"><div class="metric-label">Sharpness Gain</div><div class="metric-val" style="color: #34d399;">+{q_report["sharpness_gain_pct"]}%</div></div>', unsafe_allow_html=True)
-            with q2:
-                st.markdown(f'<div class="metric-badge"><div class="metric-label">Original Sharpness</div><div class="metric-val">{q_report["orig_sharpness"]}</div></div>', unsafe_allow_html=True)
-            with q3:
-                st.markdown(f'<div class="metric-badge"><div class="metric-label">Enhanced Sharpness</div><div class="metric-val">{q_report["enh_sharpness"]}</div></div>', unsafe_allow_html=True)
-            with q4:
-                st.markdown(f'<div class="metric-badge"><div class="metric-label">Skin Tone Match</div><div class="metric-val" style="color: #60a5fa;">{q_report["tone_fidelity_pct"]}%</div></div>', unsafe_allow_html=True)
+            st.markdown("<br>", unsafe_allow_html=True)
 
-        st.markdown("<br>", unsafe_allow_html=True)
+            # AI Quality Score Report Card
+            if pipeline and hasattr(pipeline, 'wink_enhancer'):
+                q_report = pipeline.wink_enhancer.calculate_quality_report(input_img, enhanced_img)
+                st.markdown("#### 📊 AI Quality Score Report")
+                q1, q2, q3, q4 = st.columns(4)
+                with q1:
+                    st.markdown(f'<div class="metric-badge"><div class="metric-label">Sharpness Gain</div><div class="metric-val" style="color: #34d399;">+{q_report["sharpness_gain_pct"]}%</div></div>', unsafe_allow_html=True)
+                with q2:
+                    st.markdown(f'<div class="metric-badge"><div class="metric-label">Original Sharpness</div><div class="metric-val">{q_report["orig_sharpness"]}</div></div>', unsafe_allow_html=True)
+                with q3:
+                    st.markdown(f'<div class="metric-badge"><div class="metric-label">Enhanced Sharpness</div><div class="metric-val">{q_report["enh_sharpness"]}</div></div>', unsafe_allow_html=True)
+                with q4:
+                    st.markdown(f'<div class="metric-badge"><div class="metric-label">Skin Tone Match</div><div class="metric-val" style="color: #60a5fa;">{q_report["tone_fidelity_pct"]}%</div></div>', unsafe_allow_html=True)
 
-        # Side-by-Side Comparison Display
-        c_orig, c_enh = st.columns(2)
-        with c_orig:
-            st.markdown("##### 📷 Original Image")
-            st.image(cv2.cvtColor(input_img, cv2.COLOR_BGR2RGB), use_container_width=True)
+            st.markdown("<br>", unsafe_allow_html=True)
 
-        with c_enh:
-            st.markdown("##### ✨ Wink Enhanced HD")
-            st.image(cv2.cvtColor(enhanced_img, cv2.COLOR_BGR2RGB), use_container_width=True)
+            # Side-by-Side Comparison Display
+            c_orig, c_enh = st.columns(2)
+            with c_orig:
+                st.markdown("##### 📷 Original Image")
+                st.image(cv2.cvtColor(input_img, cv2.COLOR_BGR2RGB), use_container_width=True)
 
-        st.markdown("<br>", unsafe_allow_html=True)
+            with c_enh:
+                st.markdown("##### ✨ Wink Enhanced HD")
+                st.image(cv2.cvtColor(enhanced_img, cv2.COLOR_BGR2RGB), use_container_width=True)
 
-        # Download & Export Section
-        d1, d2 = st.columns(2)
-        with d1:
-            success, encoded_buf = cv2.imencode('.png', enhanced_img)
-            if success:
-                st.download_button(
-                    label="⬇️ Download Enhanced HD Image (PNG)",
-                    data=encoded_buf.tobytes(),
-                    file_name=enhanced_filename(uploaded_file.name),
-                    mime="image/png"
+            st.markdown("<br>", unsafe_allow_html=True)
+
+            # Download & Export Section
+            d1, d2 = st.columns(2)
+            with d1:
+                success, encoded_buf = cv2.imencode('.png', enhanced_img)
+                if success:
+                    st.download_button(
+                        label="⬇️ Download Enhanced HD Image (PNG)",
+                        data=encoded_buf.tobytes(),
+                        file_name=enhanced_filename(uploaded_file.name),
+                        mime="image/png"
+                    )
+            with d2:
+                if st.button("🎬 Generate Before/After Comparison GIF"):
+                    with st.spinner("Generating smooth comparison animation..."):
+                        gif_bytes = pipeline.wink_enhancer.create_comparison_animation(input_img, enhanced_img)
+                        st.session_state.comparison_gif = gif_bytes
+                        st.rerun()
+
+                if st.session_state.get('comparison_gif'):
+                    gif_name = f"comparison_{os.path.splitext(uploaded_file.name)[0]}.gif"
+                    st.download_button(
+                        label="⬇️ Download Comparison GIF Animation",
+                        data=st.session_state.comparison_gif,
+                        file_name=gif_name,
+                        mime="image/gif"
+                    )
+
+    else:
+        # Empty State Guide
+        st.markdown("""
+        <div style="text-align: center; padding: 60px 20px; border: 2px dashed rgba(255,255,255,0.1); border-radius: 20px; background: rgba(255,255,255,0.01);">
+            <p style="font-size: 1.2rem; color: #94a3b8; font-weight: 600;">Drag and drop any portrait photo above to get started</p>
+            <p style="font-size: 0.9rem; color: #64748b; margin-top: 8px;">Supports PNG, JPG, JPEG, WEBP. Optimized for fast CPU execution.</p>
+        </div>
+        """, unsafe_allow_html=True)
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# TAB 2: VIDEO AI RESTORATION
+# ═══════════════════════════════════════════════════════════════════════════════
+with tab_video:
+    st.markdown("### 🎥 AI Video Portrait Restoration")
+    st.markdown("Enhance facial detail and clarity in portrait videos frame-by-frame on CPU.")
+
+    v_file = st.file_uploader("Upload video file (MP4, MOV, AVI)", type=["mp4", "mov", "avi"], key="video_uploader")
+    if v_file is not None:
+        v_col1, v_col2 = st.columns([1, 1])
+        with v_col1:
+            st.markdown("##### 📹 Original Video")
+            st.video(v_file)
+
+        v_stride = st.select_slider("Frame Sampling (Stride)", options=[1, 2, 3], value=1, help="1 = Restore every frame (highest quality). 2 = Restore every 2nd frame (2x faster on CPU).")
+        max_f = st.number_input("Max Frames to Process (0 = Entire Video)", min_value=0, max_value=10000, value=60, step=30)
+
+        if st.button("✨ Enhance Video"):
+            import tempfile
+            with st.spinner("Processing video frames with AI..."):
+                t_dir = tempfile.mkdtemp()
+                in_path = os.path.join(t_dir, v_file.name)
+                with open(in_path, "wb") as f:
+                    f.write(v_file.getvalue())
+
+                out_path = os.path.join(t_dir, f"enhanced_{v_file.name}")
+                if pipeline is None:
+                    pipeline = get_pipeline()
+
+                v_prog = st.progress(0.0)
+                v_msg = st.empty()
+
+                def v_callback(stage, pct, msg):
+                    v_prog.progress(float(pct))
+                    v_msg.info(f"✨ {msg}")
+
+                v_stats = pipeline.process_video(
+                    input_video_path=in_path,
+                    output_video_path=out_path,
+                    w=w_val,
+                    detection_model=face_detector,
+                    upscale=upscale_val,
+                    frame_stride=v_stride,
+                    max_frames=max_f if max_f > 0 else None,
+                    progress_callback=v_callback
                 )
-        with d2:
-            if st.button("🎬 Generate Before/After Comparison GIF"):
-                with st.spinner("Generating smooth comparison animation..."):
-                    gif_bytes = pipeline.wink_enhancer.create_comparison_animation(input_img, enhanced_img)
-                    st.session_state.comparison_gif = gif_bytes
-                    st.rerun()
 
-            if st.session_state.get('comparison_gif'):
-                gif_name = f"comparison_{os.path.splitext(uploaded_file.name)[0]}.gif"
-                st.download_button(
-                    label="⬇️ Download Comparison GIF Animation",
-                    data=st.session_state.comparison_gif,
-                    file_name=gif_name,
-                    mime="image/gif"
-                )
+                st.success(f"Video enhancement complete! Processed {v_stats['total_frames']} frames in {v_stats['duration_sec']:.2f}s ({v_stats['avg_fps']:.1f} FPS).")
+                
+                if os.path.exists(out_path):
+                    with open(out_path, "rb") as vf:
+                        v_bytes = vf.read()
+                    st.download_button(
+                        label="⬇️ Download Enhanced Video",
+                        data=v_bytes,
+                        file_name=f"enhanced_{v_file.name}",
+                        mime="video/mp4"
+                    )
 
-else:
-    # Empty State Guide
-    st.markdown("""
-    <div style="text-align: center; padding: 60px 20px; border: 2px dashed rgba(255,255,255,0.1); border-radius: 20px; background: rgba(255,255,255,0.01);">
-        <p style="font-size: 1.2rem; color: #94a3b8; font-weight: 600;">Drag and drop any portrait photo above to get started</p>
-        <p style="font-size: 0.9rem; color: #64748b; margin-top: 8px;">Supports PNG, JPG, JPEG, WEBP. Optimized for fast CPU execution.</p>
-    </div>
-    """, unsafe_allow_html=True)
+# ═══════════════════════════════════════════════════════════════════════════════
+# TAB 3: BENCHMARK & QUALITY EXPLORER
+# ═══════════════════════════════════════════════════════════════════════════════
+with tab_benchmark:
+    st.markdown("### 📊 Benchmark & Restoration Quality Explorer")
+    st.markdown("Explore quantitative quality scores, PSNR/SSIM metrics, and ArcFace facial identity similarity.")
+
+    import json
+    report_path = os.path.join(project_dir, "benchmarks", "baseline_report.json")
+    if os.path.exists(report_path):
+        with open(report_path, "r", encoding="utf-8") as rf:
+            rep_data = json.load(rf)
+
+        m_psnr = rep_data.get("mean_psnr", 0.0)
+        m_ssim = rep_data.get("mean_ssim", 0.0)
+        m_lpips = rep_data.get("mean_lpips", 0.0)
+        m_arcface = rep_data.get("mean_arcface_similarity", 0.0)
+        n_samples = rep_data.get("total_samples", 0)
+
+        b1, b2, b3, b4, b5 = st.columns(5)
+        with b1:
+            st.markdown(f'<div class="metric-badge"><div class="metric-label">Holdout Samples</div><div class="metric-val">{n_samples}</div></div>', unsafe_allow_html=True)
+        with b2:
+            st.markdown(f'<div class="metric-badge"><div class="metric-label">Mean PSNR</div><div class="metric-val" style="color: #34d399;">{m_psnr:.2f} dB</div></div>', unsafe_allow_html=True)
+        with b3:
+            st.markdown(f'<div class="metric-badge"><div class="metric-label">Mean SSIM</div><div class="metric-val" style="color: #60a5fa;">{m_ssim:.4f}</div></div>', unsafe_allow_html=True)
+        with b4:
+            st.markdown(f'<div class="metric-badge"><div class="metric-label">Mean LPIPS</div><div class="metric-val" style="color: #f472b6;">{m_lpips:.4f}</div></div>', unsafe_allow_html=True)
+        with b5:
+            st.markdown(f'<div class="metric-badge"><div class="metric-label">ArcFace Identity</div><div class="metric-val" style="color: #a78bfa;">{m_arcface:.4f}</div></div>', unsafe_allow_html=True)
+
+        st.markdown("<br>", unsafe_allow_html=True)
+
+        if "category_breakdown" in rep_data:
+            st.markdown("#### 📂 Metric Breakdown by Degradation Category")
+            cat_list = []
+            for c_name, c_metrics in rep_data["category_breakdown"].items():
+                cat_list.append({
+                    "Category": c_name,
+                    "Count": c_metrics.get("count", 0),
+                    "PSNR (dB)": round(c_metrics.get("mean_psnr", 0), 2),
+                    "SSIM": round(c_metrics.get("mean_ssim", 0), 4),
+                    "LPIPS": round(c_metrics.get("mean_lpips", 0), 4),
+                    "ArcFace Sim": round(c_metrics.get("mean_arcface_similarity", 0), 4)
+                })
+            st.dataframe(cat_list, use_container_width=True)
+    else:
+        st.info("No saved benchmark baseline report found. Run `python tools/evaluate_restoration.py` to generate quantitative metrics on the 500-sample benchmark.")
+

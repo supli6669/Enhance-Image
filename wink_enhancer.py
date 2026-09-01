@@ -12,45 +12,60 @@ class WinkQualityEnhancer:
         self.clahe_eye = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(4, 4))
         self.clahe_lab = cv2.createCLAHE(clipLimit=1.5, tileGridSize=(8, 8))
 
-    def apply_skin_grain(self, restored_face: np.ndarray, cropped_original: np.ndarray, skin_mask: np.ndarray = None, grain_amount: float = 0.15) -> np.ndarray:
+    def apply_skin_grain(self, restored_face: np.ndarray, cropped_original: np.ndarray, skin_mask: np.ndarray = None, grain_amount: float = 0.15, skin_soften: float = 0.3) -> np.ndarray:
         """
-        Extract high-frequency texture from cropped_original and inject into restored_face
-        to eliminate plastic/soapy skin look while preserving AI face restoration.
+        Pro Studio Skin Texture Synthesis 2.0:
+        Extract adaptive high-pass frequency texture from cropped_original and inject into restored_face
+        combined with parsing-guided bilateral skin tone softening to eliminate plastic/soapy skin look
+        while preserving authentic pore structures and AI facial details.
         """
-        if grain_amount <= 0.0 or cropped_original is None:
+        if (grain_amount <= 0.0 and skin_soften <= 0.0) or cropped_original is None:
             return restored_face
             
         try:
+            h, w = restored_face.shape[:2]
             # Ensure same dimensions
             if restored_face.shape[:2] != cropped_original.shape[:2]:
-                cropped_orig_resized = cv2.resize(cropped_original, (restored_face.shape[1], restored_face.shape[0]), interpolation=cv2.INTER_LANCZOS4)
+                cropped_orig_resized = cv2.resize(cropped_original, (w, h), interpolation=cv2.INTER_LANCZOS4)
             else:
                 cropped_orig_resized = cropped_original
 
-            # Frequency Separation: Extract high-frequency details from original
-            orig_blur = cv2.GaussianBlur(cropped_orig_resized, (5, 5), 0)
+            # Adaptive dynamic kernel based on face crop resolution
+            k_val = max(3, int(min(h, w) / 100) * 2 + 1)
+            ksize = (k_val, k_val)
+
+            # Frequency Separation: Extract high-frequency pore details from original
+            orig_blur = cv2.GaussianBlur(cropped_orig_resized, ksize, 0)
             high_freq = cv2.subtract(cropped_orig_resized.astype(np.int16), orig_blur.astype(np.int16))
-            
-            # Scale high frequency grain
             grain_layer = (high_freq * grain_amount).clip(-128, 127)
+
+            # Gentle edge-preserving bilateral skin softening for studio porcelain smoothness
+            if skin_soften > 0.0:
+                soft_base = cv2.bilateralFilter(restored_face, d=5, sigmaColor=int(25 * skin_soften), sigmaSpace=int(25 * skin_soften))
+                base_face = cv2.addWeighted(restored_face, 1.0 - skin_soften * 0.5, soft_base, skin_soften * 0.5, 0)
+            else:
+                base_face = restored_face
 
             if skin_mask is not None:
                 skin_mask_2d = np.squeeze(skin_mask)
                 if skin_mask_2d.ndim == 2:
-                    if skin_mask_2d.shape != restored_face.shape[:2]:
-                        skin_mask_resized = cv2.resize(skin_mask_2d.astype(np.uint8), (restored_face.shape[1], restored_face.shape[0]), interpolation=cv2.INTER_NEAREST)
+                    if skin_mask_2d.shape != (h, w):
+                        skin_mask_resized = cv2.resize(skin_mask_2d.astype(np.uint8), (w, h), interpolation=cv2.INTER_NEAREST)
                     else:
                         skin_mask_resized = skin_mask_2d
                     
                     # Skin category in facexlib parse mask is index 1
                     skin_binary = (skin_mask_resized == 1).astype(np.float32)
-                    # Smooth mask edge
+                    # Smooth mask edge for seamless alpha blending
                     skin_binary = cv2.GaussianBlur(skin_binary, (5, 5), 0)[:, :, np.newaxis]
-                    blended = restored_face.astype(np.float32) + grain_layer * skin_binary
+                    
+                    # Apply softened base only to skin region, keeping facial organs crisp
+                    blended_base = (base_face.astype(np.float32) * skin_binary) + (restored_face.astype(np.float32) * (1.0 - skin_binary))
+                    blended = blended_base + grain_layer * skin_binary
                 else:
-                    blended = restored_face.astype(np.float32) + grain_layer
+                    blended = base_face.astype(np.float32) + grain_layer
             else:
-                blended = restored_face.astype(np.float32) + grain_layer
+                blended = base_face.astype(np.float32) + grain_layer
 
             return np.clip(blended, 0, 255).astype(np.uint8)
         except Exception as e:

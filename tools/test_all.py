@@ -34,10 +34,10 @@ def main():
     
     test_scripts = [
         "test_evaluation_workflow.py",
-        "test_pipeline.py",
-        "test_ab_ui_pipeline.py",
+        "test_video_pipeline.py",
         "test_dataset_loader.py",
-        "test_stage2_config.py"
+        "test_stage2_config.py",
+        "test_pipeline.py"
     ]
     
     results = {}

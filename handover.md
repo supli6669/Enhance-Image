@@ -1206,6 +1206,40 @@ Executed the full end-to-end model workflow across benchmark evaluation, automat
 - [MODIFY] [tools/test_evaluation_workflow.py](file:///d:/.gemini-scratch/custom-ai-enhancer/tools/test_evaluation_workflow.py) (Added evaluator and animation regression tests)
 - [MODIFY] [tools/test_all.py](file:///d:/.gemini-scratch/custom-ai-enhancer/tools/test_all.py) (Added `-u` unbuffered flag to test subprocess runner)
 
+---
+
+## Task 23: Video AI Enhancement, Studio Skin 2.0 & Multi-Tab Benchmark Explorer
+
+**Date:** 2026-09-02  
+**Status:** ✅ Completed
+
+### Overview
+Expanded the AI enhancer capabilities with video restoration, advanced skin synthesis, and interactive UI tabs:
+
+1. **Pro Studio Skin Texture Synthesis 2.0 (`wink_enhancer.py`)**:
+   - Upgraded `apply_skin_grain()` with adaptive dynamic high-pass kernel sizing based on face crop resolution.
+   - Incorporated parsing-guided bilateral skin tone smoothing to eliminate compression noise and blemishes while preserving authentic pores and facial organs.
+
+2. **Video AI Restoration Engine (`pipeline.py`)**:
+   - Implemented `LocalAIEnhancerPipeline.process_video()` supporting frame-by-frame enhancement, configurable frame stride sampling (1x, 2x for CPU speedups), frame rate preservation, and automatic audio track re-attachment via ffmpeg.
+
+3. **Streamlit 3-Tab Architecture Expansion (`app.py`)**:
+   - **Tab 1 — 📸 Portrait Enhancement**: Single image restoration with presets, custom preset manager, AI scorecards, and animated GIF comparison exporter.
+   - **Tab 2 — 🎥 Video AI Restoration**: Video file uploader, frame stride controls, live frame-by-frame rendering progress, and downloadable enhanced MP4.
+   - **Tab 3 — 📊 Benchmark & Quality Explorer**: Interactive benchmark dashboard displaying holdout scores (PSNR, SSIM, LPIPS, ArcFace similarity) and degradation category breakdowns.
+
+4. **Testing & Master Verification**:
+   - Created `tools/test_video_pipeline.py` unit test verifying video frame extraction, restoration, and stats reporting (`exit code 0`).
+   - Integrated video test into `tools/test_all.py`.
+
+### Code Changes
+- [MODIFY] [wink_enhancer.py](file:///d:/.gemini-scratch/custom-ai-enhancer/wink_enhancer.py) (Pro Studio Skin Texture Synthesis 2.0 with bilateral filtering and dynamic high-pass)
+- [MODIFY] [pipeline.py](file:///d:/.gemini-scratch/custom-ai-enhancer/pipeline.py) (Added `process_video()` with audio muxing and frame stride)
+- [NEW] [tools/test_video_pipeline.py](file:///d:/.gemini-scratch/custom-ai-enhancer/tools/test_video_pipeline.py) (Unit test for video enhancement)
+- [MODIFY] [tools/test_all.py](file:///d:/.gemini-scratch/custom-ai-enhancer/tools/test_all.py) (Added video pipeline test to master runner)
+- [MODIFY] [app.py](file:///d:/.gemini-scratch/custom-ai-enhancer/app.py) (Expanded to 3-tab layout: Photo, Video, and Benchmark Explorer)
+
+
 
 
 

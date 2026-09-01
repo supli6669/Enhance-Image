@@ -1,6 +1,7 @@
 import os
 import sys
 import gc
+import time
 import cv2
 import numpy as np
 import torch
@@ -748,3 +749,122 @@ class LocalAIEnhancerPipeline:
         # Free intermediate memory allocations
         gc.collect()
         return upsample_img
+
+    def process_video(
+        self,
+        input_video_path: str,
+        output_video_path: str,
+        w: float = 0.5,
+        detection_model: str = 'retinaface_mobile0.25',
+        upscale: int = 1,
+        frame_stride: int = 1,
+        max_frames: int = None,
+        progress_callback: callable = None,
+        **enhancer_kwargs
+    ) -> dict:
+        """
+        Process a video file frame-by-frame with face detection and AI restoration.
+        Preserves video frame rate and attempts audio re-attachment via ffmpeg.
+        """
+        if not os.path.exists(input_video_path):
+            raise FileNotFoundError(f"Input video not found: {input_video_path}")
+
+        cap = cv2.VideoCapture(input_video_path)
+        if not cap.isOpened():
+            raise ValueError(f"Could not open video file: {input_video_path}")
+
+        fps = cap.get(cv2.CAP_PROP_FPS) or 25.0
+        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        if max_frames is not None and max_frames > 0:
+            total_frames = min(total_frames, max_frames)
+        
+        orig_w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        orig_h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        out_w = orig_w * upscale
+        out_h = orig_h * upscale
+
+        temp_out = output_video_path + ".temp.mp4"
+        fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+        writer = cv2.VideoWriter(temp_out, fourcc, fps, (out_w, out_h))
+
+        t0 = time.time()
+        frame_idx = 0
+        faces_restored_total = 0
+
+        try:
+            while cap.isOpened():
+                ret, frame = cap.read()
+                if not ret or (max_frames is not None and frame_idx >= max_frames):
+                    break
+
+                if frame_idx % frame_stride == 0:
+                    enhanced_frame = self.process_image(
+                        frame,
+                        w=w,
+                        detection_model=detection_model,
+                        upscale=upscale,
+                        **enhancer_kwargs
+                    )
+                else:
+                    if upscale != 1:
+                        enhanced_frame = cv2.resize(frame, (out_w, out_h), interpolation=cv2.INTER_LANCZOS4)
+                    else:
+                        enhanced_frame = frame
+
+                writer.write(enhanced_frame)
+                frame_idx += 1
+
+                if progress_callback:
+                    pct = min(1.0, frame_idx / max(1, total_frames))
+                    progress_callback(
+                        "video_render",
+                        pct,
+                        f"Rendering frame {frame_idx}/{total_frames} ({pct:.1%})"
+                    )
+
+        finally:
+            cap.release()
+            writer.release()
+
+        elapsed = time.time() - t0
+
+        # Attempt to copy audio from original video using ffmpeg
+        audio_copied = False
+        try:
+            import subprocess
+            cmd = [
+                "ffmpeg", "-y",
+                "-i", temp_out,
+                "-i", input_video_path,
+                "-c:v", "copy",
+                "-c:a", "aac",
+                "-map", "0:v:0",
+                "-map", "1:a:0?",
+                output_video_path
+            ]
+            res = subprocess.run(cmd, capture_output=True, timeout=30)
+            if res.returncode == 0 and os.path.exists(output_video_path) and os.path.getsize(output_video_path) > 0:
+                audio_copied = True
+                try:
+                    os.remove(temp_out)
+                except OSError:
+                    pass
+        except Exception:
+            audio_copied = False
+
+        if not audio_copied:
+            if os.path.exists(output_video_path):
+                try:
+                    os.remove(output_video_path)
+                except OSError:
+                    pass
+            os.rename(temp_out, output_video_path)
+
+        return {
+            "total_frames": frame_idx,
+            "fps": fps,
+            "duration_sec": elapsed,
+            "avg_fps": frame_idx / max(0.001, elapsed),
+            "output_path": output_video_path,
+            "audio_preserved": audio_copied
+        }
