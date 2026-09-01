@@ -473,6 +473,14 @@ class LocalAIEnhancerPipeline:
             return cv2.resize(img, (w_img * upscale, h * upscale), interpolation=cv2.INTER_LANCZOS4)
             
         face_helper.align_warp_face()
+        if len(face_helper.cropped_faces) == 0:
+            print("[Pipeline] No cropped faces extracted from detected landmarks.")
+            self._report_progress("complete", 1.0, "No faces cropped. Returning background.")
+            if bg_img is not None:
+                return bg_img
+            h, w_img, _ = img.shape
+            return cv2.resize(img, (w_img * upscale, h * upscale), interpolation=cv2.INTER_LANCZOS4)
+
         print(f"[Pipeline] Cropped {len(face_helper.cropped_faces)} face(s).")
         
         # Restore faces using CodeFormer model
