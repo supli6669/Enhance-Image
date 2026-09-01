@@ -47,5 +47,5 @@ RUN mkdir -p /app/weights /app/weights/CodeFormer /app/weights/realesrgan /app/w
 # Expose port 7860 for Hugging Face Spaces
 EXPOSE 7860
 
-# Run Streamlit with its secure CORS and XSRF defaults enabled.
-CMD ["streamlit", "run", "app.py", "--server.port=7860", "--server.address=0.0.0.0", "--server.headless=true", "--browser.gatherUsageStats=false"]
+# Run Streamlit with CORS and XSRF disabled for Hugging Face Spaces iframe embedding
+CMD ["streamlit", "run", "app.py", "--server.port=7860", "--server.address=0.0.0.0", "--server.headless=true", "--server.enableCORS=false", "--server.enableXsrfProtection=false", "--server.maxUploadSize=50", "--browser.gatherUsageStats=false"]

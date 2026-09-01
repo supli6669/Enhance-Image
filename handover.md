@@ -1359,6 +1359,33 @@ Executed an exhaustive edge-case audit across all UI, pipeline, and weight verif
 - [MODIFY] [app.py](file:///d:/.gemini-scratch/custom-ai-enhancer/app.py) (Preset binding synchronization and default fallback variables)
 - [MODIFY] [tools/download_weights.py](file:///d:/.gemini-scratch/custom-ai-enhancer/tools/download_weights.py) (Minimum expected weight size verification thresholds)
 
+---
+
+## Task 28: Fix AxiosError 403 On File Upload (Hugging Face Spaces Iframe CORS & XSRF)
+
+**Date:** 2026-09-02  
+**Status:** ✅ Completed
+
+### Overview
+Resolved `AxiosError: Request failed with status code 403` occurring during image upload on Hugging Face Spaces:
+
+1. **Root Cause**:
+   - Hugging Face Spaces embeds Streamlit applications in an iframe (`https://huggingface.co/spaces/...` embedding `https://*.hf.space`).
+   - When the user uploads a file, the browser makes an HTTP POST request to `/_stcore/upload_file`.
+   - By default, Streamlit's `enableCORS = true` and `enableXsrfProtection = true` reject cross-origin iframe POST requests with HTTP 403 Forbidden.
+
+2. **Resolution**:
+   - Created `.streamlit/config.toml` configuring `enableCORS = false`, `enableXsrfProtection = false`, and `maxUploadSize = 50`.
+   - Updated `Dockerfile` CMD to pass `--server.enableCORS=false --server.enableXsrfProtection=false --server.maxUploadSize=50`.
+
+3. **Master Verification**:
+   - Verified configuration and syntax (`exit code 0`).
+
+### Code Changes
+- [NEW] [.streamlit/config.toml](file:///d:/.gemini-scratch/custom-ai-enhancer/.streamlit/config.toml) (Disabled CORS & XSRF for Hugging Face Spaces iframe file uploads)
+- [MODIFY] [Dockerfile](file:///d:/.gemini-scratch/custom-ai-enhancer/Dockerfile) (Updated CMD with CORS/XSRF flags)
+
+
 
 
 
