@@ -653,7 +653,10 @@ class LocalAIEnhancerPipeline:
                 inv_aff /= upscale
                 inv_aff[:, 2] *= upscale
                 face_size = (raw_face_size[0] * upscale, raw_face_size[1] * upscale)
-                inv_restored = cv2.warpAffine(restored_face_up, inv_aff, (w_up, h_up))
+                try:
+                    inv_restored = cv2.warpAffine(restored_face_up, inv_aff, (w_up, h_up))
+                except Exception:
+                    inv_restored = None
             else:
                 # Blend with original cropped face to preserve original high-resolution details when w > 0
                 if w > 0.0:
@@ -663,11 +666,20 @@ class LocalAIEnhancerPipeline:
                 extra_offset = 0
                 inv_aff[:, 2] += extra_offset
                 face_size = raw_face_size
-                inv_restored = cv2.warpAffine(restored_face, inv_aff, (w_up, h_up))
+                try:
+                    inv_restored = cv2.warpAffine(restored_face, inv_aff, (w_up, h_up))
+                except Exception:
+                    inv_restored = None
             
+            if inv_restored is None:
+                continue
+
             # Create boundary mask
             mask = np.ones(face_size, dtype=np.float32)
-            inv_mask = cv2.warpAffine(mask, inv_aff, (w_up, h_up))
+            try:
+                inv_mask = cv2.warpAffine(mask, inv_aff, (w_up, h_up))
+            except Exception:
+                continue
             
             # Erode slightly to remove absolute boundary black edges
             erosion_size = max(1, int(2 * upscale))

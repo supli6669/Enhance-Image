@@ -344,6 +344,9 @@ with st.sidebar:
         default_eye = cp.get('eye', True)
         default_lip = cp.get('lip', True)
         default_skin = cp.get('skin', True)
+        default_teeth = cp.get('teeth', True)
+        default_tone_glow = cp.get('tone_glow', True)
+        default_chromatic = cp.get('chromatic', False)
         default_detector = cp.get('detector', 'retinaface_mobile0.25')
         pipeline_preset_mode = 'Custom'
     elif "Wink Studio" in preset_choice:
@@ -356,6 +359,9 @@ with st.sidebar:
         default_eye = True
         default_lip = True
         default_skin = True
+        default_teeth = True
+        default_tone_glow = True
+        default_chromatic = False
         default_detector = "retinaface_mobile0.25"
         pipeline_preset_mode = 'Modern Portrait'
     elif "Ultra Fast" in preset_choice:
@@ -368,6 +374,9 @@ with st.sidebar:
         default_eye = False
         default_lip = False
         default_skin = False
+        default_teeth = False
+        default_tone_glow = False
+        default_chromatic = False
         default_detector = "retinaface_mobile0.25"
         pipeline_preset_mode = 'Custom'
     elif "Old Photo" in preset_choice:
@@ -380,6 +389,9 @@ with st.sidebar:
         default_eye = True
         default_lip = True
         default_skin = True
+        default_teeth = True
+        default_tone_glow = True
+        default_chromatic = True
         default_detector = "retinaface_mobile0.25"
         pipeline_preset_mode = 'Old Photo Restoration'
     elif "Game / Anime" in preset_choice:
@@ -392,6 +404,9 @@ with st.sidebar:
         default_eye = False
         default_lip = False
         default_skin = False
+        default_teeth = False
+        default_tone_glow = False
+        default_chromatic = False
         default_detector = "retinaface_mobile0.25"
         pipeline_preset_mode = 'Game / Anime Character'
     else: # Natural Likeness
@@ -404,6 +419,9 @@ with st.sidebar:
         default_eye = True
         default_lip = True
         default_skin = True
+        default_teeth = True
+        default_tone_glow = True
+        default_chromatic = False
         default_detector = "retinaface_mobile0.25"
         pipeline_preset_mode = 'Custom'
 
@@ -440,10 +458,10 @@ with st.sidebar:
         enable_eyes = st.checkbox("👁️ Eye Sparkle & Sclera Glow", value=default_eye)
         enable_lips = st.checkbox("👄 Lip Saturation & Definition", value=default_lip)
         enable_skin = st.checkbox("💆 Real Skin Grain Retention", value=default_skin)
-        enable_teeth = st.checkbox("🦷 Natural Teeth Whitening", value=True)
-        enable_tone_glow = st.checkbox("✨ Studio Skin Glow & White Balance", value=True)
+        enable_teeth = st.checkbox("🦷 Natural Teeth Whitening", value=default_teeth)
+        enable_tone_glow = st.checkbox("✨ Studio Skin Glow & White Balance", value=default_tone_glow)
 
-        chromatic_fix = st.toggle("🌈 Chromatic Aberration Correction", value=False, help="Radial channel realignment for old lenses and color fringing")
+        chromatic_fix = st.toggle("🌈 Chromatic Aberration Correction", value=default_chromatic, help="Radial channel realignment for old lenses and color fringing")
         bg_upscale = st.toggle("Real-ESRGAN Background Upscale", value=False)
         face_upscale = st.toggle("Real-ESRGAN Face Upscale", value=False)
 

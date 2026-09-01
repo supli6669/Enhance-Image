@@ -1332,6 +1332,34 @@ Addressed upload decode edge cases, auto orientation, and cloud deployment cold 
 - [MODIFY] [tools/download_weights.py](file:///d:/.gemini-scratch/custom-ai-enhancer/tools/download_weights.py) (User-Agent header and chunked streaming download)
 - [MODIFY] [Dockerfile](file:///d:/.gemini-scratch/custom-ai-enhancer/Dockerfile) (Pre-download weights during Docker build)
 
+---
+
+## Task 27: Comprehensive Edge-Case Hardening, Preset Sync & Degenerate Warp Guards
+
+**Date:** 2026-09-02  
+**Status:** ✅ Completed
+
+### Overview
+Executed an exhaustive edge-case audit across all UI, pipeline, and weight verification systems:
+
+1. **Affine Transform & Boundary Warp Guards (`pipeline.py`)**:
+   - Wrapped `cv2.warpAffine` calls for `inv_restored` and `inv_mask` in defensive `try...except` blocks to prevent unhandled OpenCV assertion crashes on collinear or edge-boundary facial landmark detections.
+
+2. **Preset Defaults & Dynamic Binding Hardening (`app.py`)**:
+   - Added complete fallback bindings (`default_teeth`, `default_tone_glow`, `default_chromatic`) across all built-in presets (`Wink Studio`, `Ultra Fast`, `Old Photo`, `Game / Anime`, `Natural Likeness`) and custom saved presets to eliminate `KeyError` or state desynchronization.
+
+3. **Pretrained Weight Size Verification & Re-download (`tools/download_weights.py`)**:
+   - Added `min_expected_size` verification thresholds for all 7 model weight files (`codeformer.pth` > 300MB, `parsing_parsenet.pth` > 80MB, etc.) to automatically detect and repair truncated downloads.
+
+4. **Master Verification**:
+   - Verified with `tools/test_batch_pipeline.py` and `test_all.py` (`exit code 0`).
+
+### Code Changes
+- [MODIFY] [pipeline.py](file:///d:/.gemini-scratch/custom-ai-enhancer/pipeline.py) (Defensive warpAffine try-except guards)
+- [MODIFY] [app.py](file:///d:/.gemini-scratch/custom-ai-enhancer/app.py) (Preset binding synchronization and default fallback variables)
+- [MODIFY] [tools/download_weights.py](file:///d:/.gemini-scratch/custom-ai-enhancer/tools/download_weights.py) (Minimum expected weight size verification thresholds)
+
+
 
 
 

@@ -2,9 +2,9 @@ import os
 import urllib.request
 import sys
 
-def download_file(url, save_path):
-    if os.path.exists(save_path) and os.path.getsize(save_path) > 1000:
-        print(f"File already exists: {save_path}. Skipping.")
+def download_file(url, save_path, min_expected_size=1000):
+    if os.path.exists(save_path) and os.path.getsize(save_path) >= min_expected_size:
+        print(f"File already exists and verified ({os.path.getsize(save_path) / 1024 / 1024:.1f} MB): {save_path}. Skipping.")
         return
         
     print(f"Downloading {url} to {save_path}...")
@@ -45,26 +45,24 @@ def main():
     project_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     
     weights_to_download = {
-        "weights/CodeFormer/codeformer.pth": "https://github.com/sczhou/CodeFormer/releases/download/v0.1.0/codeformer.pth",
-        "weights/facelib/detection_Resnet50_Final.pth": "https://github.com/sczhou/CodeFormer/releases/download/v0.1.0/detection_Resnet50_Final.pth",
-        "weights/facelib/detection_mobilenet0.25_Final.pth": "https://github.com/sczhou/CodeFormer/releases/download/v0.1.0/detection_mobilenet0.25_Final.pth",
-        "weights/facelib/parsing_parsenet.pth": "https://github.com/sczhou/CodeFormer/releases/download/v0.1.0/parsing_parsenet.pth",
-        "weights/facelib/yolov5l-face.pth": "https://github.com/sczhou/CodeFormer/releases/download/v0.1.0/yolov5l-face.pth",
-        "weights/facelib/vqgan_code1024.pth": "https://github.com/sczhou/CodeFormer/releases/download/v0.1.0/vqgan_code1024.pth",
-        "weights/realesrgan/RealESRGAN_x2plus.pth": "https://github.com/xinntao/Real-ESRGAN/releases/download/v0.2.1/RealESRGAN_x2plus.pth"
-
-
+        "weights/CodeFormer/codeformer.pth": ("https://github.com/sczhou/CodeFormer/releases/download/v0.1.0/codeformer.pth", 300_000_000),
+        "weights/facelib/detection_Resnet50_Final.pth": ("https://github.com/sczhou/CodeFormer/releases/download/v0.1.0/detection_Resnet50_Final.pth", 100_000_000),
+        "weights/facelib/detection_mobilenet0.25_Final.pth": ("https://github.com/sczhou/CodeFormer/releases/download/v0.1.0/detection_mobilenet0.25_Final.pth", 1_500_000),
+        "weights/facelib/parsing_parsenet.pth": ("https://github.com/sczhou/CodeFormer/releases/download/v0.1.0/parsing_parsenet.pth", 80_000_000),
+        "weights/facelib/yolov5l-face.pth": ("https://github.com/sczhou/CodeFormer/releases/download/v0.1.0/yolov5l-face.pth", 150_000_000),
+        "weights/facelib/vqgan_code1024.pth": ("https://github.com/sczhou/CodeFormer/releases/download/v0.1.0/vqgan_code1024.pth", 200_000_000),
+        "weights/realesrgan/RealESRGAN_x2plus.pth": ("https://github.com/xinntao/Real-ESRGAN/releases/download/v0.2.1/RealESRGAN_x2plus.pth", 60_000_000)
     }
     
-    for rel_path, url in weights_to_download.items():
+    for rel_path, (url, min_sz) in weights_to_download.items():
         save_path = os.path.join(project_dir, rel_path)
         try:
-            download_file(url, save_path)
+            download_file(url, save_path, min_expected_size=min_sz)
         except Exception as e:
             print(f"Failed to download weight: {save_path}")
             sys.exit(1)
             
-    print("All model weights have been downloaded and placed in the weights/ folder.")
+    print("All model weights have been verified and placed in the weights/ folder.")
 
 if __name__ == "__main__":
     main()
