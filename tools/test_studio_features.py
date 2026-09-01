@@ -81,6 +81,58 @@ def test_split_slider_html():
     assert "Enhanced" in html and "Original" in html, "Badges missing in HTML"
     print(f"[OK] Comparison slider HTML generated ({len(html)} chars).")
 
+def test_iris_catchlight():
+    print("=== Testing Studio Iris Catchlight Gleam ===")
+    enhancer = WinkQualityEnhancer()
+    test_face = np.full((512, 512, 3), 120, dtype=np.uint8)
+    
+    # Fake ParseNet mask: 4=Left Eye, 5=Right Eye
+    parse_mask = np.ones((512, 512), dtype=np.uint8)
+    parse_mask[180:230, 150:230] = 4 # Left Eye
+    parse_mask[180:230, 280:360] = 5 # Right Eye
+    
+    # Make pupil dark
+    test_face[190:220, 170:210] = 20
+    test_face[190:220, 300:340] = 20
+    
+    out = enhancer.synthesize_iris_catchlight(test_face, parse_mask, strength=0.6)
+    assert out is not None, "Catchlight returned None"
+    assert out.shape == test_face.shape, "Catchlight shape mismatch"
+    assert np.max(out[190:220, 170:210]) > 20, "Catchlight should create bright glint in pupil"
+    print(f"[OK] Iris catchlight glints synthesized successfully.")
+
+def test_hair_strand_enhancement():
+    print("=== Testing Hair Strand Super-Clarity & Sheen ===")
+    enhancer = WinkQualityEnhancer()
+    test_face = np.random.randint(40, 180, (512, 512, 3), dtype=np.uint8)
+    
+    # Fake ParseNet mask: 17=Hair
+    parse_mask = np.ones((512, 512), dtype=np.uint8)
+    parse_mask[20:180, 80:432] = 17 # Hair
+    
+    out = enhancer.enhance_hair_strands(test_face, parse_mask, clarity=0.4, sheen=0.3)
+    assert out is not None, "Hair enhancement returned None"
+    assert out.shape == test_face.shape, "Hair enhancement shape mismatch"
+    print("[OK] Hair strand clarity and gloss sheen applied cleanly.")
+
+def test_studio_relighting():
+    print("=== Testing 3D Studio Relighting & Highlighter ===")
+    enhancer = WinkQualityEnhancer()
+    test_face = np.full((512, 512, 3), 130, dtype=np.uint8)
+    
+    # Fake ParseNet mask: 10=Nose, 1=Skin, 17=Hair
+    parse_mask = np.ones((512, 512), dtype=np.uint8)
+    parse_mask[220:300, 230:280] = 10 # Nose
+    parse_mask[20:180, 80:432] = 17 # Hair
+    
+    out = enhancer.apply_studio_relighting(test_face, parse_mask, rim_light=0.3, tzone_highlight=0.25)
+    assert out is not None, "Studio relighting returned None"
+    assert out.shape == test_face.shape, "Studio relighting shape mismatch"
+    
+    # Nose region should be highlighted
+    assert np.mean(out[230:280, 240:270]) > 130, "Nose bridge should be highlighted"
+    print("[OK] Studio T-Zone highlighter & rim lighting applied cleanly.")
+
 def test_full_pipeline_studio_run():
     print("=== Testing Full Pipeline with All Studio Features Enabled ===")
     pipeline = LocalAIEnhancerPipeline(device='cpu')
@@ -95,6 +147,13 @@ def test_full_pipeline_studio_run():
         upscale=1,
         wink_mode=True,
         enable_dark_circles=True,
+        enable_catchlight=True,
+        catchlight_strength=0.55,
+        enable_hair=True,
+        hair_clarity=0.35,
+        enable_relighting=True,
+        relighting_rim=0.25,
+        relighting_tzone=0.20,
         enable_teeth=True,
         enable_tone_glow=True,
         color_lut="Kodak Portra 400 (Warm Gold)",
@@ -110,5 +169,8 @@ if __name__ == "__main__":
     test_cinematic_luts()
     test_portrait_bokeh()
     test_split_slider_html()
+    test_iris_catchlight()
+    test_hair_strand_enhancement()
+    test_studio_relighting()
     test_full_pipeline_studio_run()
-    print("\nSUCCESS: All 4 Studio AI Enhancements verified with exit code 0!")
+    print("\nSUCCESS: All Studio AI Enhancements verified with exit code 0!")

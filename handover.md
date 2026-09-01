@@ -1478,6 +1478,37 @@ Addressed user ambiguity regarding which side of the comparison slider represent
 - [MODIFY] [wink_enhancer.py](file:///d:/.gemini-scratch/custom-ai-enhancer/wink_enhancer.py) (Updated HTML template in `generate_comparison_slider_html`)
 - [MODIFY] [app.py](file:///d:/.gemini-scratch/custom-ai-enhancer/app.py) (Added descriptive comparison guide caption)
 
+---
+
+## Task 33: Next-Level Studio AI Features Suite (`v2.6.0`)
+
+**Date:** 2026-09-02  
+**Status:** ✅ Completed
+
+### Overview
+Delivered 3 next-level commercial studio enhancement modules to produce peak portrait aesthetics:
+
+1. **👁️ Catchlight Studio Glow (`synthesize_iris_catchlight`)**:
+   - Locates eye pupils/irises in parsing masks (indices 4 & 5) and synthesizes realistic softbox/ringlight specular catchlight reflections, giving the eyes vivid life and sparkle.
+
+2. **💇 Hair Strand Super-Clarity & Sheen (`enhance_hair_strands`)**:
+   - Isolates hair parsing mask (index 17) and applies multi-scale directional high-frequency separation filtering along with specular sheen enhancement in LAB space for voluminous, glossy hair.
+
+3. **✨ 3D Studio Relighting & Highlighter (`apply_studio_relighting`)**:
+   - Applies soft T-Zone nasal bridge highlighter for facial depth and luminous golden rim lighting along the silhouette perimeter.
+
+4. **Master Verification**:
+   - Added unit test cases for all 3 features in `tools/test_studio_features.py`.
+   - Executed master verification suite `tools/test_all.py` (Passed 100% with `exit code 0`).
+   - Bumped `APP_VERSION` to `v2.6.0 (Build 2026.09.02)`.
+
+### Code Changes
+- [MODIFY] [wink_enhancer.py](file:///d:/.gemini-scratch/custom-ai-enhancer/wink_enhancer.py) (Added `synthesize_iris_catchlight()`, `enhance_hair_strands()`, `apply_studio_relighting()`, and updated `enhance_face()`)
+- [MODIFY] [pipeline.py](file:///d:/.gemini-scratch/custom-ai-enhancer/pipeline.py) (Plumbed catchlight, hair, and relighting arguments into `process_image` and `paste_faces_custom_blend`)
+- [MODIFY] [app.py](file:///d:/.gemini-scratch/custom-ai-enhancer/app.py) (Added sidebar controls under Studio Glamour & Lighting, preset defaults, and bumped to `v2.6.0`)
+- [MODIFY] [tools/test_studio_features.py](file:///d:/.gemini-scratch/custom-ai-enhancer/tools/test_studio_features.py) (Added test cases for catchlight, hair strands, and relighting)
+
+
 
 
 

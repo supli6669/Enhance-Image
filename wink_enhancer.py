@@ -417,6 +417,178 @@ class WinkQualityEnhancer:
             print(f"[WinkEnhancer] Portrait bokeh warning: {e}")
             return full_img
 
+    def synthesize_iris_catchlight(self, face_img: np.ndarray, parse_mask: np.ndarray = None, strength: float = 0.55) -> np.ndarray:
+        """
+        Studio Iris Catchlight & Reflection Synthesizer:
+        Synthesizes realistic softbox / ringlight specular catchlights inside eye pupils/irises,
+        giving the eyes vivid depth, sparkle, and life.
+        """
+        if strength <= 0.0 or face_img is None or parse_mask is None:
+            return face_img
+
+        try:
+            h, w = face_img.shape[:2]
+            parse_mask_2d = np.squeeze(parse_mask)
+            if parse_mask_2d.ndim != 2:
+                return face_img
+            if parse_mask_2d.shape[:2] != (h, w):
+                parse_mask_res = cv2.resize(parse_mask_2d.astype(np.uint8), (w, h), interpolation=cv2.INTER_NEAREST)
+            else:
+                parse_mask_res = parse_mask_2d
+
+            # 4: Left Eye, 5: Right Eye
+            out_img = face_img.copy()
+            catchlight_layer = np.zeros((h, w, 3), dtype=np.float32)
+
+            for eye_idx in [4, 5]:
+                eye_pts = np.where(parse_mask_res == eye_idx)
+                if len(eye_pts[0]) < 20:
+                    continue
+
+                ymin, ymax = np.min(eye_pts[0]), np.max(eye_pts[0])
+                xmin, xmax = np.min(eye_pts[1]), np.max(eye_pts[1])
+                eh = ymax - ymin
+                ew = xmax - xmin
+
+                if eh < 4 or ew < 4:
+                    continue
+
+                eye_crop = face_img[ymin:ymax+1, xmin:xmax+1]
+                eye_gray = cv2.cvtColor(eye_crop, cv2.COLOR_BGR2GRAY)
+
+                # Locate darkest region (pupil / iris center)
+                min_val, _, min_loc, _ = cv2.minMaxLoc(eye_gray)
+                px = xmin + min_loc[0]
+                py = ymin + min_loc[1]
+
+                # Main catchlight glint: upper-right of pupil
+                r_main = max(2, int(eh * 0.12))
+                cx_main = px + max(1, int(ew * 0.08))
+                cy_main = py - max(1, int(eh * 0.10))
+
+                # Secondary softer companion glint: lower-left
+                r_sec = max(1, int(r_main * 0.6))
+                cx_sec = px - max(1, int(ew * 0.06))
+                cy_sec = py + max(1, int(eh * 0.08))
+
+                # Draw pure soft white circular glints
+                cv2.circle(catchlight_layer, (cx_main, cy_main), r_main, (255, 255, 255), -1)
+                cv2.circle(catchlight_layer, (cx_sec, cy_sec), r_sec, (200, 220, 255), -1)
+
+            # Soft blur the catchlight layer for natural optical dispersion
+            catchlight_layer = cv2.GaussianBlur(catchlight_layer, (3, 3), 0)
+            
+            # Blend onto face with screen-dodge mode
+            res_float = out_img.astype(np.float32) + (catchlight_layer * (strength * 0.9))
+            return np.clip(res_float, 0, 255).astype(np.uint8)
+        except Exception as e:
+            print(f"[WinkEnhancer] Iris catchlight synthesis warning: {e}")
+            return face_img
+
+    def enhance_hair_strands(self, face_img: np.ndarray, parse_mask: np.ndarray = None, clarity: float = 0.35, sheen: float = 0.25) -> np.ndarray:
+        """
+        Hair Strand Super-Clarity & Specular Sheen:
+        Isolates hair parsing mask (index 17) and applies high-frequency directional strand separation
+        along with healthy hair gloss sheen.
+        """
+        if (clarity <= 0.0 and sheen <= 0.0) or face_img is None or parse_mask is None:
+            return face_img
+
+        try:
+            h, w = face_img.shape[:2]
+            parse_mask_2d = np.squeeze(parse_mask)
+            if parse_mask_2d.ndim != 2:
+                return face_img
+            if parse_mask_2d.shape[:2] != (h, w):
+                parse_mask_res = cv2.resize(parse_mask_2d.astype(np.uint8), (w, h), interpolation=cv2.INTER_NEAREST)
+            else:
+                parse_mask_res = parse_mask_2d
+
+            # 17: Hair
+            hair_mask = (parse_mask_res == 17).astype(np.uint8)
+            if not np.any(hair_mask):
+                return face_img
+
+            # Soften hair mask boundary
+            hair_mask_soft = cv2.GaussianBlur(hair_mask.astype(np.float32), (7, 7), 0)[:, :, np.newaxis]
+
+            # 1. High-Frequency Hair Strand Separation Filter
+            blur_hair = cv2.GaussianBlur(face_img, (0, 0), 1.2)
+            high_freq_hair = face_img.astype(np.float32) - blur_hair.astype(np.float32)
+            strand_boosted = face_img.astype(np.float32) + high_freq_hair * (clarity * 2.2)
+
+            # 2. Specular Hair Sheen (Luminance highlight curve in LAB space)
+            if sheen > 0.0:
+                lab = cv2.cvtColor(np.clip(strand_boosted, 0, 255).astype(np.uint8), cv2.COLOR_BGR2LAB).astype(np.float32)
+                l, a, b = cv2.split(lab)
+                # Gloss curve: lifts mid-tone specular highlights on hair
+                sheen_curve = (l * (255.0 - l) / 255.0) * (sheen * 0.35)
+                l_sheen = np.clip(l + sheen_curve, 0, 255)
+                lab_sheen = cv2.merge([l_sheen, a, b])
+                gloss_bgr = cv2.cvtColor(lab_sheen.astype(np.uint8), cv2.COLOR_LAB2BGR).astype(np.float32)
+            else:
+                gloss_bgr = strand_boosted
+
+            # Blend back strictly on hair region
+            out = face_img.astype(np.float32) * (1.0 - hair_mask_soft) + gloss_bgr * hair_mask_soft
+            return np.clip(out, 0, 255).astype(np.uint8)
+        except Exception as e:
+            print(f"[WinkEnhancer] Hair strand enhancement warning: {e}")
+            return face_img
+
+    def apply_studio_relighting(self, face_img: np.ndarray, parse_mask: np.ndarray = None, rim_light: float = 0.25, tzone_highlight: float = 0.20) -> np.ndarray:
+        """
+        3D Studio Relighting & Highlighter:
+        - T-Zone Nose Bridge & Cheekbone Highlighter: Soft volumetric facial sculpting.
+        - Silhouette Rim Lighting: Luminous golden edge contour glow along head/hair edges.
+        """
+        if (rim_light <= 0.0 and tzone_highlight <= 0.0) or face_img is None or parse_mask is None:
+            return face_img
+
+        try:
+            h, w = face_img.shape[:2]
+            parse_mask_2d = np.squeeze(parse_mask)
+            if parse_mask_2d.ndim != 2:
+                return face_img
+            if parse_mask_2d.shape[:2] != (h, w):
+                parse_mask_res = cv2.resize(parse_mask_2d.astype(np.uint8), (w, h), interpolation=cv2.INTER_NEAREST)
+            else:
+                parse_mask_res = parse_mask_2d
+
+            out = face_img.copy()
+
+            # 1. T-Zone Nose Bridge Highlighter
+            if tzone_highlight > 0.0:
+                # 10: Nose, 1: Skin
+                nose_mask = (parse_mask_res == 10).astype(np.uint8)
+                if np.any(nose_mask):
+                    nose_soft = cv2.GaussianBlur(nose_mask.astype(np.float32), (15, 15), 0)
+                    lab = cv2.cvtColor(out, cv2.COLOR_BGR2LAB).astype(np.float32)
+                    l, a, b = cv2.split(lab)
+                    l_tzone = np.clip(l + (nose_soft * (tzone_highlight * 28.0)), 0, 255)
+                    lab_tzone = cv2.merge([l_tzone, a, b])
+                    out = cv2.cvtColor(lab_tzone.astype(np.uint8), cv2.COLOR_LAB2BGR)
+
+            # 2. Silhouette Rim Light (Outer Contour Glow)
+            if rim_light > 0.0:
+                # Union of Face Skin (1) + Hair (17) + Neck
+                head_mask = ((parse_mask_res == 1) | (parse_mask_res == 17) | (parse_mask_res == 10)).astype(np.uint8)
+                if np.any(head_mask):
+                    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (11, 11))
+                    dilated = cv2.dilate(head_mask, kernel, iterations=1)
+                    eroded = cv2.erode(head_mask, kernel, iterations=1)
+                    rim_band = (dilated - eroded).astype(np.float32)
+                    rim_soft = cv2.GaussianBlur(rim_band, (15, 15), 0)[:, :, np.newaxis]
+
+                    rim_color = np.array([255, 240, 220], dtype=np.float32) # Warm soft studio rim
+                    rim_layer = rim_soft * rim_color * (rim_light * 0.7)
+                    out = np.clip(out.astype(np.float32) + rim_layer, 0, 255).astype(np.uint8)
+
+            return out
+        except Exception as e:
+            print(f"[WinkEnhancer] Studio relighting warning: {e}")
+            return face_img
+
     def generate_comparison_slider_html(self, img_before_bgr: np.ndarray, img_after_bgr: np.ndarray, slider_id: str = "split-slider") -> str:
         """
         Generate standalone interactive Before/After image comparison slider HTML5 component.
@@ -531,7 +703,7 @@ class WinkQualityEnhancer:
         """
         return html_code
 
-    def enhance_eyes_and_lips(self, face_img: np.ndarray, parse_mask: np.ndarray = None, enable_eyes: bool = True, enable_lips: bool = True, enable_teeth: bool = True, enable_tone_glow: bool = True, enable_dark_circles: bool = True) -> np.ndarray:
+    def enhance_eyes_and_lips(self, face_img: np.ndarray, parse_mask: np.ndarray = None, enable_eyes: bool = True, enable_lips: bool = True, enable_teeth: bool = True, enable_tone_glow: bool = True, enable_dark_circles: bool = True, enable_catchlight: bool = True, catchlight_strength: float = 0.55) -> np.ndarray:
         """
         Enhance eyes (catchlight sparkle), dark circles removal, teeth (whitening), lips and overall studio skin glow.
         """
@@ -552,6 +724,10 @@ class WinkQualityEnhancer:
         # 4. Ocular Catchlight & Sclera Glow
         if enable_eyes and parse_mask is not None:
             result = self.brighten_eyes_and_sclera(result, parse_mask, strength=0.35)
+
+        # 5. Studio Iris Catchlight Specular Gleam
+        if enable_catchlight and parse_mask is not None:
+            result = self.synthesize_iris_catchlight(result, parse_mask, strength=catchlight_strength)
 
         if parse_mask is None:
             # Fallback: General soft unsharp mask on entire face
@@ -574,7 +750,7 @@ class WinkQualityEnhancer:
             # 12: Upper Lip, 13: Lower Lip
             lip_mask = ((parse_mask_res == 12) | (parse_mask_res == 13)).astype(np.uint8)
 
-            # 5. Enhance Lips: Subtle natural saturation & contrast boost
+            # 6. Enhance Lips: Subtle natural saturation & contrast boost
             if enable_lips and np.any(lip_mask):
                 lip_mask_float = cv2.GaussianBlur(lip_mask.astype(np.float32), (3, 3), 0)[:, :, np.newaxis]
                 hsv = cv2.cvtColor(result, cv2.COLOR_BGR2HSV).astype(np.float32)
@@ -675,7 +851,7 @@ class WinkQualityEnhancer:
             print(f"[WinkEnhancer] Adaptive sharpening warning: {e}")
             return img
 
-    def enhance_face(self, restored_face: np.ndarray, cropped_original: np.ndarray = None, parse_mask: np.ndarray = None, wink_mode: bool = True, eye_enhancement: bool = True, skin_grain: float = 0.15, color_match: bool = True, enable_eyes: bool = True, enable_lips: bool = True, enable_skin: bool = True, enable_teeth: bool = True, enable_tone_glow: bool = True, enable_dark_circles: bool = True, sharpen_amount: float = 0.2) -> np.ndarray:
+    def enhance_face(self, restored_face: np.ndarray, cropped_original: np.ndarray = None, parse_mask: np.ndarray = None, wink_mode: bool = True, eye_enhancement: bool = True, skin_grain: float = 0.15, color_match: bool = True, enable_eyes: bool = True, enable_lips: bool = True, enable_skin: bool = True, enable_teeth: bool = True, enable_tone_glow: bool = True, enable_dark_circles: bool = True, enable_catchlight: bool = True, catchlight_strength: float = 0.55, enable_hair: bool = True, hair_clarity: float = 0.35, hair_sheen: float = 0.25, enable_relighting: bool = True, relighting_rim: float = 0.25, relighting_tzone: float = 0.20, sharpen_amount: float = 0.2) -> np.ndarray:
         """
         Master method to execute Wink-level enhancement pipeline on a restored face crop.
         """
@@ -695,8 +871,8 @@ class WinkQualityEnhancer:
         # Step C: Skin tone & micro-contrast balance
         out_face = self.balance_skin_tone_lab(out_face)
 
-        # Step D: Eye (sparkle), Dark Circles, Teeth (whitening) & Lip local enhancement
-        if eye_enhancement and (enable_eyes or enable_lips or enable_teeth or enable_dark_circles):
+        # Step D: Eye (sparkle & catchlight), Dark Circles, Teeth (whitening) & Lip local enhancement
+        if eye_enhancement and (enable_eyes or enable_lips or enable_teeth or enable_dark_circles or enable_catchlight):
             out_face = self.enhance_eyes_and_lips(
                 out_face,
                 parse_mask=parse_mask,
@@ -704,14 +880,24 @@ class WinkQualityEnhancer:
                 enable_lips=enable_lips,
                 enable_teeth=enable_teeth,
                 enable_tone_glow=False,
-                enable_dark_circles=enable_dark_circles
+                enable_dark_circles=enable_dark_circles,
+                enable_catchlight=enable_catchlight,
+                catchlight_strength=catchlight_strength
             )
 
-        # Step E: Multi-Scale Edge-Aware Adaptive Sharpening
+        # Step E: 3D Studio Relighting (T-Zone Highlighter & Silhouette Rim Light)
+        if enable_relighting and parse_mask is not None and (relighting_rim > 0.0 or relighting_tzone > 0.0):
+            out_face = self.apply_studio_relighting(out_face, parse_mask=parse_mask, rim_light=relighting_rim, tzone_highlight=relighting_tzone)
+
+        # Step F: Hair Strand Super-Clarity & Specular Gloss Sheen
+        if enable_hair and parse_mask is not None and (hair_clarity > 0.0 or hair_sheen > 0.0):
+            out_face = self.enhance_hair_strands(out_face, parse_mask=parse_mask, clarity=hair_clarity, sheen=hair_sheen)
+
+        # Step G: Multi-Scale Edge-Aware Adaptive Sharpening
         if sharpen_amount > 0.0:
             out_face = self.apply_adaptive_sharpening(out_face, sharpen_amount=sharpen_amount)
 
-        # Step F: Real Skin Grain Injection (Frequency Separation)
+        # Step H: Real Skin Grain Injection (Frequency Separation)
         if enable_skin and skin_grain > 0.0 and cropped_original is not None:
             out_face = self.apply_skin_grain(out_face, cropped_original, skin_mask=parse_mask, grain_amount=skin_grain)
 

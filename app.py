@@ -303,7 +303,7 @@ def get_pipeline():
 # The dashboard must not initialise the heavy model while CPU training is live.
 pipeline = None
 
-APP_VERSION = "v2.5.0 (Build 2026.09.02)"
+APP_VERSION = "v2.6.0 (Build 2026.09.02)"
 
 # ── Sidebar Controls (Minimalist & Clean) ───────────────────────────────────────
 with st.sidebar:
@@ -352,6 +352,9 @@ with st.sidebar:
         default_teeth = cp.get('teeth', True)
         default_tone_glow = cp.get('tone_glow', True)
         default_dark_circles = cp.get('dark_circles', True)
+        default_catchlight = cp.get('catchlight', True)
+        default_hair = cp.get('hair', True)
+        default_relighting = cp.get('relighting', True)
         default_bokeh = cp.get('bokeh', 0.0)
         default_lut = cp.get('lut', 'None')
         default_chromatic = cp.get('chromatic', False)
@@ -370,6 +373,9 @@ with st.sidebar:
         default_teeth = True
         default_tone_glow = True
         default_dark_circles = True
+        default_catchlight = True
+        default_hair = True
+        default_relighting = True
         default_bokeh = 0.0
         default_lut = "None"
         default_chromatic = False
@@ -388,6 +394,9 @@ with st.sidebar:
         default_teeth = False
         default_tone_glow = False
         default_dark_circles = False
+        default_catchlight = False
+        default_hair = False
+        default_relighting = False
         default_bokeh = 0.0
         default_lut = "None"
         default_chromatic = False
@@ -406,6 +415,9 @@ with st.sidebar:
         default_teeth = True
         default_tone_glow = True
         default_dark_circles = True
+        default_catchlight = True
+        default_hair = True
+        default_relighting = True
         default_bokeh = 0.0
         default_lut = "Kodak Portra 400 (Warm Gold)"
         default_chromatic = True
@@ -424,6 +436,9 @@ with st.sidebar:
         default_teeth = False
         default_tone_glow = False
         default_dark_circles = False
+        default_catchlight = True
+        default_hair = True
+        default_relighting = True
         default_bokeh = 0.0
         default_lut = "Teal & Orange / Cyberpunk"
         default_chromatic = False
@@ -442,6 +457,9 @@ with st.sidebar:
         default_teeth = True
         default_tone_glow = True
         default_dark_circles = True
+        default_catchlight = True
+        default_hair = True
+        default_relighting = False
         default_bokeh = 0.0
         default_lut = "None"
         default_chromatic = False
@@ -485,6 +503,11 @@ with st.sidebar:
         enable_tone_glow = st.checkbox("✨ Studio Skin Glow & White Balance", value=default_tone_glow)
         enable_dark_circles = st.checkbox("🌿 Under-Eye Dark Circles & Blemish Concealer", value=default_dark_circles)
 
+        st.markdown("**✨ Studio Glamour & Lighting**")
+        enable_catchlight = st.checkbox("👁️ Catchlight Studio Glow (Mắt Long Lanh)", value=default_catchlight, help="Tạo đốm sáng phản chiếu softbox/ringlight trong con ngươi mắt")
+        enable_hair = st.checkbox("💇 Hair Strand Super-Clarity & Gloss (Tóc Bóng Mượt)", value=default_hair, help="Tách rõ từng lọn tóc và tăng độ bóng mượt")
+        enable_relighting = st.checkbox("✨ 3D Studio Relighting & Highlighter (Đánh Đèn Studio)", value=default_relighting, help="Bắt sáng sống mũi T-Zone và tạo viền sáng ven tóc Rim Light")
+
         st.markdown("**🎨 Studio Color & Optics**")
         lut_options = ["None", "Kodak Portra 400 (Warm Gold)", "Fuji Pro 400H (Pastel Jade)", "Teal & Orange / Cyberpunk", "Leica Monochrome (B&W)"]
         lut_idx = lut_options.index(default_lut) if default_lut in lut_options else 0
@@ -515,6 +538,9 @@ with st.sidebar:
                 'teeth': enable_teeth,
                 'tone_glow': enable_tone_glow,
                 'dark_circles': enable_dark_circles,
+                'catchlight': enable_catchlight,
+                'hair': enable_hair,
+                'relighting': enable_relighting,
                 'lut': color_lut_val,
                 'lut_intensity': lut_intensity,
                 'bokeh': bokeh_val,
@@ -590,6 +616,9 @@ with tab_photo:
             'teeth': enable_teeth,
             'tone_glow': enable_tone_glow,
             'dark_circles': enable_dark_circles,
+            'catchlight': enable_catchlight,
+            'hair': enable_hair,
+            'relighting': enable_relighting,
             'lut': color_lut_val,
             'lut_intensity': lut_intensity,
             'bokeh': bokeh_val,
@@ -642,6 +671,14 @@ with tab_photo:
                     'enable_teeth': enable_teeth,
                     'enable_tone_glow': enable_tone_glow,
                     'enable_dark_circles': enable_dark_circles,
+                    'enable_catchlight': enable_catchlight,
+                    'catchlight_strength': 0.55,
+                    'enable_hair': enable_hair,
+                    'hair_clarity': 0.35,
+                    'hair_sheen': 0.25,
+                    'enable_relighting': enable_relighting,
+                    'relighting_rim': 0.25,
+                    'relighting_tzone': 0.20,
                     'color_lut': color_lut_val,
                     'lut_intensity': lut_intensity,
                     'bokeh_strength': bokeh_val,
