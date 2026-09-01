@@ -34,6 +34,7 @@ def main():
     
     test_scripts = [
         "test_evaluation_workflow.py",
+        "test_batch_pipeline.py",
         "test_video_pipeline.py",
         "test_dataset_loader.py",
         "test_stage2_config.py",

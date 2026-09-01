@@ -12,6 +12,38 @@ class WinkQualityEnhancer:
         self.clahe_eye = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(4, 4))
         self.clahe_lab = cv2.createCLAHE(clipLimit=1.5, tileGridSize=(8, 8))
 
+    def correct_chromatic_aberration(self, img: np.ndarray, strength: float = 1.0) -> np.ndarray:
+        """
+        Correct lateral chromatic aberration (color fringing) on lens edges.
+        Uses radial channel realignment of Red and Blue relative to Green center.
+        """
+        if strength <= 0.0 or img is None:
+            return img
+            
+        try:
+            h, w = img.shape[:2]
+            cx, cy = w / 2.0, h / 2.0
+            
+            # Split channels (BGR)
+            b, g, r = cv2.split(img)
+            
+            # Radial scale factors for B and R relative to G center
+            scale_b = 1.0 + (0.0015 * strength)
+            scale_r = 1.0 - (0.0015 * strength)
+            
+            # Affine matrix for scaling around image center
+            mat_b = cv2.getRotationMatrix2D((cx, cy), 0, scale_b)
+            mat_r = cv2.getRotationMatrix2D((cx, cy), 0, scale_r)
+            
+            b_aligned = cv2.warpAffine(b, mat_b, (w, h), flags=cv2.INTER_LANCZOS4, borderMode=cv2.BORDER_REFLECT)
+            r_aligned = cv2.warpAffine(r, mat_r, (w, h), flags=cv2.INTER_LANCZOS4, borderMode=cv2.BORDER_REFLECT)
+            
+            corrected = cv2.merge([b_aligned, g, r_aligned])
+            return corrected
+        except Exception as e:
+            print(f"[WinkEnhancer] Chromatic aberration correction warning: {e}")
+            return img
+
     def apply_skin_grain(self, restored_face: np.ndarray, cropped_original: np.ndarray, skin_mask: np.ndarray = None, grain_amount: float = 0.15, skin_soften: float = 0.3) -> np.ndarray:
         """
         Pro Studio Skin Texture Synthesis 2.0:

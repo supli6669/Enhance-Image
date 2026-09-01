@@ -432,6 +432,7 @@ with st.sidebar:
         enable_lips = st.checkbox("👄 Lip Saturation & Definition", value=default_lip)
         enable_skin = st.checkbox("💆 Real Skin Grain Retention", value=default_skin)
 
+        chromatic_fix = st.toggle("🌈 Chromatic Aberration Correction", value=False, help="Radial channel realignment for old lenses and color fringing")
         bg_upscale = st.toggle("Real-ESRGAN Background Upscale", value=False)
         face_upscale = st.toggle("Real-ESRGAN Face Upscale", value=False)
 
@@ -450,7 +451,8 @@ with st.sidebar:
                 'color': color_match,
                 'eye': enable_eyes,
                 'lip': enable_lips,
-                'skin': enable_skin
+                'skin': enable_skin,
+                'chromatic': chromatic_fix
             }
             st.success(f"Saved custom preset: '{p_name}'")
             st.rerun()
@@ -468,9 +470,10 @@ st.markdown('<div class="hero-sub">Restore blurry portraits, skin texture & eye 
 with st.expander("📈 Training Dashboard", expanded=False):
     render_training_dashboard()
 
-tab_photo, tab_video, tab_benchmark = st.tabs([
+tab_photo, tab_video, tab_batch, tab_benchmark = st.tabs([
     "📸 Portrait Enhancement",
     "🎥 Video AI Restoration",
+    "📁 Batch Processing & Report",
     "📊 Benchmark & Quality Explorer"
 ])
 
@@ -479,6 +482,10 @@ tab_photo, tab_video, tab_benchmark = st.tabs([
 # ═══════════════════════════════════════════════════════════════════════════════
 with tab_photo:
     uploaded_file = st.file_uploader("Upload portrait photo (PNG, JPG, WEBP)", type=["png", "jpg", "jpeg", "webp"], key="photo_uploader")
+    if uploaded_file is None:
+        camera_file = st.camera_input("Or capture a live portrait photo with webcam")
+        if camera_file is not None:
+            uploaded_file = camera_file
 
     if uploaded_file is not None:
         try:
@@ -495,7 +502,7 @@ with tab_photo:
                 st.stop()
 
         current_params = {
-            'img_name': uploaded_file.name,
+            'img_name': getattr(uploaded_file, 'name', 'webcam_capture.png'),
             'w': w_val,
             'upscale': upscale_val,
             'detector': face_detector,
@@ -507,6 +514,7 @@ with tab_photo:
             'eye': enable_eyes,
             'lip': enable_lips,
             'skin': enable_skin,
+            'chromatic': chromatic_fix,
             'bg_up': bg_upscale,
             'face_up': face_upscale
         }
@@ -552,6 +560,7 @@ with tab_photo:
                     'enable_eyes': enable_eyes,
                     'enable_lips': enable_lips,
                     'enable_skin': enable_skin,
+                    'chromatic_aberration': chromatic_fix,
                     'progress_callback': local_progress_callback,
                 }
 
@@ -765,7 +774,102 @@ with tab_video:
                     )
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# TAB 3: BENCHMARK & QUALITY EXPLORER
+# TAB 3: BATCH PROCESSING & REPORT CARD
+# ═══════════════════════════════════════════════════════════════════════════════
+with tab_batch:
+    st.markdown("### 📁 Batch Portrait Restoration & Quality Report Card")
+    st.markdown("Upload multiple portraits for automatic batch enhancement with ZIP export and executive HTML scorecard.")
+
+    batch_uploads = st.file_uploader(
+        "Upload multiple portrait photos (up to 50)",
+        type=["png", "jpg", "jpeg", "webp"],
+        accept_multiple_files=True,
+        key="batch_uploader"
+    )
+
+    if batch_uploads:
+        st.info(f"Loaded {len(batch_uploads)} portrait(s) for batch enhancement.")
+        if st.button("✨ Enhance All Portraits (Batch)"):
+            if pipeline is None:
+                pipeline = get_pipeline()
+
+            batch_dict = {}
+            for uf in batch_uploads:
+                try:
+                    img = load_uploaded_image(uf)
+                    batch_dict[uf.name] = img
+                except Exception as ex:
+                    st.warning(f"Could not load {uf.name}: {ex}")
+
+            if batch_dict:
+                b_prog = st.progress(0.0)
+                b_msg = st.empty()
+
+                def b_callback(stage, pct, msg):
+                    b_prog.progress(float(pct))
+                    b_msg.info(f"✨ {msg}")
+
+                batch_res = pipeline.process_batch_images(
+                    batch_dict,
+                    w=w_val,
+                    detection_model=face_detector,
+                    upscale=upscale_val,
+                    blend_softness=0.5,
+                    bg_upsampler='realesrgan' if bg_upscale else None,
+                    det_threshold=det_thresh,
+                    sharpen_amount=sharpen_val,
+                    face_upsample=face_upscale,
+                    parallel=True,
+                    preset_mode=pipeline_preset_mode,
+                    wink_mode=wink_mode,
+                    eye_enhancement=enable_eyes,
+                    skin_grain=skin_grain,
+                    color_match=color_match,
+                    enable_eyes=enable_eyes,
+                    enable_lips=enable_lips,
+                    enable_skin=enable_skin,
+                    chromatic_aberration=chromatic_fix,
+                    progress_callback=b_callback
+                )
+
+                st.session_state['last_batch_data'] = batch_res
+                st.success(f"Batch completed! Enhanced {batch_res['total_count']} portraits in {batch_res['total_duration']:.2f}s ({batch_res['avg_time_per_image']:.2f}s/photo).")
+
+    last_batch = st.session_state.get('last_batch_data')
+    if last_batch:
+        st.markdown("<hr>", unsafe_allow_html=True)
+        import io
+        import zipfile
+
+        # Generate ZIP in-memory
+        zip_buffer = io.BytesIO()
+        with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
+            for name, item in last_batch["items"].items():
+                _, encoded_img = cv2.imencode('.png', item["enhanced"])
+                zip_file.writestr(f"enhanced_{name}", encoded_img.tobytes())
+
+        # Generate HTML report
+        html_report_str = pipeline.generate_html_report(last_batch) if pipeline else ""
+
+        col_z1, col_z2 = st.columns(2)
+        with col_z1:
+            st.download_button(
+                label="⬇️ Download All Enhanced Portraits (ZIP)",
+                data=zip_buffer.getvalue(),
+                file_name="enhanced_portraits_batch.zip",
+                mime="application/zip"
+            )
+        with col_z2:
+            if html_report_str:
+                st.download_button(
+                    label="📄 Download Quality Scorecard Report (HTML)",
+                    data=html_report_str.encode('utf-8'),
+                    file_name="restoration_quality_report.html",
+                    mime="text/html"
+                )
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# TAB 4: BENCHMARK & QUALITY EXPLORER
 # ═══════════════════════════════════════════════════════════════════════════════
 with tab_benchmark:
     st.markdown("### 📊 Benchmark & Restoration Quality Explorer")

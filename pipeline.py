@@ -271,7 +271,7 @@ class LocalAIEnhancerPipeline:
             ort_outs = self.ort_session_cf.run(None, ort_inputs)
         return ort_outs[0]
 
-    def process_image(self, img, w=0.5, detection_model='retinaface_mobile0.25', upscale=2, blend_softness=0.5, bg_upsampler=None, det_threshold=0.5, sharpen_amount=0.0, face_upsample=False, batch_size=0, parallel=False, face_restore=True, wink_mode=True, eye_enhancement=True, skin_grain=0.15, color_match=True, enable_eyes=True, enable_lips=True, enable_skin=True, preset_mode='Custom', progress_callback=None):
+    def process_image(self, img, w=0.5, detection_model='retinaface_mobile0.25', upscale=2, blend_softness=0.5, bg_upsampler=None, det_threshold=0.5, sharpen_amount=0.0, face_upsample=False, batch_size=0, parallel=False, face_restore=True, wink_mode=True, eye_enhancement=True, skin_grain=0.15, color_match=True, enable_eyes=True, enable_lips=True, enable_skin=True, preset_mode='Custom', chromatic_aberration=False, progress_callback=None):
 
         """Enhance one image without sharing request-specific state.
 
@@ -286,12 +286,12 @@ class LocalAIEnhancerPipeline:
                     img, w, detection_model, upscale, blend_softness, bg_upsampler,
                     det_threshold, sharpen_amount, face_upsample, batch_size, parallel,
                     face_restore, wink_mode, eye_enhancement, skin_grain, color_match,
-                    enable_eyes, enable_lips, enable_skin, preset_mode,
+                    enable_eyes, enable_lips, enable_skin, preset_mode, chromatic_aberration,
                 )
             finally:
                 _active_progress_callback.reset(callback_token)
 
-    def _process_image(self, img, w=0.5, detection_model='retinaface_mobile0.25', upscale=2, blend_softness=0.5, bg_upsampler=None, det_threshold=0.5, sharpen_amount=0.0, face_upsample=False, batch_size=0, parallel=False, face_restore=True, wink_mode=True, eye_enhancement=True, skin_grain=0.15, color_match=True, enable_eyes=True, enable_lips=True, enable_skin=True, preset_mode='Custom'):
+    def _process_image(self, img, w=0.5, detection_model='retinaface_mobile0.25', upscale=2, blend_softness=0.5, bg_upsampler=None, det_threshold=0.5, sharpen_amount=0.0, face_upsample=False, batch_size=0, parallel=False, face_restore=True, wink_mode=True, eye_enhancement=True, skin_grain=0.15, color_match=True, enable_eyes=True, enable_lips=True, enable_skin=True, preset_mode='Custom', chromatic_aberration=False):
 
         """
         Enhance an image using the local CodeFormer pipeline.
@@ -310,6 +310,10 @@ class LocalAIEnhancerPipeline:
         Returns:
             numpy.ndarray: Enhanced output image in BGR format.
         """
+        # Apply Chromatic Aberration Correction if requested
+        if chromatic_aberration and hasattr(self, 'wink_enhancer'):
+            img = self.wink_enhancer.correct_chromatic_aberration(img)
+
         # Apply Preset parameters if specific preset mode is selected
         if preset_mode == 'Modern Portrait':
             w = 0.6
@@ -868,3 +872,140 @@ class LocalAIEnhancerPipeline:
             "output_path": output_video_path,
             "audio_preserved": audio_copied
         }
+
+    def process_batch_images(
+        self,
+        images_dict: dict,
+        progress_callback: callable = None,
+        **process_kwargs
+    ) -> dict:
+        """
+        Process a batch dictionary of {filename: cv2_image_bgr}.
+        Returns dictionary of results with quality report metrics.
+        """
+        total = len(images_dict)
+        results = {}
+        t_start = time.time()
+
+        for idx, (filename, img_bgr) in enumerate(images_dict.items()):
+            t0 = time.time()
+            enhanced = self.process_image(img_bgr, **process_kwargs)
+            dur = time.time() - t0
+
+            q_report = {}
+            if hasattr(self, 'wink_enhancer'):
+                q_report = self.wink_enhancer.calculate_quality_report(img_bgr, enhanced)
+
+            results[filename] = {
+                "orig": img_bgr,
+                "enhanced": enhanced,
+                "report": q_report,
+                "duration": dur
+            }
+
+            if progress_callback:
+                pct = (idx + 1) / total
+                progress_callback("batch_progress", pct, f"Processed {idx + 1}/{total}: {filename} ({dur:.2f}s)")
+
+        total_duration = time.time() - t_start
+        return {
+            "items": results,
+            "total_count": total,
+            "total_duration": total_duration,
+            "avg_time_per_image": total_duration / max(1, total)
+        }
+
+    def generate_html_report(self, batch_data: dict) -> str:
+        """
+        Generate a self-contained, beautifully styled HTML Quality Report Card with embedded base64 thumbnails.
+        """
+        import base64
+        items = batch_data.get("items", {})
+        total_count = batch_data.get("total_count", len(items))
+        total_dur = batch_data.get("total_duration", 0.0)
+
+        # Compute summary stats
+        sharp_gains = [it["report"].get("sharpness_gain_pct", 0) for it in items.values() if "report" in it]
+        avg_gain = sum(sharp_gains) / max(1, len(sharp_gains))
+
+        rows_html = ""
+        for name, data in items.items():
+            orig = data["orig"]
+            enh = data["enhanced"]
+            rep = data.get("report", {})
+            dur = data.get("duration", 0.0)
+
+            # Generate small thumbnails
+            thumb_h = 160
+            scale_o = thumb_h / max(1, orig.shape[0])
+            thumb_o = cv2.resize(orig, (int(orig.shape[1] * scale_o), thumb_h), interpolation=cv2.INTER_AREA)
+            scale_e = thumb_h / max(1, enh.shape[0])
+            thumb_e = cv2.resize(enh, (int(enh.shape[1] * scale_e), thumb_h), interpolation=cv2.INTER_AREA)
+
+            _, buf_o = cv2.imencode('.jpg', thumb_o, [cv2.IMWRITE_JPEG_QUALITY, 80])
+            _, buf_e = cv2.imencode('.jpg', thumb_e, [cv2.IMWRITE_JPEG_QUALITY, 80])
+            b64_o = base64.b64encode(buf_o).decode('utf-8')
+            b64_e = base64.b64encode(buf_e).decode('utf-8')
+
+            rows_html += f"""
+            <tr>
+                <td style="font-weight: 600; color: #f3f0ff;">{name}</td>
+                <td><img src="data:image/jpeg;base64,{b64_o}" style="border-radius: 8px; max-height: 120px; box-shadow: 0 4px 12px rgba(0,0,0,0.5);"/></td>
+                <td><img src="data:image/jpeg;base64,{b64_e}" style="border-radius: 8px; max-height: 120px; box-shadow: 0 4px 12px rgba(124,58,237,0.3);"/></td>
+                <td style="color: #34d399; font-weight: 700; font-size: 1.1rem;">+{rep.get('sharpness_gain_pct', 0)}%</td>
+                <td style="color: #60a5fa; font-weight: 600;">{rep.get('tone_fidelity_pct', 0)}%</td>
+                <td style="color: #c4b5fd;">{dur:.2f}s</td>
+            </tr>
+            """
+
+        html = f"""<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8"/>
+    <title>AI Portrait Enhancement - Quality Scorecard Report</title>
+    <style>
+        body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background: #090714; color: #f3f0ff; padding: 40px 20px; }}
+        .card {{ max-width: 1000px; margin: 0 auto; background: #130f28; border: 1px solid rgba(255,255,255,0.08); border-radius: 16px; padding: 32px; box-shadow: 0 12px 36px rgba(0,0,0,0.6); }}
+        .header {{ text-align: center; margin-bottom: 30px; }}
+        .title {{ font-size: 2rem; font-weight: 800; background: linear-gradient(135deg, #a78bfa, #f472b6); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }}
+        .subtitle {{ color: #94a3b8; font-size: 0.95rem; margin-top: 6px; }}
+        .metrics-bar {{ display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 30px; }}
+        .metric-box {{ background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; padding: 16px; text-align: center; }}
+        .metric-title {{ font-size: 0.75rem; text-transform: uppercase; color: #94a3b8; letter-spacing: 0.5px; }}
+        .metric-val {{ font-size: 1.5rem; font-weight: 800; color: #fff; margin-top: 4px; }}
+        table {{ width: 100%; border-collapse: collapse; margin-top: 20px; }}
+        th {{ background: rgba(255,255,255,0.06); color: #c4b5fd; text-align: left; padding: 12px 16px; font-size: 0.85rem; text-transform: uppercase; border-radius: 6px; }}
+        td {{ padding: 14px 16px; border-bottom: 1px solid rgba(255,255,255,0.05); font-size: 0.95rem; vertical-align: middle; }}
+        tr:hover {{ background: rgba(255,255,255,0.02); }}
+    </style>
+</head>
+<body>
+    <div class="card">
+        <div class="header">
+            <div class="title">✨ AI Portrait Restoration Report</div>
+            <div class="subtitle">Wink Studio Pro • Batch Execution Quality Scorecard</div>
+        </div>
+        <div class="metrics-bar">
+            <div class="metric-box"><div class="metric-title">Total Portraits</div><div class="metric-val">{total_count}</div></div>
+            <div class="metric-box"><div class="metric-title">Avg Sharpness Gain</div><div class="metric-val" style="color: #34d399;">+{avg_gain:.1f}%</div></div>
+            <div class="metric-box"><div class="metric-title">Total Duration</div><div class="metric-val">{total_dur:.2f}s</div></div>
+        </div>
+        <table>
+            <thead>
+                <tr>
+                    <th>Filename</th>
+                    <th>Original</th>
+                    <th>Wink Enhanced HD</th>
+                    <th>Sharpness</th>
+                    <th>Skin Tone</th>
+                    <th>Speed</th>
+                </tr>
+            </thead>
+            <tbody>
+                {rows_html}
+            </tbody>
+        </table>
+    </div>
+</body>
+</html>"""
+        return html

@@ -1239,6 +1239,41 @@ Expanded the AI enhancer capabilities with video restoration, advanced skin synt
 - [MODIFY] [tools/test_all.py](file:///d:/.gemini-scratch/custom-ai-enhancer/tools/test_all.py) (Added video pipeline test to master runner)
 - [MODIFY] [app.py](file:///d:/.gemini-scratch/custom-ai-enhancer/app.py) (Expanded to 3-tab layout: Photo, Video, and Benchmark Explorer)
 
+---
+
+## Task 24: Batch Image Restoration, Live Camera Beautifier & Chromatic Aberration Filter
+
+**Date:** 2026-09-02  
+**Status:** ✅ Completed
+
+### Overview
+Integrated high-productivity batch workflows, live browser webcam capture, and lens optical corrections:
+
+1. **Chromatic Aberration & Lens Fringing Filter (`wink_enhancer.py` & `pipeline.py`)**:
+   - Implemented `correct_chromatic_aberration()` applying radial affine warp scaling on Red and Blue channels relative to the optical Green center to eliminate purple/green color fringing from degraded sensors and vintage lenses.
+   - Connected directly into `process_image(..., chromatic_aberration=True)` and Streamlit sidebar toggle.
+
+2. **Multi-Image Batch Engine & HTML Quality Scorecard (`pipeline.py`)**:
+   - Implemented `process_batch_images()` for sequential multi-portrait enhancement with real-time progress reporting.
+   - Implemented `generate_html_report()` creating a standalone, responsive HTML Quality Scorecard with base64 embedded before/after thumbnails and sharpness gain metrics.
+
+3. **Streamlit UI 4-Tab Layout & Live Camera Integration (`app.py`)**:
+   - **Tab 1 — 📸 Portrait Enhancement**: Added live webcam portrait capture via `st.camera_input`.
+   - **Tab 3 — 📁 Batch Processing & Report**: Multi-file uploader (up to 50 photos), in-memory ZIP archive exporter, and downloadable HTML Quality Scorecard.
+   - Added Chromatic Aberration Correction toggle in sidebar.
+
+4. **Testing & Verification**:
+   - Created `tools/test_batch_pipeline.py` verifying chromatic aberration correction, batch processing, and HTML report generation (`exit code 0`).
+   - Integrated into `tools/test_all.py`.
+
+### Code Changes
+- [MODIFY] [wink_enhancer.py](file:///d:/.gemini-scratch/custom-ai-enhancer/wink_enhancer.py) (Added `correct_chromatic_aberration()`)
+- [MODIFY] [pipeline.py](file:///d:/.gemini-scratch/custom-ai-enhancer/pipeline.py) (Added `process_batch_images()` and `generate_html_report()`)
+- [NEW] [tools/test_batch_pipeline.py](file:///d:/.gemini-scratch/custom-ai-enhancer/tools/test_batch_pipeline.py) (Unit test for batch processing and chromatic filter)
+- [MODIFY] [tools/test_all.py](file:///d:/.gemini-scratch/custom-ai-enhancer/tools/test_all.py) (Added batch test to master suite)
+- [MODIFY] [app.py](file:///d:/.gemini-scratch/custom-ai-enhancer/app.py) (Added Tab 3 Batch Processing, live camera snapshot, and chromatic toggle)
+
+
 
 
 
