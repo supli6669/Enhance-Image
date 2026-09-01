@@ -442,18 +442,31 @@ class WinkQualityEnhancer:
         aspect_ratio = (h / w) * 100.0 if w > 0 else 75.0
         
         html_code = f"""
-        <div class="slider-container" id="{slider_id}" style="position: relative; width: 100%; max-width: 900px; margin: 0 auto; overflow: hidden; border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); user-select: none; padding-top: {aspect_ratio:.2f}%;">
-            <img src="data:image/jpeg;base64,{b64_a}" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: contain; background: #0f172a;" alt="Enhanced After" />
-            <div style="position: absolute; bottom: 12px; right: 12px; background: rgba(99, 102, 241, 0.85); backdrop-filter: blur(8px); color: white; font-size: 11px; font-weight: 700; padding: 4px 10px; border-radius: 6px; z-index: 5; text-transform: uppercase; letter-spacing: 0.5px;">Enhanced ✨</div>
-
-            <div id="{slider_id}-before-wrap" style="position: absolute; top: 0; left: 0; width: 50%; height: 100%; overflow: hidden; z-index: 2;">
-                <img src="data:image/jpeg;base64,{b64_b}" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: contain; background: #0f172a;" id="{slider_id}-before-img" alt="Original Before" />
-                <div style="position: absolute; bottom: 12px; left: 12px; background: rgba(15, 23, 42, 0.85); backdrop-filter: blur(8px); color: #94a3b8; font-size: 11px; font-weight: 700; padding: 4px 10px; border-radius: 6px; z-index: 5; text-transform: uppercase; letter-spacing: 0.5px;">Original</div>
+        <div class="slider-container" id="{slider_id}" style="position: relative; width: 100%; max-width: 900px; margin: 0 auto; overflow: hidden; border-radius: 14px; border: 1px solid rgba(255,255,255,0.12); box-shadow: 0 14px 40px rgba(0,0,0,0.6); user-select: none; padding-top: {aspect_ratio:.2f}%; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
+            <!-- Base Image: Enhanced / Sau (Right side when revealed) -->
+            <img src="data:image/jpeg;base64,{b64_a}" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: contain; background: #0b0f19;" alt="Enhanced (Sau)" />
+            
+            <!-- Static Top-Right Badge: ENHANCED (SAU) -->
+            <div style="position: absolute; top: 14px; right: 14px; background: linear-gradient(135deg, rgba(99, 102, 241, 0.95), rgba(168, 85, 247, 0.95)); box-shadow: 0 4px 15px rgba(99, 102, 241, 0.5); backdrop-filter: blur(10px); color: white; font-size: 12px; font-weight: 700; padding: 6px 14px; border-radius: 9999px; z-index: 5; text-transform: uppercase; letter-spacing: 0.6px; border: 1px solid rgba(255,255,255,0.25); display: flex; align-items: center; gap: 5px;">
+                <span>✨</span> ẢNH ĐÃ NÂNG CẤP (SAU)
             </div>
 
-            <div id="{slider_id}-handle" style="position: absolute; top: 0; bottom: 0; left: 50%; width: 3px; background: #ffffff; cursor: ew-resize; z-index: 10; transform: translateX(-50%); box-shadow: 0 0 10px rgba(0,0,0,0.6);">
-                <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 36px; height: 36px; background: #6366f1; border: 3px solid #ffffff; border-radius: 50%; box-shadow: 0 4px 12px rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; color: white; font-size: 14px; font-weight: bold;">
-                    ⇄
+            <!-- Overlay Image: Original / Trước (Left side) -->
+            <div id="{slider_id}-before-wrap" style="position: absolute; top: 0; left: 0; width: 50%; height: 100%; overflow: hidden; z-index: 2;">
+                <img src="data:image/jpeg;base64,{b64_b}" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: contain; background: #0b0f19;" id="{slider_id}-before-img" alt="Original (Gốc)" />
+            </div>
+
+            <!-- Static Top-Left Badge: ORIGINAL (GỐC) -->
+            <div style="position: absolute; top: 14px; left: 14px; background: rgba(15, 23, 42, 0.88); backdrop-filter: blur(10px); color: #e2e8f0; font-size: 12px; font-weight: 700; padding: 6px 14px; border-radius: 9999px; z-index: 5; text-transform: uppercase; letter-spacing: 0.6px; border: 1px solid rgba(255,255,255,0.18); box-shadow: 0 4px 15px rgba(0,0,0,0.4); display: flex; align-items: center; gap: 5px;">
+                <span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #ef4444;"></span> ẢNH GỐC BAN ĐẦU (TRƯỚC)
+            </div>
+
+            <!-- Draggable Divider Handle -->
+            <div id="{slider_id}-handle" style="position: absolute; top: 0; bottom: 0; left: 50%; width: 4px; background: #ffffff; cursor: ew-resize; z-index: 10; transform: translateX(-50%); box-shadow: 0 0 16px rgba(0,0,0,0.8), 0 0 6px #6366f1;">
+                <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); padding: 6px 12px; background: #1e1b4b; border: 2px solid #ffffff; border-radius: 9999px; box-shadow: 0 4px 20px rgba(0,0,0,0.7), 0 0 12px rgba(99, 102, 241, 0.6); display: flex; align-items: center; justify-content: center; color: white; font-size: 11px; font-weight: 800; white-space: nowrap; gap: 6px; letter-spacing: 0.5px;">
+                    <span style="color: #94a3b8;">◀ GỐC</span>
+                    <span style="color: #6366f1;">⬌</span>
+                    <span style="color: #38bdf8;">SAU ▶</span>
                 </div>
             </div>
         </div>

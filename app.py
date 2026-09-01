@@ -762,6 +762,7 @@ with tab_photo:
                 )
 
             if comparison_mode == "🎚️ Interactive Split Slider" and pipeline and hasattr(pipeline, 'wink_enhancer'):
+                st.caption("💡 **Hướng dẫn:** Bên Trái (🔴 Ảnh Gốc) ◀ ⬌ ▶ Bên Phải (✨ Ảnh AI Nâng Cấp). Nhấp hoặc kéo thanh trượt để so sánh độ nét!")
                 slider_html = pipeline.wink_enhancer.generate_comparison_slider_html(input_img, enhanced_img, slider_id="portrait-split-slider")
                 comp_height = int(min(850, max(420, (in_h / in_w) * 750 + 30))) if in_w > 0 else 550
                 st.components.v1.html(slider_html, height=comp_height)

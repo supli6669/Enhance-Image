@@ -1457,6 +1457,28 @@ Fixed `TypeError: ImageMixin.image() got an unexpected keyword argument 'use_con
 ### Code Changes
 - [MODIFY] [app.py](file:///d:/.gemini-scratch/custom-ai-enhancer/app.py) (Changed `use_container_width` to `use_column_width` in `st.image`)
 
+---
+
+## Task 32: Redesign Interactive Slider UX with Crystal-Clear Before/After Labels
+
+**Date:** 2026-09-02  
+**Status:** ✅ Completed
+
+### Overview
+Addressed user ambiguity regarding which side of the comparison slider represents the original vs enhanced image:
+1. **Prominent Top Floating Badges**:
+   - **Top-Left**: `🔴 ẢNH GỐC BAN ĐẦU (TRƯỚC)` with dark glassmorphism styling.
+   - **Top-Right**: `✨ ẢNH ĐÃ NÂNG CẤP (SAU)` with glowing purple/indigo badge.
+2. **Directional Handle Pill**:
+   - Central slider handle now features explicit indicators: `◀ GỐC ⬌ SAU ▶`.
+3. **Helper Caption in UI**:
+   - Added explanatory hint above widget in `app.py`.
+
+### Code Changes
+- [MODIFY] [wink_enhancer.py](file:///d:/.gemini-scratch/custom-ai-enhancer/wink_enhancer.py) (Updated HTML template in `generate_comparison_slider_html`)
+- [MODIFY] [app.py](file:///d:/.gemini-scratch/custom-ai-enhancer/app.py) (Added descriptive comparison guide caption)
+
+
 
 
 
