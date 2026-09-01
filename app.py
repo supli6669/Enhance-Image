@@ -279,7 +279,9 @@ for key, default in [
     ('start_time', None),
     ('last_run_params', None),
     ('progress_state', None),
-    ('num_faces_detected', 0)
+    ('num_faces_detected', 0),
+    ('custom_presets', {}),
+    ('comparison_gif', None)
 ]:
     if key not in st.session_state:
         st.session_state[key] = default
@@ -301,41 +303,100 @@ with st.sidebar:
     </div>
     """, unsafe_allow_html=True)
 
-    # Preset selection
-    preset_choice = st.radio(
+    # Base preset options + any user created presets
+    base_presets = [
+        "✨ Wink Studio (Best Quality)",
+        "⚡ Ultra Fast CPU",
+        "🎨 Natural Likeness",
+        "📜 Old Photo Restoration",
+        "🎮 Game / Anime Character"
+    ]
+    all_preset_options = base_presets + [f"⭐ {k}" for k in st.session_state.custom_presets.keys()]
+
+    preset_choice = st.selectbox(
         "Enhancement Preset",
-        ["✨ Wink Studio (Best Quality)", "⚡ Ultra Fast CPU", "🎨 Natural Likeness"],
+        all_preset_options,
         index=0,
-        help="Select pre-configured quality mode."
+        help="Select pre-configured quality mode or your own custom saved presets."
     )
 
     st.markdown("<br>", unsafe_allow_html=True)
 
-    # Core 3 Controls
-    if "Wink Studio" in preset_choice:
+    # Determine default values from preset
+    if preset_choice.startswith("⭐ "):
+        custom_key = preset_choice[2:]
+        cp = st.session_state.custom_presets.get(custom_key, {})
+        default_w = cp.get('w', 0.5)
+        default_upscale = cp.get('upscale', 2)
+        default_wink = cp.get('wink', True)
+        default_grain = cp.get('grain', 0.15)
+        default_sharpen = cp.get('sharpen', 0.2)
+        default_color = cp.get('color', True)
+        default_eye = cp.get('eye', True)
+        default_lip = cp.get('lip', True)
+        default_skin = cp.get('skin', True)
+        default_detector = cp.get('detector', 'retinaface_mobile0.25')
+        pipeline_preset_mode = 'Custom'
+    elif "Wink Studio" in preset_choice:
         default_w = 0.3
         default_upscale = 2
         default_wink = True
         default_grain = 0.15
+        default_sharpen = 0.2
         default_color = True
         default_eye = True
+        default_lip = True
+        default_skin = True
         default_detector = "retinaface_mobile0.25"
+        pipeline_preset_mode = 'Modern Portrait'
     elif "Ultra Fast" in preset_choice:
         default_w = 0.5
         default_upscale = 1
         default_wink = False
         default_grain = 0.0
+        default_sharpen = 0.0
         default_color = False
         default_eye = False
+        default_lip = False
+        default_skin = False
         default_detector = "retinaface_mobile0.25"
+        pipeline_preset_mode = 'Custom'
+    elif "Old Photo" in preset_choice:
+        default_w = 0.85
+        default_upscale = 2
+        default_wink = True
+        default_grain = 0.05
+        default_sharpen = 0.15
+        default_color = True
+        default_eye = True
+        default_lip = True
+        default_skin = True
+        default_detector = "retinaface_mobile0.25"
+        pipeline_preset_mode = 'Old Photo Restoration'
+    elif "Game / Anime" in preset_choice:
+        default_w = 0.3
+        default_upscale = 2
+        default_wink = True
+        default_grain = 0.0
+        default_sharpen = 0.1
+        default_color = False
+        default_eye = False
+        default_lip = False
+        default_skin = False
+        default_detector = "retinaface_mobile0.25"
+        pipeline_preset_mode = 'Game / Anime Character'
     else: # Natural Likeness
         default_w = 0.65
         default_upscale = 2
         default_wink = True
         default_grain = 0.1
+        default_sharpen = 0.15
         default_color = True
         default_eye = True
+        default_lip = True
+        default_skin = True
         default_detector = "retinaface_mobile0.25"
+        pipeline_preset_mode = 'Custom'
 
     w_val = st.slider(
         "AI Detail vs Likeness (w)",
@@ -354,7 +415,7 @@ with st.sidebar:
     )
 
     # Advanced Settings (Collapsible to keep UI clean)
-    with st.expander("⚙️ Advanced Tuning", expanded=False):
+    with st.expander("⚙️ Advanced Tuning & Presets", expanded=False):
         face_detector = st.selectbox(
             "Detector Model",
             ["retinaface_mobile0.25", "retinaface_resnet50", "YOLOv5n", "YOLOv5l"],
@@ -363,16 +424,42 @@ with st.sidebar:
         det_thresh = st.slider("Detection Threshold", 0.1, 1.0, 0.5, 0.05)
         wink_mode = st.toggle("Wink Quality Engine", value=default_wink)
         skin_grain = st.slider("Skin Grain Retention", 0.0, 0.5, default_grain, 0.05)
-        sharpen_val = st.slider("🔥 Extra Sharpness Boost", 0.0, 1.0, 0.2, 0.05, help="Multi-scale edge-aware adaptive sharpening")
+        sharpen_val = st.slider("🔥 Extra Sharpness Boost", 0.0, 1.0, default_sharpen, 0.05, help="Multi-scale edge-aware adaptive sharpening")
         color_match = st.checkbox("Auto Skin Tone Alignment", value=default_color)
         
         st.markdown("**🎭 Facial Organ Enhancements**")
         enable_eyes = st.checkbox("👁️ Eye Sparkle & Contrast Boost", value=default_eye)
-        enable_lips = st.checkbox("👄 Lip Saturation & Definition", value=True)
-        enable_skin = st.checkbox("💆 Real Skin Grain Retention", value=True)
+        enable_lips = st.checkbox("👄 Lip Saturation & Definition", value=default_lip)
+        enable_skin = st.checkbox("💆 Real Skin Grain Retention", value=default_skin)
 
         bg_upscale = st.toggle("Real-ESRGAN Background Upscale", value=False)
         face_upscale = st.toggle("Real-ESRGAN Face Upscale", value=False)
+
+        st.markdown("---")
+        st.markdown("**💾 Custom Presets Manager**")
+        new_preset_name = st.text_input("New Preset Name", placeholder="e.g. Vintage Studio")
+        if st.button("Save Current as Preset") and new_preset_name.strip():
+            p_name = new_preset_name.strip()
+            st.session_state.custom_presets[p_name] = {
+                'w': w_val,
+                'upscale': upscale_val,
+                'detector': face_detector,
+                'wink': wink_mode,
+                'grain': skin_grain,
+                'sharpen': sharpen_val,
+                'color': color_match,
+                'eye': enable_eyes,
+                'lip': enable_lips,
+                'skin': enable_skin
+            }
+            st.success(f"Saved custom preset: '{p_name}'")
+            st.rerun()
+
+        if st.session_state.custom_presets:
+            preset_to_del = st.selectbox("Delete Preset", list(st.session_state.custom_presets.keys()))
+            if st.button("Delete Selected Preset"):
+                st.session_state.custom_presets.pop(preset_to_del, None)
+                st.rerun()
 
 # ── Main Header ─────────────────────────────────────────────────────────────────
 st.markdown('<div class="hero-title">AI Portrait Enhancer</div>', unsafe_allow_html=True)
@@ -448,6 +535,7 @@ if uploaded_file is not None:
                 'sharpen_amount': sharpen_val,
                 'face_upsample': face_upscale,
                 'parallel': True,
+                'preset_mode': pipeline_preset_mode,
                 'wink_mode': wink_mode,
                 'eye_enhancement': enable_eyes,
                 'skin_grain': skin_grain,
@@ -572,15 +660,32 @@ if uploaded_file is not None:
 
         st.markdown("<br>", unsafe_allow_html=True)
 
-        # Download Button
-        success, encoded_buf = cv2.imencode('.png', enhanced_img)
-        if success:
-            st.download_button(
-                label="⬇️ Download Enhanced HD Image",
-                data=encoded_buf.tobytes(),
-                file_name=enhanced_filename(uploaded_file.name),
-                mime="image/png"
-            )
+        # Download & Export Section
+        d1, d2 = st.columns(2)
+        with d1:
+            success, encoded_buf = cv2.imencode('.png', enhanced_img)
+            if success:
+                st.download_button(
+                    label="⬇️ Download Enhanced HD Image (PNG)",
+                    data=encoded_buf.tobytes(),
+                    file_name=enhanced_filename(uploaded_file.name),
+                    mime="image/png"
+                )
+        with d2:
+            if st.button("🎬 Generate Before/After Comparison GIF"):
+                with st.spinner("Generating smooth comparison animation..."):
+                    gif_bytes = pipeline.wink_enhancer.create_comparison_animation(input_img, enhanced_img)
+                    st.session_state.comparison_gif = gif_bytes
+                    st.rerun()
+
+            if st.session_state.get('comparison_gif'):
+                gif_name = f"comparison_{os.path.splitext(uploaded_file.name)[0]}.gif"
+                st.download_button(
+                    label="⬇️ Download Comparison GIF Animation",
+                    data=st.session_state.comparison_gif,
+                    file_name=gif_name,
+                    mime="image/gif"
+                )
 
 else:
     # Empty State Guide

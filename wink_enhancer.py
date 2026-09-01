@@ -272,4 +272,69 @@ class WinkQualityEnhancer:
             'tone_fidelity_pct': round(tone_fidelity_pct, 1)
         }
 
+    def create_comparison_animation(self, orig_img: np.ndarray, enhanced_img: np.ndarray, num_frames: int = 24, fps: int = 12, max_dim: int = 512) -> bytes:
+        """
+        Create a smooth animated GIF sliding back and forth between Original and Enhanced image.
+        """
+        import io
+        from PIL import Image, ImageDraw
+
+        if orig_img is None or enhanced_img is None:
+            return b""
+
+        # Resize to matching dimensions with max_dim cap for fast encoding and lightweight size
+        h, w = enhanced_img.shape[:2]
+        scale = min(max_dim / max(h, w), 1.0)
+        new_w, new_h = max(64, int(w * scale)), max(64, int(h * scale))
+        
+        orig_res = cv2.resize(orig_img, (new_w, new_h), interpolation=cv2.INTER_AREA)
+        enh_res = cv2.resize(enhanced_img, (new_w, new_h), interpolation=cv2.INTER_AREA)
+        
+        orig_rgb = cv2.cvtColor(orig_res, cv2.COLOR_BGR2RGB)
+        enh_rgb = cv2.cvtColor(enh_res, cv2.COLOR_BGR2RGB)
+        
+        frames = []
+        # Generate smooth ping-pong sweep: 0.05 -> 0.95 -> 0.05
+        half_n = max(4, num_frames // 2)
+        positions = np.linspace(0.05, 0.95, half_n)
+        sweep_positions = list(positions) + list(reversed(positions))
+        
+        for pos in sweep_positions:
+            split_x = int(new_w * pos)
+            frame_np = np.zeros_like(orig_rgb)
+            frame_np[:, :split_x] = orig_rgb[:, :split_x]
+            frame_np[:, split_x:] = enh_rgb[:, split_x:]
+            
+            # Draw sleek vertical divider line
+            line_w = max(2, int(new_w * 0.006))
+            x1 = max(0, split_x - line_w // 2)
+            x2 = min(new_w, split_x + line_w // 2 + 1)
+            frame_np[:, x1:x2] = (255, 255, 255)
+            
+            pil_frame = Image.fromarray(frame_np)
+            draw = ImageDraw.Draw(pil_frame)
+            
+            # Sleek corner watermark badges
+            draw.rectangle([(8, 8), (78, 26)], fill=(20, 20, 20, 180))
+            draw.text((12, 11), "ORIGINAL", fill=(255, 255, 255))
+            
+            draw.rectangle([(new_w - 88, 8), (new_w - 8, 26)], fill=(20, 20, 20, 180))
+            draw.text((new_w - 82, 11), "RESTORED", fill=(0, 240, 255))
+            
+            frames.append(pil_frame)
+            
+        buf = io.BytesIO()
+        duration_ms = int(1000 / max(1, fps))
+        frames[0].save(
+            buf,
+            format="GIF",
+            save_all=True,
+            append_images=frames[1:],
+            duration=duration_ms,
+            loop=0,
+            optimize=True
+        )
+        return buf.getvalue()
+
+
 

@@ -1171,6 +1171,42 @@ with an A10G-class GPU is the preferred target because it supports resumable,
 pay-as-you-go container jobs. Do not upload private benchmark portraits to the
 public Space repository.
 
+---
+
+## Task 22: Comprehensive End-to-End Model Workflow & UI Expansion
+
+**Date:** 2026-09-02  
+**Status:** ✅ Completed
+
+### Overview
+Executed the full end-to-end model workflow across benchmark evaluation, automated cloud GPU training, Streamlit UI customization, and regression testing:
+
+1. **Benchmark Baseline Evaluation Engine (`tools/evaluate_restoration.py`)**:
+   - Built full quantitative and perceptual metrics calculation: **PSNR** & **SSIM** (skimage), **LPIPS** (AlexNet), **ArcFace Cosine Identity Similarity** (512-dim embedding via `recognition_arcface_ir_se50.pth`), and **per-sample latency (ms)**.
+   - Generates structured JSON reports (`benchmarks/baseline_report.json`) and prints formatted Markdown Score Cards.
+   - Retained full backward compatibility with `--dry-run`.
+
+2. **Automated Cloud GPU Training Notebook (`train_on_colab.ipynb`)**:
+   - Packaged a self-contained Google Colab notebook for 1-click execution on T4/A100 GPUs.
+   - Includes real-time Google Drive checkpoint synchronization, Stage III CFT fine-tuning with ArcFace identity loss, Stage II Transformer fine-tuning, benchmark evaluation, and static INT8 ONNX quantization.
+
+3. **Streamlit UI/UX Enhancements (`app.py` & `wink_enhancer.py`)**:
+   - **Custom User Presets Manager**: Allows users to save current sidebar settings as custom named presets, persist them in session state, and select or delete them anytime.
+   - **Before/After Animated GIF Exporter**: Generates a smooth, high-quality sliding comparison animation (GIF) with "Original" and "Restored" watermark badges directly downloadable from the results section.
+
+4. **Regression Verification**:
+   - Expanded `tools/test_evaluation_workflow.py` to test metric evaluation and GIF animation generation.
+   - Verified that all test suites pass with `exit code 0`.
+
+### Code Changes
+- [MODIFY] [tools/evaluate_restoration.py](file:///d:/.gemini-scratch/custom-ai-enhancer/tools/evaluate_restoration.py) (Full quantitative evaluation engine with PSNR, SSIM, LPIPS, ArcFace similarity, and JSON/markdown reporting)
+- [NEW] [train_on_colab.ipynb](file:///d:/.gemini-scratch/custom-ai-enhancer/train_on_colab.ipynb) (1-click automated Colab GPU training notebook)
+- [MODIFY] [wink_enhancer.py](file:///d:/.gemini-scratch/custom-ai-enhancer/wink_enhancer.py) (Added `create_comparison_animation` GIF generator)
+- [MODIFY] [app.py](file:///d:/.gemini-scratch/custom-ai-enhancer/app.py) (Added Custom Presets Manager and Before/After Comparison GIF download button)
+- [MODIFY] [tools/test_evaluation_workflow.py](file:///d:/.gemini-scratch/custom-ai-enhancer/tools/test_evaluation_workflow.py) (Added evaluator and animation regression tests)
+- [MODIFY] [tools/test_all.py](file:///d:/.gemini-scratch/custom-ai-enhancer/tools/test_all.py) (Added `-u` unbuffered flag to test subprocess runner)
+
+
 
 
 

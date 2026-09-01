@@ -50,42 +50,25 @@ def main():
         models_dir = os.path.join(active_path, "models")
         if os.path.exists(models_dir):
             pth_files = glob.glob(os.path.join(models_dir, "*.pth"))
-            # Find the highest iteration index in models
-            indices = []
+            # A resumable checkpoint consists of a state file plus generator
+            # and discriminator weights with the same iteration number.
+            # Never clean these directories independently: doing so leaves a
+            # state file that BasicSR cannot resume from.
+            generator_indices = set()
+            discriminator_indices = set()
             for filepath in pth_files:
                 basename = os.path.basename(filepath)
                 if "latest" in basename:
                     continue
-                # format is net_g_XX.pth or net_d_XX.pth
                 try:
-                    parts = basename.replace(".pth", "").split("_")
-                    idx = int(parts[-1])
-                    indices.append(idx)
+                    label, idx_text = basename.replace(".pth", "").rsplit("_", 1)
+                    idx = int(idx_text)
+                    if label == "net_g":
+                        generator_indices.add(idx)
+                    elif label == "net_d":
+                        discriminator_indices.add(idx)
                 except ValueError:
                     continue
-            
-            if indices:
-                highest_idx = max(indices)
-                print(f"Active run highest iteration index: {highest_idx}")
-                # We want to keep:
-                # - files with "latest" in their name
-                # - files matching highest_idx
-                # - files matching highest_idx - 5 (as backup)
-                keep_indices = {highest_idx, highest_idx - 5}
-                
-                for filepath in pth_files:
-                    basename = os.path.basename(filepath)
-                    if "latest" in basename:
-                        continue
-                    try:
-                        parts = basename.replace(".pth", "").split("_")
-                        idx = int(parts[-1])
-                        if idx not in keep_indices:
-                            file_size = os.path.getsize(filepath)
-                            os.remove(filepath)
-                            total_freed += file_size
-                    except Exception as e:
-                        print(f"Error removing {basename}: {e}")
                         
         # Scan training_states directory
         states_dir = os.path.join(active_path, "training_states")
@@ -100,20 +83,38 @@ def main():
                 except ValueError:
                     continue
             
-            if state_indices:
-                highest_state_idx = max(state_indices)
-                keep_state_indices = {highest_state_idx, highest_state_idx - 5}
-                
-                for filepath in state_files:
+            complete_indices = generator_indices & discriminator_indices & set(state_indices)
+            if complete_indices:
+                # Keep the two newest complete checkpoint triplets, which
+                # provides one rollback point without breaking resume.
+                keep_indices = set(sorted(complete_indices, reverse=True)[:2])
+                print(f"Keeping complete checkpoints: {sorted(keep_indices, reverse=True)}")
+
+                for filepath in pth_files:
                     basename = os.path.basename(filepath)
+                    if "latest" in basename:
+                        continue
                     try:
-                        idx = int(basename.replace(".state", ""))
-                        if idx not in keep_state_indices:
+                        idx = int(basename.replace(".pth", "").rsplit("_", 1)[1])
+                        if idx not in keep_indices:
                             file_size = os.path.getsize(filepath)
                             os.remove(filepath)
                             total_freed += file_size
                     except Exception as e:
                         print(f"Error removing {basename}: {e}")
+
+                for filepath in state_files:
+                    basename = os.path.basename(filepath)
+                    try:
+                        idx = int(basename.replace(".state", ""))
+                        if idx not in keep_indices:
+                            file_size = os.path.getsize(filepath)
+                            os.remove(filepath)
+                            total_freed += file_size
+                    except Exception as e:
+                        print(f"Error removing {basename}: {e}")
+            else:
+                print("No complete checkpoint triplet found; refusing to delete checkpoint files.")
                         
     print(f"\nSUCCESS: Cleanup completed! Freed up {total_freed / 1024 / 1024 / 1024:.2f} GB of disk space.")
 

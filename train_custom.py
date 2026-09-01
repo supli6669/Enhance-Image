@@ -11,6 +11,42 @@ import glob
 
 import argparse
 
+
+def find_latest_complete_checkpoint(experiments_dir: str):
+    """Return the newest resumable CodeFormer checkpoint.
+
+    BasicSR needs a training-state file plus the generator and discriminator
+    weights from the *same* iteration.  A state file by itself only contains
+    optimizer and scheduler state, so resuming from it would fail or corrupt
+    the run.
+    """
+    pattern = os.path.join(
+        experiments_dir, "*_CodeFormer_stage3_custom", "training_states", "*.state"
+    )
+    candidates = []
+    for state_path in glob.glob(pattern):
+        try:
+            iteration = int(os.path.splitext(os.path.basename(state_path))[0])
+        except ValueError:
+            continue
+
+        experiment_dir = os.path.dirname(os.path.dirname(state_path))
+        models_dir = os.path.join(experiment_dir, "models")
+        required_files = [
+            os.path.join(models_dir, f"net_g_{iteration}.pth"),
+            os.path.join(models_dir, f"net_d_{iteration}.pth"),
+        ]
+        candidates.append((iteration, state_path, required_files))
+
+    for iteration, state_path, required_files in sorted(candidates, reverse=True):
+        if all(os.path.isfile(path) for path in required_files):
+            return iteration, state_path
+        missing = ", ".join(os.path.basename(path) for path in required_files if not os.path.isfile(path))
+        print(f"Skipping incomplete checkpoint {iteration}: missing {missing}")
+
+    return None, None
+
+
 def main():
     parser = argparse.ArgumentParser(description="Train CodeFormer with custom parameters.")
     parser.add_argument("--verify", action="store_true", help="Run 2 iterations for verification purposes.")
@@ -92,22 +128,7 @@ def main():
     
     # 4. Auto-detect resume state from the latest experiment checkpoint
     experiments_dir = os.path.join(codeformer_dir, "experiments")
-    latest_state = None
-    latest_state_iter = 0
-    
-    # Search for existing experiment directories matching our config name pattern
-    exp_pattern = os.path.join(experiments_dir, "*_CodeFormer_stage3_custom", "training_states", "*.state")
-    state_files = glob.glob(exp_pattern)
-    
-    for state_file in state_files:
-        basename = os.path.basename(state_file)
-        try:
-            iter_num = int(basename.replace(".state", ""))
-            if iter_num > latest_state_iter:
-                latest_state_iter = iter_num
-                latest_state = state_file
-        except ValueError:
-            continue
+    latest_state_iter, latest_state = find_latest_complete_checkpoint(experiments_dir)
     
     if latest_state:
         print(f"\n>>> RESUME MODE: Found checkpoint at iteration {latest_state_iter}")

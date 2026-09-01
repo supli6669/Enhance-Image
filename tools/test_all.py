@@ -16,7 +16,7 @@ def run_test_script(script_name):
     print(f"==================================================")
     
     t0 = time.time()
-    cmd = [sys.executable, script_path]
+    cmd = [sys.executable, "-u", script_path]
     res = subprocess.run(cmd, cwd=project_dir)
     t1 = time.time()
     
