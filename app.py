@@ -303,12 +303,17 @@ def get_pipeline():
 # The dashboard must not initialise the heavy model while CPU training is live.
 pipeline = None
 
+APP_VERSION = "v2.4.0 (Build 2026.09.02)"
+
 # ── Sidebar Controls (Minimalist & Clean) ───────────────────────────────────────
 with st.sidebar:
-    st.markdown("""
+    st.markdown(f"""
     <div class="brand-header">
         <h2>✨ Wink Studio</h2>
         <p>AI Portrait & Image Restoration</p>
+        <div style="margin-top: 6px;">
+            <span style="background: rgba(99, 102, 241, 0.18); color: #818cf8; font-size: 0.76rem; padding: 3px 8px; border-radius: 9999px; font-weight: 600; border: 1px solid rgba(99, 102, 241, 0.3);">{APP_VERSION}</span>
+        </div>
     </div>
     """, unsafe_allow_html=True)
 
@@ -495,7 +500,14 @@ with st.sidebar:
                 st.rerun()
 
 # ── Main Header ─────────────────────────────────────────────────────────────────
-st.markdown('<div class="hero-title">AI Portrait Enhancer</div>', unsafe_allow_html=True)
+st.markdown(f'''
+<div style="display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; margin-bottom: 0.2rem;">
+    <div class="hero-title" style="margin-bottom: 0;">AI Portrait Enhancer</div>
+    <div style="background: rgba(99, 102, 241, 0.15); color: #818cf8; font-size: 0.82rem; padding: 4px 12px; border-radius: 9999px; font-weight: 600; border: 1px solid rgba(99, 102, 241, 0.35);">
+        ✨ {APP_VERSION}
+    </div>
+</div>
+''', unsafe_allow_html=True)
 st.markdown('<div class="hero-sub">Restore blurry portraits, skin texture & eye detail with studio-level clarity</div>', unsafe_allow_html=True)
 
 with st.expander("📈 Training Dashboard", expanded=False):

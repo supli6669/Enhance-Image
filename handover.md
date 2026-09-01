@@ -1385,6 +1385,25 @@ Resolved `AxiosError: Request failed with status code 403` occurring during imag
 - [NEW] [.streamlit/config.toml](file:///d:/.gemini-scratch/custom-ai-enhancer/.streamlit/config.toml) (Disabled CORS & XSRF for Hugging Face Spaces iframe file uploads)
 - [MODIFY] [Dockerfile](file:///d:/.gemini-scratch/custom-ai-enhancer/Dockerfile) (Updated CMD with CORS/XSRF flags)
 
+---
+
+## Task 29: Live UI Version Badge (`v2.4.0`)
+
+**Date:** 2026-09-02  
+**Status:** ✅ Completed
+
+### Overview
+Added explicit version tracking badges in the Streamlit application UI so users can immediately confirm whether a cloud deployment (Hugging Face Spaces) has pulled and built the latest update:
+
+1. **Version Constant**: Added `APP_VERSION = "v2.4.0 (Build 2026.09.02)"`.
+2. **Visual Badges**:
+   - Sidebar branding badge under `✨ Wink Studio`.
+   - Main page Hero Title header badge with glowing indigo theme styling.
+
+### Code Changes
+- [MODIFY] [app.py](file:///d:/.gemini-scratch/custom-ai-enhancer/app.py) (Added `APP_VERSION` badge to sidebar and main hero title)
+
+
 
 
 
