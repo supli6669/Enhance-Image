@@ -428,9 +428,11 @@ with st.sidebar:
         color_match = st.checkbox("Auto Skin Tone Alignment", value=default_color)
         
         st.markdown("**🎭 Facial Organ Enhancements**")
-        enable_eyes = st.checkbox("👁️ Eye Sparkle & Contrast Boost", value=default_eye)
+        enable_eyes = st.checkbox("👁️ Eye Sparkle & Sclera Glow", value=default_eye)
         enable_lips = st.checkbox("👄 Lip Saturation & Definition", value=default_lip)
         enable_skin = st.checkbox("💆 Real Skin Grain Retention", value=default_skin)
+        enable_teeth = st.checkbox("🦷 Natural Teeth Whitening", value=True)
+        enable_tone_glow = st.checkbox("✨ Studio Skin Glow & White Balance", value=True)
 
         chromatic_fix = st.toggle("🌈 Chromatic Aberration Correction", value=False, help="Radial channel realignment for old lenses and color fringing")
         bg_upscale = st.toggle("Real-ESRGAN Background Upscale", value=False)
@@ -452,6 +454,8 @@ with st.sidebar:
                 'eye': enable_eyes,
                 'lip': enable_lips,
                 'skin': enable_skin,
+                'teeth': enable_teeth,
+                'tone_glow': enable_tone_glow,
                 'chromatic': chromatic_fix
             }
             st.success(f"Saved custom preset: '{p_name}'")
@@ -514,6 +518,8 @@ with tab_photo:
             'eye': enable_eyes,
             'lip': enable_lips,
             'skin': enable_skin,
+            'teeth': enable_teeth,
+            'tone_glow': enable_tone_glow,
             'chromatic': chromatic_fix,
             'bg_up': bg_upscale,
             'face_up': face_upscale
@@ -560,6 +566,8 @@ with tab_photo:
                     'enable_eyes': enable_eyes,
                     'enable_lips': enable_lips,
                     'enable_skin': enable_skin,
+                    'enable_teeth': enable_teeth,
+                    'enable_tone_glow': enable_tone_glow,
                     'chromatic_aberration': chromatic_fix,
                     'progress_callback': local_progress_callback,
                 }
@@ -828,6 +836,8 @@ with tab_batch:
                     enable_eyes=enable_eyes,
                     enable_lips=enable_lips,
                     enable_skin=enable_skin,
+                    enable_teeth=enable_teeth,
+                    enable_tone_glow=enable_tone_glow,
                     chromatic_aberration=chromatic_fix,
                     progress_callback=b_callback
                 )

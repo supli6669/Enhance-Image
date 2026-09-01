@@ -104,20 +104,19 @@ class WinkQualityEnhancer:
             print(f"[WinkEnhancer] Skin grain warning: {e}")
             return restored_face
 
-    def enhance_eyes_and_lips(self, face_img: np.ndarray, parse_mask: np.ndarray = None, enable_eyes: bool = True, enable_lips: bool = True) -> np.ndarray:
+    def whiten_teeth(self, face_img: np.ndarray, parse_mask: np.ndarray = None, strength: float = 0.35) -> np.ndarray:
         """
-        Enhance eyes (catchlight, contrast, sharpness) and lips using facial parsing mask.
+        Studio Natural Teeth Whitening:
+        Isolates teeth/mouth region using parsing mask, desaturates yellow color cast in LAB space,
+        and lifts luminance naturally without artificial chalky/over-bleached artifacts.
         """
-        if parse_mask is None:
-            # Fallback: General soft unsharp mask on entire face
-            blur = cv2.GaussianBlur(face_img, (0, 0), 2.0)
-            return cv2.addWeighted(face_img, 1.15, blur, -0.15, 0)
+        if strength <= 0.0 or parse_mask is None or face_img is None:
+            return face_img
 
         try:
             parse_mask_2d = np.squeeze(parse_mask)
             if parse_mask_2d.ndim != 2:
-                blur = cv2.GaussianBlur(face_img, (0, 0), 2.0)
-                return cv2.addWeighted(face_img, 1.15, blur, -0.15, 0)
+                return face_img
 
             h, w = face_img.shape[:2]
             if parse_mask_2d.shape[:2] != (h, w):
@@ -125,48 +124,183 @@ class WinkQualityEnhancer:
             else:
                 parse_mask_res = parse_mask_2d
 
+            # Teeth / Mouth opening mask (index 11 in facexlib / BiSeNet)
+            teeth_mask = (parse_mask_res == 11).astype(np.uint8)
+            if not np.any(teeth_mask):
+                return face_img
+
+            # Convert to LAB color space
+            lab = cv2.cvtColor(face_img, cv2.COLOR_BGR2LAB).astype(np.float32)
+            l, a, b = cv2.split(lab)
+
+            # Mask smoothing for seamless transition
+            teeth_mask_float = cv2.GaussianBlur(teeth_mask.astype(np.float32), (5, 5), 0)
+
+            # In LAB: b > 128 is yellow, b < 128 is blue. Desaturate yellow cast:
+            b_diff = b - 128.0
+            b_corrected = b - (b_diff * strength * 0.70)
+            
+            # Gently lift lightness L on teeth (boost bright teeth pixels safely)
+            l_boost = l + ((255.0 - l) * strength * 0.18)
+            
+            l_final = l * (1.0 - teeth_mask_float) + l_boost * teeth_mask_float
+            b_final = b * (1.0 - teeth_mask_float) + b_corrected * teeth_mask_float
+
+            lab_whitened = cv2.merge([l_final, a, b_final])
+            lab_whitened = np.clip(lab_whitened, 0, 255).astype(np.uint8)
+            return cv2.cvtColor(lab_whitened, cv2.COLOR_LAB2BGR)
+        except Exception as e:
+            print(f"[WinkEnhancer] Teeth whitening warning: {e}")
+            return face_img
+
+    def brighten_eyes_and_sclera(self, face_img: np.ndarray, parse_mask: np.ndarray = None, strength: float = 0.35) -> np.ndarray:
+        """
+        Studio Ocular Catchlight & Sclera Glow:
+        Boosts iris specular highlights (catchlights) and clarifies eye whites without over-sharpening.
+        """
+        if strength <= 0.0 or parse_mask is None or face_img is None:
+            return face_img
+
+        try:
+            parse_mask_2d = np.squeeze(parse_mask)
+            if parse_mask_2d.ndim != 2:
+                return face_img
+
+            h, w = face_img.shape[:2]
+            if parse_mask_2d.shape[:2] != (h, w):
+                parse_mask_res = cv2.resize(parse_mask_2d.astype(np.uint8), (w, h), interpolation=cv2.INTER_NEAREST)
+            else:
+                parse_mask_res = parse_mask_2d
+
+            eye_mask = ((parse_mask_res == 4) | (parse_mask_res == 5)).astype(np.uint8)
+            if not np.any(eye_mask):
+                return face_img
+
+            kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
+            eye_mask_dilated = cv2.dilate(eye_mask, kernel, iterations=1)
+            eye_mask_float = cv2.GaussianBlur(eye_mask_dilated.astype(np.float32), (3, 3), 0)[:, :, np.newaxis]
+
+            # In LAB color space: apply CLAHE for iris depth and specular highlights
+            lab = cv2.cvtColor(face_img, cv2.COLOR_BGR2LAB)
+            l, a, b = cv2.split(lab)
+            l_clahe = self.clahe_eye.apply(l)
+
+            # Specular catchlight amplification on bright reflections
+            bright_catchlight = (l > 190).astype(np.float32)
+            l_sparkle = np.clip(l.astype(np.float32) + bright_catchlight * (35.0 * strength), 0, 255).astype(np.uint8)
+            l_enhanced = np.where(eye_mask_dilated == 1, cv2.addWeighted(l_clahe, 0.7, l_sparkle, 0.3, 0), l)
+
+            lab_eye = cv2.merge([l_enhanced, a, b])
+            eye_bgr = cv2.cvtColor(lab_eye, cv2.COLOR_LAB2BGR)
+
+            # High-pass subtle micro-sharpening on eye details (eyelashes, pupils)
+            eye_blur = cv2.GaussianBlur(eye_bgr, (3, 3), 0)
+            eye_sharp = cv2.addWeighted(eye_bgr, 1.0 + (0.35 * strength), eye_blur, -(0.35 * strength), 0)
+
+            result = (face_img.astype(np.float32) * (1.0 - eye_mask_float) + eye_sharp.astype(np.float32) * eye_mask_float)
+            return np.clip(result, 0, 255).astype(np.uint8)
+        except Exception as e:
+            print(f"[WinkEnhancer] Eye brightness warning: {e}")
+            return face_img
+
+    def balance_portrait_lighting_and_tone(self, face_img: np.ndarray, strength: float = 0.25) -> np.ndarray:
+        """
+        Studio Lighting & Skin Glow Tone Balancer:
+        Performs Gray-World auto white balance and shadows recovery with healthy skin radiance.
+        """
+        if strength <= 0.0 or face_img is None:
+            return face_img
+
+        try:
+            # 1. Shades of Gray Auto White Balance
+            img_f = face_img.astype(np.float32)
+            mean_b = np.mean(img_f[:, :, 0]) + 1e-5
+            mean_g = np.mean(img_f[:, :, 1]) + 1e-5
+            mean_r = np.mean(img_f[:, :, 2]) + 1e-5
+            mean_gray = (mean_b + mean_g + mean_r) / 3.0
+
+            scale_b = 1.0 + ((mean_gray / mean_b) - 1.0) * (strength * 0.6)
+            scale_g = 1.0 + ((mean_gray / mean_g) - 1.0) * (strength * 0.6)
+            scale_r = 1.0 + ((mean_gray / mean_r) - 1.0) * (strength * 0.6)
+
+            wb_img = np.zeros_like(img_f)
+            wb_img[:, :, 0] = img_f[:, :, 0] * scale_b
+            wb_img[:, :, 1] = img_f[:, :, 1] * scale_g
+            wb_img[:, :, 2] = img_f[:, :, 2] * scale_r
+            wb_img = np.clip(wb_img, 0, 255).astype(np.uint8)
+
+            # 2. LAB Shadow Lift & Radiance Glow
+            lab = cv2.cvtColor(wb_img, cv2.COLOR_BGR2LAB).astype(np.float32)
+            l, a, b = cv2.split(lab)
+
+            # Quadratic shadow recovery curve: lifts dark shadows while protecting highlights
+            shadow_boost = (l * (255.0 - l) / 255.0) * (strength * 0.25)
+            l_lifted = np.clip(l + shadow_boost, 0, 255)
+
+            # Subtle pink/warm skin tone enrichment (slight a-channel boost)
+            a_glow = np.clip(a + (strength * 2.0), 0, 255)
+
+            balanced_lab = cv2.merge([l_lifted, a_glow, b])
+            balanced_bgr = cv2.cvtColor(balanced_lab.astype(np.uint8), cv2.COLOR_LAB2BGR)
+            return cv2.addWeighted(face_img, 1.0 - strength, balanced_bgr, strength, 0)
+        except Exception as e:
+            print(f"[WinkEnhancer] Portrait lighting balance warning: {e}")
+            return face_img
+
+    def enhance_eyes_and_lips(self, face_img: np.ndarray, parse_mask: np.ndarray = None, enable_eyes: bool = True, enable_lips: bool = True, enable_teeth: bool = True, enable_tone_glow: bool = True) -> np.ndarray:
+        """
+        Enhance eyes (catchlight sparkle), teeth (whitening), lips and overall studio skin glow.
+        """
+        result = face_img.copy()
+
+        # 1. Studio Lighting and Skin Glow Tone Balance
+        if enable_tone_glow:
+            result = self.balance_portrait_lighting_and_tone(result, strength=0.25)
+
+        # 2. Teeth Whitening
+        if enable_teeth and parse_mask is not None:
+            result = self.whiten_teeth(result, parse_mask, strength=0.35)
+
+        # 3. Ocular Catchlight & Sclera Glow
+        if enable_eyes and parse_mask is not None:
+            result = self.brighten_eyes_and_sclera(result, parse_mask, strength=0.35)
+
+        if parse_mask is None:
+            # Fallback: General soft unsharp mask on entire face
+            blur = cv2.GaussianBlur(result, (0, 0), 2.0)
+            return cv2.addWeighted(result, 1.15, blur, -0.15, 0)
+
+        try:
+            parse_mask_2d = np.squeeze(parse_mask)
+            if parse_mask_2d.ndim != 2:
+                blur = cv2.GaussianBlur(result, (0, 0), 2.0)
+                return cv2.addWeighted(result, 1.15, blur, -0.15, 0)
+
+            h, w = result.shape[:2]
+            if parse_mask_2d.shape[:2] != (h, w):
+                parse_mask_res = cv2.resize(parse_mask_2d.astype(np.uint8), (w, h), interpolation=cv2.INTER_NEAREST)
+            else:
+                parse_mask_res = parse_mask_2d
 
             # Facial feature mask IDs in facexlib:
-            # 4: Left Eye, 5: Right Eye, 6: Glasses, 11: Upper Lip, 12: Lower Lip, 13: Inner Mouth
-            eye_mask = ((parse_mask_res == 4) | (parse_mask_res == 5) | (parse_mask_res == 6)).astype(np.uint8)
-            lip_mask = ((parse_mask_res == 11) | (parse_mask_res == 12) | (parse_mask_res == 13)).astype(np.uint8)
+            # 12: Upper Lip, 13: Lower Lip
+            lip_mask = ((parse_mask_res == 12) | (parse_mask_res == 13)).astype(np.uint8)
 
-            result = face_img.copy()
-
-            # 1. Enhance Eyes: CLAHE on L channel + Unsharp Masking
-            if enable_eyes and np.any(eye_mask):
-                # Expand eye mask slightly for seamless blending
-                kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
-                eye_mask_dilated = cv2.dilate(eye_mask, kernel, iterations=1)
-                
-                # Convert to LAB for luminance contrast
-                lab = cv2.cvtColor(result, cv2.COLOR_BGR2LAB)
-                l, a, b = cv2.split(lab)
-                
-                l_eye_clahe = self.clahe_eye.apply(l)
-                l_blended = np.where(eye_mask_dilated == 1, l_eye_clahe, l)
-                lab_enhanced = cv2.merge([l_blended, a, b])
-                result = cv2.cvtColor(lab_enhanced, cv2.COLOR_LAB2BGR)
-                
-                # Unsharp Mask on Eyes
-                eye_blur = cv2.GaussianBlur(result, (3, 3), 0)
-                eye_sharp = cv2.addWeighted(result, 1.3, eye_blur, -0.3, 0)
-                
-                eye_mask_float = cv2.GaussianBlur(eye_mask_dilated.astype(np.float32), (3, 3), 0)[:, :, np.newaxis]
-                result = (result * (1.0 - eye_mask_float) + eye_sharp * eye_mask_float).astype(np.uint8)
-
-            # 2. Enhance Lips: Subtle contrast and saturation boost
+            # 4. Enhance Lips: Subtle natural saturation & contrast boost
             if enable_lips and np.any(lip_mask):
                 lip_mask_float = cv2.GaussianBlur(lip_mask.astype(np.float32), (3, 3), 0)[:, :, np.newaxis]
                 hsv = cv2.cvtColor(result, cv2.COLOR_BGR2HSV).astype(np.float32)
-                hsv[:, :, 1] = np.where(lip_mask == 1, np.clip(hsv[:, :, 1] * 1.1, 0, 255), hsv[:, :, 1]) # Boost saturation slightly
-                lip_enhanced = cv2.cvtColor(hsv.astype(np.uint8), cv2.COLOR_HSV2BGR)
-                result = (result * (1.0 - lip_mask_float) + lip_enhanced * lip_mask_float).astype(np.uint8)
+                h_ch, s_ch, v_ch = cv2.split(hsv)
+                s_boost = np.clip(s_ch * 1.15, 0, 255)
+                v_boost = np.clip(v_ch * 1.05, 0, 255)
+                hsv_lip = cv2.merge([h_ch, s_boost, v_boost]).astype(np.uint8)
+                lip_bgr = cv2.cvtColor(hsv_lip, cv2.COLOR_HSV2BGR)
+                result = (result.astype(np.float32) * (1.0 - lip_mask_float) + lip_bgr.astype(np.float32) * lip_mask_float).astype(np.uint8)
 
-            return result
+            return np.clip(result, 0, 255).astype(np.uint8)
         except Exception as e:
-            print(f"[WinkEnhancer] Eye/Lip enhancement warning: {e}")
-            return face_img
+            print(f"[WinkEnhancer] Organ enhancement warning: {e}")
+            return result
 
     def balance_skin_tone_lab(self, face_img: np.ndarray) -> np.ndarray:
         """
@@ -253,7 +387,7 @@ class WinkQualityEnhancer:
             print(f"[WinkEnhancer] Adaptive sharpening warning: {e}")
             return img
 
-    def enhance_face(self, restored_face: np.ndarray, cropped_original: np.ndarray = None, parse_mask: np.ndarray = None, wink_mode: bool = True, eye_enhancement: bool = True, skin_grain: float = 0.15, color_match: bool = True, enable_eyes: bool = True, enable_lips: bool = True, enable_skin: bool = True, sharpen_amount: float = 0.2) -> np.ndarray:
+    def enhance_face(self, restored_face: np.ndarray, cropped_original: np.ndarray = None, parse_mask: np.ndarray = None, wink_mode: bool = True, eye_enhancement: bool = True, skin_grain: float = 0.15, color_match: bool = True, enable_eyes: bool = True, enable_lips: bool = True, enable_skin: bool = True, enable_teeth: bool = True, enable_tone_glow: bool = True, sharpen_amount: float = 0.2) -> np.ndarray:
         """
         Master method to execute Wink-level enhancement pipeline on a restored face crop.
         """
@@ -262,22 +396,33 @@ class WinkQualityEnhancer:
 
         out_face = restored_face.copy()
 
-        # Step A: Reinhard Color Transfer (Auto Skin Tone Alignment to original face/neck)
+        # Step A: Studio Lighting and Skin Glow Tone Balance (Auto White Balance & Radiance)
+        if enable_tone_glow:
+            out_face = self.balance_portrait_lighting_and_tone(out_face, strength=0.25)
+
+        # Step B: Reinhard Color Transfer (Auto Skin Tone Alignment to original face/neck)
         if color_match and cropped_original is not None:
             out_face = self.match_color_reinhard(out_face, cropped_original, blend=0.4)
 
-        # Step B: Skin tone & micro-contrast balance
+        # Step C: Skin tone & micro-contrast balance
         out_face = self.balance_skin_tone_lab(out_face)
 
-        # Step C: Eye & Lip local enhancement
-        if eye_enhancement and (enable_eyes or enable_lips):
-            out_face = self.enhance_eyes_and_lips(out_face, parse_mask=parse_mask, enable_eyes=enable_eyes, enable_lips=enable_lips)
+        # Step D: Eye (sparkle), Teeth (whitening) & Lip local enhancement
+        if eye_enhancement and (enable_eyes or enable_lips or enable_teeth):
+            out_face = self.enhance_eyes_and_lips(
+                out_face,
+                parse_mask=parse_mask,
+                enable_eyes=enable_eyes,
+                enable_lips=enable_lips,
+                enable_teeth=enable_teeth,
+                enable_tone_glow=False
+            )
 
-        # Step D: Multi-Scale Edge-Aware Adaptive Sharpening
+        # Step E: Multi-Scale Edge-Aware Adaptive Sharpening
         if sharpen_amount > 0.0:
             out_face = self.apply_adaptive_sharpening(out_face, sharpen_amount=sharpen_amount)
 
-        # Step E: Real Skin Grain Injection (Frequency Separation)
+        # Step F: Real Skin Grain Injection (Frequency Separation)
         if enable_skin and skin_grain > 0.0 and cropped_original is not None:
             out_face = self.apply_skin_grain(out_face, cropped_original, skin_mask=parse_mask, grain_amount=skin_grain)
 

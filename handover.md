@@ -1273,6 +1273,40 @@ Integrated high-productivity batch workflows, live browser webcam capture, and l
 - [MODIFY] [tools/test_all.py](file:///d:/.gemini-scratch/custom-ai-enhancer/tools/test_all.py) (Added batch test to master suite)
 - [MODIFY] [app.py](file:///d:/.gemini-scratch/custom-ai-enhancer/app.py) (Added Tab 3 Batch Processing, live camera snapshot, and chromatic toggle)
 
+---
+
+## Task 25: Studio Portrait Beauty Suite (Teeth Whitening, Eye Catchlight Sparkle & Auto Tone Balance)
+
+**Date:** 2026-09-02  
+**Status:** ✅ Completed
+
+### Overview
+Elevated aesthetic visual quality across portraits by implementing studio-grade facial beautification algorithms:
+
+1. **Natural Teeth Whitening (`whiten_teeth`)**:
+   - Isolates teeth region using facexlib parsing mask (category index 11).
+   - In LAB space, desaturates yellow color cast ($b$-channel pull towards 128) and lifts luminance $L$ with smooth edge feathering to prevent chalky/over-bleached artifacts.
+
+2. **Ocular Catchlight Sparkle & Sclera Glow (`brighten_eyes_and_sclera`)**:
+   - Isolates eye regions (indices 4, 5).
+   - Isolates specular reflections ($L > 190$) and amplifies catchlights with micro-contrast.
+   - Clarifies eye whites and applies subtle edge-preserving sharpening on eyelashes.
+
+3. **Studio Skin Glow & Auto White Balance (`balance_portrait_lighting_and_tone`)**:
+   - Implemented Shades of Gray / Gray-World auto white balance to fix color casts.
+   - Quadratic shadow recovery lifts dark shadows while protecting highlights, adding a natural healthy pink/warm skin radiance.
+
+4. **Streamlit UI Controls & Test Coverage**:
+   - Added `🦷 Natural Teeth Whitening` and `✨ Studio Skin Glow & White Balance` checkboxes to sidebar and presets.
+   - Expanded `tools/test_batch_pipeline.py` with `test_studio_beauty_engine()`.
+
+### Code Changes
+- [MODIFY] [wink_enhancer.py](file:///d:/.gemini-scratch/custom-ai-enhancer/wink_enhancer.py) (Added `whiten_teeth()`, `brighten_eyes_and_sclera()`, `balance_portrait_lighting_and_tone()`, updated `enhance_eyes_and_lips()` and `enhance_face()`)
+- [MODIFY] [pipeline.py](file:///d:/.gemini-scratch/custom-ai-enhancer/pipeline.py) (Connected `enable_teeth` and `enable_tone_glow` into `process_image` and `paste_faces_custom_blend`)
+- [MODIFY] [app.py](file:///d:/.gemini-scratch/custom-ai-enhancer/app.py) (Added beauty checkboxes to sidebar, custom preset manager, Tab 1, and Tab 3)
+- [MODIFY] [tools/test_batch_pipeline.py](file:///d:/.gemini-scratch/custom-ai-enhancer/tools/test_batch_pipeline.py) (Added `test_studio_beauty_engine` unit tests)
+
+
 
 
 

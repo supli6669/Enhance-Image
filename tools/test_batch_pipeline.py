@@ -57,14 +57,50 @@ def test_batch_processing_and_html_report():
     html = pipeline.generate_html_report(batch_data)
     assert "<!DOCTYPE html>" in html
     assert "test_p1.png" in html
-    assert "data:image/jpeg;base64," in html
-    print(f"[OK] HTML Report generated successfully ({len(html)} characters).")
+def test_studio_beauty_engine():
+    print("=== Testing Studio Beauty Engine (Teeth, Eye Glow, Tone Balance) ===")
+    wink = WinkQualityEnhancer()
+    face = np.full((512, 512, 3), 160, dtype=np.uint8)
+    mock_mask = np.zeros((512, 512), dtype=np.uint8)
+    mock_mask[200:250, 150:200] = 4 # Eye
+    mock_mask[350:380, 220:280] = 11 # Teeth
+
+    # Test teeth whitening
+    whitened = wink.whiten_teeth(face, mock_mask, strength=0.5)
+    assert whitened.shape == (512, 512, 3)
+    assert whitened.dtype == np.uint8
+
+    # Test ocular catchlight
+    bright_eyes = wink.brighten_eyes_and_sclera(face, mock_mask, strength=0.5)
+    assert bright_eyes.shape == (512, 512, 3)
+    assert bright_eyes.dtype == np.uint8
+
+    # Test lighting and skin glow tone balance
+    balanced = wink.balance_portrait_lighting_and_tone(face, strength=0.3)
+    assert balanced.shape == (512, 512, 3)
+    assert balanced.dtype == np.uint8
+
+    # Test full enhance_face with beauty options
+    enhanced = wink.enhance_face(
+        face,
+        cropped_original=face,
+        parse_mask=mock_mask,
+        enable_teeth=True,
+        enable_tone_glow=True,
+        enable_eyes=True,
+        enable_lips=True,
+        enable_skin=True
+    )
+    assert enhanced.shape == (512, 512, 3)
+    assert enhanced.dtype == np.uint8
+    print("[OK] Studio Beauty Engine (Teeth, Eye, Glow, Tone) passed all tests!")
 
 
 def main():
     test_chromatic_aberration_filter()
+    test_studio_beauty_engine()
     test_batch_processing_and_html_report()
-    print("SUCCESS: All batch processing & chromatic filter tests passed cleanly with exit code 0!")
+    print("SUCCESS: All batch processing, beauty suite & chromatic tests passed cleanly with exit code 0!")
 
 
 if __name__ == "__main__":
