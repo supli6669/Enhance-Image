@@ -1442,6 +1442,22 @@ Delivered 4 flagship studio-level photo restoration and visual aesthetics capabi
 - [NEW] [tools/test_studio_features.py](file:///d:/.gemini-scratch/custom-ai-enhancer/tools/test_studio_features.py) (Unit tests for all 4 studio features)
 - [MODIFY] [tools/test_all.py](file:///d:/.gemini-scratch/custom-ai-enhancer/tools/test_all.py) (Registered test_studio_features.py)
 
+---
+
+## Task 31: Fix Streamlit 1.38 `st.image` Parameter (`use_column_width`)
+
+**Date:** 2026-09-02  
+**Status:** ✅ Completed
+
+### Overview
+Fixed `TypeError: ImageMixin.image() got an unexpected keyword argument 'use_container_width'` occurring on Streamlit 1.38:
+- Replaced `use_container_width=True` with `use_column_width=True` in `app.py` for all `st.image` calls.
+- Verified syntax and execution.
+
+### Code Changes
+- [MODIFY] [app.py](file:///d:/.gemini-scratch/custom-ai-enhancer/app.py) (Changed `use_container_width` to `use_column_width` in `st.image`)
+
+
 
 
 

@@ -769,11 +769,11 @@ with tab_photo:
                 c_orig, c_enh = st.columns(2)
                 with c_orig:
                     st.markdown("##### 📷 Original Image")
-                    st.image(cv2.cvtColor(input_img, cv2.COLOR_BGR2RGB), use_container_width=True)
+                    st.image(cv2.cvtColor(input_img, cv2.COLOR_BGR2RGB), use_column_width=True)
 
                 with c_enh:
                     st.markdown("##### ✨ Wink Enhanced HD")
-                    st.image(cv2.cvtColor(enhanced_img, cv2.COLOR_BGR2RGB), use_container_width=True)
+                    st.image(cv2.cvtColor(enhanced_img, cv2.COLOR_BGR2RGB), use_column_width=True)
 
             st.markdown("<br>", unsafe_allow_html=True)
 
