@@ -1306,6 +1306,33 @@ Elevated aesthetic visual quality across portraits by implementing studio-grade 
 - [MODIFY] [app.py](file:///d:/.gemini-scratch/custom-ai-enhancer/app.py) (Added beauty checkboxes to sidebar, custom preset manager, Tab 1, and Tab 3)
 - [MODIFY] [tools/test_batch_pipeline.py](file:///d:/.gemini-scratch/custom-ai-enhancer/tools/test_batch_pipeline.py) (Added `test_studio_beauty_engine` unit tests)
 
+---
+
+## Task 26: Image Upload Robustness, EXIF Orientation Fix & Cloud Pre-Download Guard
+
+**Date:** 2026-09-02  
+**Status:** ✅ Completed
+
+### Overview
+Addressed upload decode edge cases, auto orientation, and cloud deployment cold start failures:
+
+1. **Auto EXIF Transpose & Bulletproof Image Decoding (`app.py`)**:
+   - Replaced fragile `image.verify()` check with `PIL.ImageOps.exif_transpose()` to ensure photos taken on smartphones (iPhone/Android) with EXIF orientation metadata are properly rotated before passing to OpenCV and face detectors.
+   - Automatically converts Palette, RGBA, CMYK, and Grayscale formats to standard 3-channel RGB/BGR arrays, preventing shape and channel mismatch exceptions.
+
+2. **Cloud Weight Download Reliability (`tools/download_weights.py` & `Dockerfile`)**:
+   - Added `User-Agent` headers and 1MB chunked streams to `download_weights.py` to prevent HTTP 403 Forbidden errors when fetching GitHub release assets.
+   - Added `RUN python tools/download_weights.py` into `Dockerfile` so that models are pre-packaged directly in the container image on Hugging Face Spaces, avoiding first-run network download failures or timeout crashes.
+
+3. **Master Verification**:
+   - Verified with `tools/test_batch_pipeline.py` and `test_all.py` (`exit code 0`).
+
+### Code Changes
+- [MODIFY] [app.py](file:///d:/.gemini-scratch/custom-ai-enhancer/app.py) (EXIF transpose and bulletproof image upload decoder)
+- [MODIFY] [tools/download_weights.py](file:///d:/.gemini-scratch/custom-ai-enhancer/tools/download_weights.py) (User-Agent header and chunked streaming download)
+- [MODIFY] [Dockerfile](file:///d:/.gemini-scratch/custom-ai-enhancer/Dockerfile) (Pre-download weights during Docker build)
+
+
 
 
 

@@ -37,6 +37,9 @@ RUN python tools/patch_and_install_basicsr.py
 # Copy all project files (including models/CodeFormer)
 COPY . /app/
 
+# Pre-download all essential model weights during Docker build so inference never fails or stalls on first request
+RUN python tools/download_weights.py
+
 # Create weights directories and make sure all permissions are wide open for Hugging Face non-root user (uid 1000)
 RUN mkdir -p /app/weights /app/weights/CodeFormer /app/weights/realesrgan /app/weights/facelib /tmp \
     && chmod -R 777 /app /tmp

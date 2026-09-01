@@ -3,30 +3,42 @@ import urllib.request
 import sys
 
 def download_file(url, save_path):
-    if os.path.exists(save_path):
+    if os.path.exists(save_path) and os.path.getsize(save_path) > 1000:
         print(f"File already exists: {save_path}. Skipping.")
         return
         
     print(f"Downloading {url} to {save_path}...")
     os.makedirs(os.path.dirname(save_path), exist_ok=True)
     
-    # Simple progress reporter
-    def report_hook(block_num, block_size, total_size):
-        read_so_far = block_num * block_size
-        if total_size > 0:
-            percent = min(100, read_so_far * 100 / total_size)
-            sys.stdout.write(f"\rProgress: {percent:.2f}% ({read_so_far / 1024 / 1024:.2f} MB of {total_size / 1024 / 1024:.2f} MB)")
-        else:
-            sys.stdout.write(f"\rProgress: {read_so_far / 1024 / 1024:.2f} MB")
-        sys.stdout.flush()
-
+    req = urllib.request.Request(
+        url,
+        headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
+    )
+    
     try:
-        urllib.request.urlretrieve(url, save_path, reporthook=report_hook)
+        with urllib.request.urlopen(req, timeout=120) as response, open(save_path, "wb") as out_file:
+            total_size = int(response.headers.get("Content-Length", 0))
+            downloaded = 0
+            block_size = 1024 * 1024 # 1 MB chunks
+            
+            while True:
+                buffer = response.read(block_size)
+                if not buffer:
+                    break
+                downloaded += len(buffer)
+                out_file.write(buffer)
+                if total_size > 0:
+                    pct = downloaded * 100.0 / total_size
+                    sys.stdout.write(f"\rProgress: {pct:.1f}% ({downloaded / 1024 / 1024:.1f} MB of {total_size / 1024 / 1024:.1f} MB)")
+                    sys.stdout.flush()
         print("\nDownload finished successfully.")
     except Exception as e:
         print(f"\nError downloading {url}: {e}")
         if os.path.exists(save_path):
-            os.remove(save_path)
+            try:
+                os.remove(save_path)
+            except OSError:
+                pass
         raise e
 
 def main():

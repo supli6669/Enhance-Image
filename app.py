@@ -18,28 +18,37 @@ MAX_IMAGE_PIXELS = 16_000_000
 
 
 def load_uploaded_image(uploaded_file):
-    """Validate upload limits before handing image bytes to OpenCV."""
+    """Validate upload limits and decode image bytes with auto EXIF orientation."""
     file_data = uploaded_file.getvalue()
     if len(file_data) > MAX_UPLOAD_BYTES:
         raise ValueError("Image is too large. Please upload a file smaller than 15 MB.")
 
     try:
-        with Image.open(BytesIO(file_data)) as image:
-            width, height = image.size
-            if width * height > MAX_IMAGE_PIXELS:
-                raise ValueError(
-                    "Image resolution is too large. Please upload an image up to 16 megapixels."
-                )
-            image.verify()
-    except (UnidentifiedImageError, OSError, Image.DecompressionBombError) as error:
-        raise ValueError("Could not decode image file. Please upload a valid portrait image.") from error
-
-    decoded_image = cv2.imdecode(np.frombuffer(file_data, dtype=np.uint8), cv2.IMREAD_COLOR)
-    if decoded_image is None:
-        raise ValueError("Could not decode image file. Please upload a valid portrait image.")
-    if decoded_image.shape[0] * decoded_image.shape[1] > MAX_IMAGE_PIXELS:
-        raise ValueError("Image resolution is too large. Please upload an image up to 16 megapixels.")
-    return decoded_image
+        from PIL import ImageOps
+        pil_img = Image.open(BytesIO(file_data))
+        pil_img = ImageOps.exif_transpose(pil_img)
+        
+        # Convert RGBA/Palette/Grayscale/CMYK to standard 3-channel RGB
+        if pil_img.mode != "RGB":
+            pil_img = pil_img.convert("RGB")
+            
+        width, height = pil_img.size
+        if width * height > MAX_IMAGE_PIXELS:
+            raise ValueError("Image resolution is too large. Please upload an image up to 16 megapixels.")
+            
+        rgb_arr = np.array(pil_img)
+        decoded_image = cv2.cvtColor(rgb_arr, cv2.COLOR_RGB2BGR)
+        return decoded_image
+    except ValueError:
+        raise
+    except Exception as error:
+        # Fallback to OpenCV decode
+        decoded_image = cv2.imdecode(np.frombuffer(file_data, dtype=np.uint8), cv2.IMREAD_COLOR)
+        if decoded_image is None:
+            raise ValueError("Could not decode image file. Please upload a valid JPG, PNG, or WEBP portrait.") from error
+        if decoded_image.shape[0] * decoded_image.shape[1] > MAX_IMAGE_PIXELS:
+            raise ValueError("Image resolution is too large. Please upload an image up to 16 megapixels.")
+        return decoded_image
 
 
 def enhanced_filename(original_name):
