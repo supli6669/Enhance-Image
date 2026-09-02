@@ -65,6 +65,23 @@ def install_realesrgan_deps():
             print(f"  [OK] {pkg} installed.")
         else:
             print(f"  [warn] {pkg} install failed (may already be present): {result.stderr[-200:]}")
+            
+    # Patch torchvision functional_tensor if needed
+    try:
+        import basicsr
+        basicsr_dir = os.path.dirname(basicsr.__file__)
+        deg_path = os.path.join(basicsr_dir, "data", "degradations.py")
+        if os.path.exists(deg_path):
+            with open(deg_path, "r", encoding="utf-8") as f:
+                txt = f.read()
+            if "functional_tensor" in txt:
+                txt = txt.replace("torchvision.transforms.functional_tensor", "torchvision.transforms.functional")
+                with open(deg_path, "w", encoding="utf-8") as f:
+                    f.write(txt)
+                print(f"  [OK] Patched degradations.py at {deg_path}")
+    except Exception as e:
+        print(f"  [warn] Could not patch degradations.py: {e}")
+        
     print("[OK] Dependencies ready.")
 
 

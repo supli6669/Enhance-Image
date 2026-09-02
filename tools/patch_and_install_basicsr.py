@@ -96,7 +96,25 @@ def main():
             f.write("# GENERATED VERSION FILE FOR CODEFORMER LOCAL BASICSR\n__version__ = '1.4.2'\n__gitsha__ = 'unknown'\nversion_info = (1, 4, 2)\n")
         print(f"Generated local version file at {v_file}")
 
-    print("BasicSR installed successfully!")
+    # 7. Patch torchvision.transforms.functional in installed basicsr degradations
+    try:
+        import site
+        site_packages = site.getsitepackages() if hasattr(site, 'getsitepackages') else []
+        site_packages.append(site.getusersitepackages())
+        for sp in site_packages:
+            deg_path = os.path.join(sp, "basicsr", "data", "degradations.py")
+            if os.path.exists(deg_path):
+                with open(deg_path, "r", encoding="utf-8") as f:
+                    txt = f.read()
+                if "functional_tensor" in txt:
+                    txt = txt.replace("torchvision.transforms.functional_tensor", "torchvision.transforms.functional")
+                    with open(deg_path, "w", encoding="utf-8") as f:
+                        f.write(txt)
+                    print(f"[OK] Successfully patched {deg_path}")
+    except Exception as e:
+        print(f"[WARN] Could not auto-patch site-packages degradations: {e}")
+
+    print("BasicSR installed and patched successfully!")
 
 if __name__ == "__main__":
     main()
