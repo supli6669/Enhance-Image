@@ -60,6 +60,16 @@ def main():
     # 1. Check GPU availability
     device = "cuda" if torch.cuda.is_available() else "cpu"
     num_gpus = torch.cuda.device_count() if device == "cuda" else 0
+    if device == "cuda":
+        try:
+            test_conv = torch.nn.Conv2d(3, 3, 3).cuda()
+            test_x = torch.randn(1, 3, 32, 32, device='cuda')
+            _ = test_conv(test_x)
+            print(f"CUDA Conv2D kernel verification PASSED on: {torch.cuda.get_device_name(0)}")
+        except Exception as e:
+            print(f"WARNING: CUDA kernel check failed ({e}). Falling back to CPU.")
+            device = "cpu"
+            num_gpus = 0
     print(f"Device detected: {device.upper()}")
     print(f"Number of GPUs available: {num_gpus}")
     
