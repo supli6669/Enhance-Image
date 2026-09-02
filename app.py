@@ -303,7 +303,7 @@ def get_pipeline():
 # The dashboard must not initialise the heavy model while CPU training is live.
 pipeline = None
 
-APP_VERSION = "v2.6.0 (Build 2026.09.02)"
+APP_VERSION = "v2.7.0 (Build 2026.09.02)"
 
 # ── Sidebar Controls (Minimalist & Clean) ───────────────────────────────────────
 with st.sidebar:
@@ -355,6 +355,10 @@ with st.sidebar:
         default_catchlight = cp.get('catchlight', True)
         default_hair = cp.get('hair', True)
         default_relighting = cp.get('relighting', True)
+        default_anti_glare = cp.get('anti_glare', True)
+        default_makeup = cp.get('makeup', True)
+        default_blush = cp.get('blush', 0.30)
+        default_eyebrow = cp.get('eyebrow', 0.35)
         default_bokeh = cp.get('bokeh', 0.0)
         default_lut = cp.get('lut', 'None')
         default_chromatic = cp.get('chromatic', False)
@@ -376,6 +380,10 @@ with st.sidebar:
         default_catchlight = True
         default_hair = True
         default_relighting = True
+        default_anti_glare = True
+        default_makeup = True
+        default_blush = 0.30
+        default_eyebrow = 0.35
         default_bokeh = 0.0
         default_lut = "None"
         default_chromatic = False
@@ -397,6 +405,10 @@ with st.sidebar:
         default_catchlight = False
         default_hair = False
         default_relighting = False
+        default_anti_glare = False
+        default_makeup = False
+        default_blush = 0.0
+        default_eyebrow = 0.0
         default_bokeh = 0.0
         default_lut = "None"
         default_chromatic = False
@@ -418,6 +430,10 @@ with st.sidebar:
         default_catchlight = True
         default_hair = True
         default_relighting = True
+        default_anti_glare = True
+        default_makeup = True
+        default_blush = 0.20
+        default_eyebrow = 0.40
         default_bokeh = 0.0
         default_lut = "Kodak Portra 400 (Warm Gold)"
         default_chromatic = True
@@ -439,6 +455,10 @@ with st.sidebar:
         default_catchlight = True
         default_hair = True
         default_relighting = True
+        default_anti_glare = False
+        default_makeup = False
+        default_blush = 0.0
+        default_eyebrow = 0.0
         default_bokeh = 0.0
         default_lut = "Teal & Orange / Cyberpunk"
         default_chromatic = False
@@ -460,6 +480,10 @@ with st.sidebar:
         default_catchlight = True
         default_hair = True
         default_relighting = False
+        default_anti_glare = True
+        default_makeup = False
+        default_blush = 0.0
+        default_eyebrow = 0.20
         default_bokeh = 0.0
         default_lut = "None"
         default_chromatic = False
@@ -477,9 +501,9 @@ with st.sidebar:
 
     upscale_val = st.select_slider(
         "Output Resolution Scale",
-        options=[1, 2, 4],
+        options=[1, 2, 4, 8],
         value=default_upscale,
-        format_func=lambda x: f"{x}× Resolution"
+        format_func=lambda x: f"{x}× Resolution" + (" (8K Ultra-HD)" if x == 8 else "")
     )
 
     # Advanced Settings (Collapsible to keep UI clean)
@@ -507,6 +531,12 @@ with st.sidebar:
         enable_catchlight = st.checkbox("👁️ Catchlight Studio Glow (Mắt Long Lanh)", value=default_catchlight, help="Tạo đốm sáng phản chiếu softbox/ringlight trong con ngươi mắt")
         enable_hair = st.checkbox("💇 Hair Strand Super-Clarity & Gloss (Tóc Bóng Mượt)", value=default_hair, help="Tách rõ từng lọn tóc và tăng độ bóng mượt")
         enable_relighting = st.checkbox("✨ 3D Studio Relighting & Highlighter (Đánh Đèn Studio)", value=default_relighting, help="Bắt sáng sống mũi T-Zone và tạo viền sáng ven tóc Rim Light")
+
+        st.markdown("**💄 Studio Beauty & Makeup**")
+        enable_anti_glare = st.checkbox("🧽 AI Anti-Glare & Matte Skin (Khử Cháy Sáng & Dầu)", value=default_anti_glare, help="Phục hồi vùng da bóng dầu/cháy sáng flash thành tone da mịn tự nhiên")
+        enable_makeup = st.checkbox("💄 Natural Studio Makeup (Trang Điểm Má Hồng & Chân Mày)", value=default_makeup, help="Đánh má hồng tự nhiên và định hình nét chân mày")
+        blush_val = st.slider("Rosy Cheek Blush", 0.0, 1.0, default_blush, 0.05) if enable_makeup else 0.0
+        eyebrow_val = st.slider("Eyebrow Definition", 0.0, 1.0, default_eyebrow, 0.05) if enable_makeup else 0.0
 
         st.markdown("**🎨 Studio Color & Optics**")
         lut_options = ["None", "Kodak Portra 400 (Warm Gold)", "Fuji Pro 400H (Pastel Jade)", "Teal & Orange / Cyberpunk", "Leica Monochrome (B&W)"]
@@ -541,6 +571,10 @@ with st.sidebar:
                 'catchlight': enable_catchlight,
                 'hair': enable_hair,
                 'relighting': enable_relighting,
+                'anti_glare': enable_anti_glare,
+                'makeup': enable_makeup,
+                'blush': blush_val,
+                'eyebrow': eyebrow_val,
                 'lut': color_lut_val,
                 'lut_intensity': lut_intensity,
                 'bokeh': bokeh_val,
@@ -619,6 +653,10 @@ with tab_photo:
             'catchlight': enable_catchlight,
             'hair': enable_hair,
             'relighting': enable_relighting,
+            'anti_glare': enable_anti_glare,
+            'makeup': enable_makeup,
+            'blush': blush_val,
+            'eyebrow': eyebrow_val,
             'lut': color_lut_val,
             'lut_intensity': lut_intensity,
             'bokeh': bokeh_val,
@@ -679,6 +717,11 @@ with tab_photo:
                     'enable_relighting': enable_relighting,
                     'relighting_rim': 0.25,
                     'relighting_tzone': 0.20,
+                    'enable_anti_glare': enable_anti_glare,
+                    'anti_glare_strength': 0.50,
+                    'enable_makeup': enable_makeup,
+                    'blush_strength': blush_val,
+                    'eyebrow_boost': eyebrow_val,
                     'color_lut': color_lut_val,
                     'lut_intensity': lut_intensity,
                     'bokeh_strength': bokeh_val,
@@ -786,14 +829,14 @@ with tab_photo:
                 with q4:
                     st.markdown(f'<div class="metric-badge"><div class="metric-label">Skin Tone Match</div><div class="metric-val" style="color: #60a5fa;">{q_report["tone_fidelity_pct"]}%</div></div>', unsafe_allow_html=True)
 
-            # Comparison Display (Interactive Split Slider or Side-by-Side)
+            # Comparison Display (Interactive Split Slider, Side-by-Side, or 400% Zoom Loupe)
             view_col1, view_col2 = st.columns([1, 1])
             with view_col1:
                 st.markdown("#### ✨ Visual Comparison")
             with view_col2:
                 comparison_mode = st.radio(
                     "View Mode",
-                    ["🎚️ Interactive Split Slider", "🔲 Side-by-Side"],
+                    ["🎚️ Interactive Split Slider", "🔲 Side-by-Side", "🔍 400% Zoom Loupe"],
                     horizontal=True,
                     label_visibility="collapsed"
                 )
@@ -803,6 +846,11 @@ with tab_photo:
                 slider_html = pipeline.wink_enhancer.generate_comparison_slider_html(input_img, enhanced_img, slider_id="portrait-split-slider")
                 comp_height = int(min(850, max(420, (in_h / in_w) * 750 + 30))) if in_w > 0 else 550
                 st.components.v1.html(slider_html, height=comp_height)
+            elif comparison_mode == "🔍 400% Zoom Loupe" and pipeline and hasattr(pipeline, 'wink_enhancer'):
+                st.caption("💡 **Hướng dẫn:** Rê chuột hoặc chạm vào ảnh để kích hoạt kính lúp soi chi tiết 400% song song cả 2 ảnh!")
+                loupe_html = pipeline.wink_enhancer.generate_zoom_inspector_html(input_img, enhanced_img, widget_id="portrait-loupe-widget")
+                comp_height = int(min(850, max(420, (in_h / in_w) * 750 + 60))) if in_w > 0 else 580
+                st.components.v1.html(loupe_html, height=comp_height)
             else:
                 c_orig, c_enh = st.columns(2)
                 with c_orig:

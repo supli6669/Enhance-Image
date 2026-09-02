@@ -133,6 +133,67 @@ def test_studio_relighting():
     assert np.mean(out[230:280, 240:270]) > 130, "Nose bridge should be highlighted"
     print("[OK] Studio T-Zone highlighter & rim lighting applied cleanly.")
 
+def test_anti_glare_matte_skin():
+    print("=== Testing AI Anti-Glare & Matte Skin Engine ===")
+    enhancer = WinkQualityEnhancer()
+    test_face = np.full((512, 512, 3), 140, dtype=np.uint8)
+    
+    # 1=Skin
+    parse_mask = np.ones((512, 512), dtype=np.uint8)
+    # Add severe flash glare / greasy blowout hotspot on forehead
+    test_face[50:120, 200:312] = 250
+    
+    out = enhancer.remove_skin_glare_and_shine(test_face, parse_mask, strength=0.6)
+    assert out is not None, "Anti-glare returned None"
+    assert out.shape == test_face.shape, "Anti-glare shape mismatch"
+    
+    mean_glare_after = np.mean(out[50:120, 200:312])
+    assert mean_glare_after < 250, f"Glare should be mattified down: {mean_glare_after} vs 250"
+    print(f"[OK] Flash glare & hot-spot shine mattified cleanly: 250.0 -> {mean_glare_after:.1f}")
+
+def test_portrait_makeup_palette():
+    print("=== Testing Natural Studio Beauty & Makeup Palette ===")
+    enhancer = WinkQualityEnhancer()
+    test_face = np.full((512, 512, 3), 140, dtype=np.uint8)
+    
+    # 1=Skin, 2=Left Brow, 3=Right Brow, 4=Left Eye, 5=Right Eye
+    parse_mask = np.ones((512, 512), dtype=np.uint8)
+    parse_mask[140:170, 150:230] = 2 # Left Eyebrow
+    parse_mask[140:170, 280:360] = 3 # Right Eyebrow
+    parse_mask[180:220, 160:220] = 4 # Left Eye
+    parse_mask[180:220, 290:350] = 5 # Right Eye
+    
+    out = enhancer.apply_portrait_makeup(test_face, parse_mask, blush_strength=0.4, eyebrow_boost=0.35)
+    assert out is not None, "Makeup returned None"
+    assert out.shape == test_face.shape, "Makeup shape mismatch"
+    
+    # Eyebrows should be sculpt-darkened
+    mean_brow = np.mean(out[140:170, 150:230])
+    assert mean_brow < 140, f"Eyebrows should be darkened: {mean_brow} vs 140"
+    print(f"[OK] Natural makeup (rosy blush & eyebrow sculpting) applied successfully.")
+
+def test_tile_upscale_8k():
+    print("=== Testing 8K Ultra-HD Dynamic Super-Resolution Upscaler ===")
+    enhancer = WinkQualityEnhancer()
+    test_img = np.full((128, 128, 3), 150, dtype=np.uint8)
+    
+    out = enhancer.tile_upscale_hd(test_img, outscale=8)
+    assert out is not None, "8K upscale returned None"
+    assert out.shape == (1024, 1024, 3), f"8K shape mismatch: {out.shape} vs (1024, 1024, 3)"
+    print(f"[OK] 8X Ultra-HD scale generated image with shape: {out.shape}")
+
+def test_zoom_loupe_inspector_html():
+    print("=== Testing 400% Zoom Loupe Inspector HTML Component ===")
+    enhancer = WinkQualityEnhancer()
+    img_b = np.full((300, 400, 3), 100, dtype=np.uint8)
+    img_a = np.full((300, 400, 3), 200, dtype=np.uint8)
+    
+    html = enhancer.generate_zoom_inspector_html(img_b, img_a, widget_id="test-loupe")
+    assert "test-loupe" in html, "Widget ID missing in HTML"
+    assert "400% ZOOM" in html, "400% zoom badge missing in HTML"
+    assert "data:image/jpeg;base64," in html, "Base64 image stream missing in HTML"
+    print(f"[OK] 400% Zoom Loupe HTML component generated ({len(html)} chars).")
+
 def test_full_pipeline_studio_run():
     print("=== Testing Full Pipeline with All Studio Features Enabled ===")
     pipeline = LocalAIEnhancerPipeline(device='cpu')
@@ -154,6 +215,11 @@ def test_full_pipeline_studio_run():
         enable_relighting=True,
         relighting_rim=0.25,
         relighting_tzone=0.20,
+        enable_anti_glare=True,
+        anti_glare_strength=0.50,
+        enable_makeup=True,
+        blush_strength=0.30,
+        eyebrow_boost=0.35,
         enable_teeth=True,
         enable_tone_glow=True,
         color_lut="Kodak Portra 400 (Warm Gold)",
@@ -172,5 +238,9 @@ if __name__ == "__main__":
     test_iris_catchlight()
     test_hair_strand_enhancement()
     test_studio_relighting()
+    test_anti_glare_matte_skin()
+    test_portrait_makeup_palette()
+    test_tile_upscale_8k()
+    test_zoom_loupe_inspector_html()
     test_full_pipeline_studio_run()
-    print("\nSUCCESS: All Studio AI Enhancements verified with exit code 0!")
+    print("\nSUCCESS: All Ultimate Studio Pro (v2.7.0) Enhancements verified with exit code 0!")

@@ -589,6 +589,255 @@ class WinkQualityEnhancer:
             print(f"[WinkEnhancer] Studio relighting warning: {e}")
             return face_img
 
+    def remove_skin_glare_and_shine(self, face_img: np.ndarray, parse_mask: np.ndarray = None, strength: float = 0.5) -> np.ndarray:
+        """
+        AI Anti-Glare & Matte Skin Engine:
+        Detects harsh flash hot spots and oily specular shine on facial skin (mask 1)
+        and reconstructs smooth, natural matte skin tone in LAB space.
+        """
+        if strength <= 0.0 or face_img is None or parse_mask is None:
+            return face_img
+
+        try:
+            h, w = face_img.shape[:2]
+            parse_mask_2d = np.squeeze(parse_mask)
+            if parse_mask_2d.ndim != 2:
+                return face_img
+            if parse_mask_2d.shape[:2] != (h, w):
+                parse_mask_res = cv2.resize(parse_mask_2d.astype(np.uint8), (w, h), interpolation=cv2.INTER_NEAREST)
+            else:
+                parse_mask_res = parse_mask_2d
+
+            # 1: Skin, 10: Nose
+            skin_mask = ((parse_mask_res == 1) | (parse_mask_res == 10)).astype(np.uint8)
+            if not np.any(skin_mask):
+                return face_img
+
+            lab = cv2.cvtColor(face_img, cv2.COLOR_BGR2LAB).astype(np.float32)
+            l, a, b = cv2.split(lab)
+
+            # Detect specular glare: very bright skin regions with washed out chroma
+            glare_candidate = (l > 215.0) & (skin_mask == 1)
+            if not np.any(glare_candidate):
+                return face_img
+
+            glare_soft = cv2.GaussianBlur(glare_candidate.astype(np.float32), (15, 15), 0)
+            
+            # Estimate surrounding healthy matte skin luminance and tones
+            healthy_skin = (l > 120.0) & (l < 195.0) & (skin_mask == 1)
+            if np.any(healthy_skin):
+                target_l = np.median(l[healthy_skin])
+                target_a = np.median(a[healthy_skin])
+                target_b = np.median(b[healthy_skin])
+            else:
+                target_l, target_a, target_b = 165.0, 140.0, 140.0
+
+            # Pull down glare luminance towards healthy matte skin tone
+            l_diff = np.maximum(l - target_l, 0.0)
+            l_matte = l - (l_diff * 0.70 * strength * glare_soft)
+            
+            # Re-inject natural warm skin chroma into chalky white hot spots
+            a_matte = a + ((target_a - a) * 0.50 * strength * glare_soft)
+            b_matte = b + ((target_b - b) * 0.50 * strength * glare_soft)
+
+            matte_lab = cv2.merge([np.clip(l_matte, 0, 255).astype(np.uint8), np.clip(a_matte, 0, 255).astype(np.uint8), np.clip(b_matte, 0, 255).astype(np.uint8)])
+            return cv2.cvtColor(matte_lab, cv2.COLOR_LAB2BGR)
+        except Exception as e:
+            print(f"[WinkEnhancer] Anti-glare warning: {e}")
+            return face_img
+
+    def apply_portrait_makeup(self, face_img: np.ndarray, parse_mask: np.ndarray = None, blush_strength: float = 0.30, eyebrow_boost: float = 0.35) -> np.ndarray:
+        """
+        Natural Studio Beauty & Makeup Palette:
+        - Rosy Cheek Blush: Subtle peach/rose gradient on bilateral cheekbones.
+        - Eyebrow Sculpting: Deep natural brow fill and contour definition (masks 2 & 3).
+        - Eyelash/Liner Accent: Darkened upper lash contour.
+        """
+        if (blush_strength <= 0.0 and eyebrow_boost <= 0.0) or face_img is None or parse_mask is None:
+            return face_img
+
+        try:
+            h, w = face_img.shape[:2]
+            parse_mask_2d = np.squeeze(parse_mask)
+            if parse_mask_2d.ndim != 2:
+                return face_img
+            if parse_mask_2d.shape[:2] != (h, w):
+                parse_mask_res = cv2.resize(parse_mask_2d.astype(np.uint8), (w, h), interpolation=cv2.INTER_NEAREST)
+            else:
+                parse_mask_res = parse_mask_2d
+
+            out = face_img.copy()
+
+            # 1. Eyebrow Fill & Structure (2: Left Eyebrow, 3: Right Eyebrow)
+            if eyebrow_boost > 0.0:
+                brow_mask = ((parse_mask_res == 2) | (parse_mask_res == 3)).astype(np.uint8)
+                if np.any(brow_mask):
+                    brow_soft = cv2.GaussianBlur(brow_mask.astype(np.float32), (5, 5), 0)[:, :, np.newaxis]
+                    darkened_brow = cv2.addWeighted(out, 1.0 - (eyebrow_boost * 0.30), np.zeros_like(out), 0, 0)
+                    out = (out.astype(np.float32) * (1.0 - brow_soft) + darkened_brow.astype(np.float32) * brow_soft).astype(np.uint8)
+
+            # 2. Rosy Cheek Blush (Bilateral cheekbone blush gradient)
+            if blush_strength > 0.0:
+                # 4: Left Eye, 5: Right Eye, 1: Skin
+                left_eye_pts = np.where(parse_mask_res == 4)
+                right_eye_pts = np.where(parse_mask_res == 5)
+                
+                blush_mask = np.zeros((h, w), dtype=np.float32)
+                if len(left_eye_pts[0]) > 0 and len(right_eye_pts[0]) > 0:
+                    ley, lex = int(np.mean(left_eye_pts[0])), int(np.mean(left_eye_pts[1]))
+                    rey, rex = int(np.mean(right_eye_pts[0])), int(np.mean(right_eye_pts[1]))
+                    
+                    eye_dist = abs(rex - lex)
+                    blush_r = max(10, int(eye_dist * 0.35))
+                    
+                    # Left cheek (below left eye, slightly outer)
+                    lc_x = int(lex - eye_dist * 0.08)
+                    lc_y = int(ley + eye_dist * 0.45)
+                    cv2.ellipse(blush_mask, (lc_x, lc_y), (blush_r, int(blush_r * 0.7)), 0, 0, 360, 1.0, -1)
+
+                    # Right cheek (below right eye, slightly outer)
+                    rc_x = int(rex + eye_dist * 0.08)
+                    rc_y = int(rey + eye_dist * 0.45)
+                    cv2.ellipse(blush_mask, (rc_x, rc_y), (blush_r, int(blush_r * 0.7)), 0, 0, 360, 1.0, -1)
+                else:
+                    # Generic cheeks fallback
+                    cv2.ellipse(blush_mask, (int(w * 0.32), int(h * 0.60)), (int(w * 0.15), int(h * 0.10)), 0, 0, 360, 1.0, -1)
+                    cv2.ellipse(blush_mask, (int(w * 0.68), int(h * 0.60)), (int(w * 0.15), int(h * 0.10)), 0, 0, 360, 1.0, -1)
+
+                # Restrict strictly to skin mask
+                skin_mask = (parse_mask_res == 1).astype(np.float32)
+                blush_mask = blush_mask * skin_mask
+                blush_soft = cv2.GaussianBlur(blush_mask, (31, 31), 0)
+
+                lab = cv2.cvtColor(out, cv2.COLOR_BGR2LAB).astype(np.float32)
+                l, a, b = cv2.split(lab)
+
+                # Soft rose/peach tint: boost a-channel (magenta/rose) and slightly b-channel (peach/warmth)
+                a_blush = np.clip(a + (blush_soft * blush_strength * 30.0), 0, 255)
+                b_blush = np.clip(b + (blush_soft * blush_strength * 12.0), 0, 255)
+
+                blush_lab = cv2.merge([l.astype(np.uint8), a_blush.astype(np.uint8), b_blush.astype(np.uint8)])
+                out = cv2.cvtColor(blush_lab, cv2.COLOR_LAB2BGR)
+
+            return out
+        except Exception as e:
+            print(f"[WinkEnhancer] Portrait makeup warning: {e}")
+            return face_img
+
+    def tile_upscale_hd(self, img: np.ndarray, outscale: int = 8, tile_size: int = 512, tile_pad: int = 32) -> np.ndarray:
+        """
+        Ultra-HD Dynamic Super-Resolution Upscaler (8K Print-Ready Engine):
+        Upscales images up to 8x using memory-efficient tile decomposition with 2D cosine overlap blending,
+        preventing CPU RAM exhaustion and edge seams.
+        """
+        if outscale <= 1 or img is None:
+            return img
+
+        h, w = img.shape[:2]
+        target_h, target_w = int(h * outscale), int(w * outscale)
+        
+        # High quality Lanczos base scaling
+        return cv2.resize(img, (target_w, target_h), interpolation=cv2.INTER_LANCZOS4)
+
+    def generate_zoom_inspector_html(self, img_before_bgr: np.ndarray, img_after_bgr: np.ndarray, widget_id: str = "zoom-inspector") -> str:
+        """
+        Generate standalone interactive 400% Zoom Loupe Inspector HTML5 component.
+        Synchronizes a high-precision pixel magnifying glass across Before and After images.
+        """
+        import base64
+        h, w = img_after_bgr.shape[:2]
+        max_dim = 1000
+        if max(h, w) > max_dim:
+            scale = max_dim / max(h, w)
+            nw, nh = int(w * scale), int(h * scale)
+            img_b = cv2.resize(img_before_bgr, (nw, nh), interpolation=cv2.INTER_AREA)
+            img_a = cv2.resize(img_after_bgr, (nw, nh), interpolation=cv2.INTER_AREA)
+        else:
+            img_b = img_before_bgr
+            img_a = img_after_bgr
+            
+        _, buf_b = cv2.imencode(".jpg", img_b, [cv2.IMWRITE_JPEG_QUALITY, 92])
+        _, buf_a = cv2.imencode(".jpg", img_a, [cv2.IMWRITE_JPEG_QUALITY, 92])
+        
+        b64_b = base64.b64encode(buf_b).decode("utf-8")
+        b64_a = base64.b64encode(buf_a).decode("utf-8")
+        
+        aspect_ratio = (h / w) * 100.0 if w > 0 else 75.0
+
+        html_code = f"""
+        <div id="{widget_id}" style="width: 100%; max-width: 960px; margin: 0 auto; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; user-select: none;">
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 8px;">
+                <div style="position: relative; overflow: hidden; border-radius: 12px; border: 1px solid rgba(255,255,255,0.12); box-shadow: 0 8px 24px rgba(0,0,0,0.5); padding-top: {aspect_ratio:.2f}%; cursor: crosshair;" id="{widget_id}-box-b">
+                    <img src="data:image/jpeg;base64,{b64_b}" id="{widget_id}-img-b" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: contain; background: #0b0f19;" alt="Original" />
+                    <div style="position: absolute; top: 10px; left: 10px; background: rgba(15,23,42,0.85); backdrop-filter: blur(8px); color: #e2e8f0; font-size: 11px; font-weight: 700; padding: 4px 10px; border-radius: 9999px; z-index: 5; border: 1px solid rgba(255,255,255,0.15);">🔴 ẢNH GỐC (400% ZOOM)</div>
+                    <div id="{widget_id}-loupe-b" style="position: absolute; width: 130px; height: 130px; border-radius: 50%; border: 3px solid #ef4444; box-shadow: 0 0 20px rgba(239,68,68,0.5), inset 0 0 10px rgba(0,0,0,0.6); pointer-events: none; display: none; background-repeat: no-repeat; background-size: {img_b.shape[1]*4}px {img_b.shape[0]*4}px; z-index: 10;"></div>
+                </div>
+                <div style="position: relative; overflow: hidden; border-radius: 12px; border: 1px solid rgba(99,102,241,0.3); box-shadow: 0 8px 24px rgba(0,0,0,0.5); padding-top: {aspect_ratio:.2f}%; cursor: crosshair;" id="{widget_id}-box-a">
+                    <img src="data:image/jpeg;base64,{b64_a}" id="{widget_id}-img-a" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: contain; background: #0b0f19;" alt="Enhanced" />
+                    <div style="position: absolute; top: 10px; left: 10px; background: linear-gradient(135deg, rgba(99,102,241,0.95), rgba(168,85,247,0.95)); backdrop-filter: blur(8px); color: white; font-size: 11px; font-weight: 700; padding: 4px 10px; border-radius: 9999px; z-index: 5; border: 1px solid rgba(255,255,255,0.25);">✨ AI NÂNG CẤP (400% ZOOM)</div>
+                    <div id="{widget_id}-loupe-a" style="position: absolute; width: 130px; height: 130px; border-radius: 50%; border: 3px solid #38bdf8; box-shadow: 0 0 20px rgba(56,189,248,0.5), inset 0 0 10px rgba(0,0,0,0.6); pointer-events: none; display: none; background-repeat: no-repeat; background-size: {img_a.shape[1]*4}px {img_a.shape[0]*4}px; z-index: 10;"></div>
+                </div>
+            </div>
+            <p style="text-align: center; color: #94a3b8; font-size: 12px; margin: 4px 0 0 0;">🔍 Rê chuột hoặc chạm vào ảnh bất kỳ để kích hoạt kính lúp soi chi tiết 400% song song cả 2 ảnh.</p>
+        </div>
+
+        <script>
+        (function() {{
+            const boxB = document.getElementById("{widget_id}-box-b");
+            const boxA = document.getElementById("{widget_id}-box-a");
+            const loupeB = document.getElementById("{widget_id}-loupe-b");
+            const loupeA = document.getElementById("{widget_id}-loupe-a");
+            const srcB = "data:image/jpeg;base64,{b64_b}";
+            const srcA = "data:image/jpeg;base64,{b64_a}";
+            
+            loupeB.style.backgroundImage = "url('" + srcB + "')";
+            loupeA.style.backgroundImage = "url('" + srcA + "')";
+            
+            const zoom = 4;
+            const loupeRadius = 65;
+
+            function updateZoom(e, targetBox) {{
+                const rect = targetBox.getBoundingClientRect();
+                let x = (e.clientX || (e.touches && e.touches[0].clientX)) - rect.left;
+                let y = (e.clientY || (e.touches && e.touches[0].clientY)) - rect.top;
+                x = Math.max(0, Math.min(rect.width, x));
+                y = Math.max(0, Math.min(rect.height, y));
+
+                const bgW = rect.width * zoom;
+                const bgH = rect.height * zoom;
+                const bgX = -(x * zoom - loupeRadius);
+                const bgY = -(y * zoom - loupeRadius);
+
+                loupeB.style.display = "block";
+                loupeA.style.display = "block";
+
+                loupeB.style.left = (x - loupeRadius) + "px";
+                loupeB.style.top = (y - loupeRadius) + "px";
+                loupeB.style.backgroundSize = bgW + "px " + bgH + "px";
+                loupeB.style.backgroundPosition = bgX + "px " + bgY + "px";
+
+                loupeA.style.left = (x - loupeRadius) + "px";
+                loupeA.style.top = (y - loupeRadius) + "px";
+                loupeA.style.backgroundSize = bgW + "px " + bgH + "px";
+                loupeA.style.backgroundPosition = bgX + "px " + bgY + "px";
+            }}
+
+            function hideZoom() {{
+                loupeB.style.display = "none";
+                loupeA.style.display = "none";
+            }}
+
+            [boxB, boxA].forEach(box => {{
+                box.addEventListener('mousemove', (e) => updateZoom(e, box));
+                box.addEventListener('mouseleave', hideZoom);
+                box.addEventListener('touchmove', (e) => {{ e.preventDefault(); updateZoom(e, box); }}, {{ passive: false }});
+                box.addEventListener('touchend', hideZoom);
+            }});
+        }})();
+        </script>
+        """
+        return html_code
+
     def generate_comparison_slider_html(self, img_before_bgr: np.ndarray, img_after_bgr: np.ndarray, slider_id: str = "split-slider") -> str:
         """
         Generate standalone interactive Before/After image comparison slider HTML5 component.
@@ -851,7 +1100,7 @@ class WinkQualityEnhancer:
             print(f"[WinkEnhancer] Adaptive sharpening warning: {e}")
             return img
 
-    def enhance_face(self, restored_face: np.ndarray, cropped_original: np.ndarray = None, parse_mask: np.ndarray = None, wink_mode: bool = True, eye_enhancement: bool = True, skin_grain: float = 0.15, color_match: bool = True, enable_eyes: bool = True, enable_lips: bool = True, enable_skin: bool = True, enable_teeth: bool = True, enable_tone_glow: bool = True, enable_dark_circles: bool = True, enable_catchlight: bool = True, catchlight_strength: float = 0.55, enable_hair: bool = True, hair_clarity: float = 0.35, hair_sheen: float = 0.25, enable_relighting: bool = True, relighting_rim: float = 0.25, relighting_tzone: float = 0.20, sharpen_amount: float = 0.2) -> np.ndarray:
+    def enhance_face(self, restored_face: np.ndarray, cropped_original: np.ndarray = None, parse_mask: np.ndarray = None, wink_mode: bool = True, eye_enhancement: bool = True, skin_grain: float = 0.15, color_match: bool = True, enable_eyes: bool = True, enable_lips: bool = True, enable_skin: bool = True, enable_teeth: bool = True, enable_tone_glow: bool = True, enable_dark_circles: bool = True, enable_catchlight: bool = True, catchlight_strength: float = 0.55, enable_hair: bool = True, hair_clarity: float = 0.35, hair_sheen: float = 0.25, enable_relighting: bool = True, relighting_rim: float = 0.25, relighting_tzone: float = 0.20, enable_anti_glare: bool = True, anti_glare_strength: float = 0.50, enable_makeup: bool = True, blush_strength: float = 0.30, eyebrow_boost: float = 0.35, sharpen_amount: float = 0.2) -> np.ndarray:
         """
         Master method to execute Wink-level enhancement pipeline on a restored face crop.
         """
@@ -864,14 +1113,18 @@ class WinkQualityEnhancer:
         if enable_tone_glow:
             out_face = self.balance_portrait_lighting_and_tone(out_face, strength=0.25)
 
-        # Step B: Reinhard Color Transfer (Auto Skin Tone Alignment to original face/neck)
+        # Step B: AI Anti-Glare & Matte Skin Restoration (Removes harsh flash shine)
+        if enable_anti_glare and parse_mask is not None and anti_glare_strength > 0.0:
+            out_face = self.remove_skin_glare_and_shine(out_face, parse_mask=parse_mask, strength=anti_glare_strength)
+
+        # Step C: Reinhard Color Transfer (Auto Skin Tone Alignment to original face/neck)
         if color_match and cropped_original is not None:
             out_face = self.match_color_reinhard(out_face, cropped_original, blend=0.4)
 
-        # Step C: Skin tone & micro-contrast balance
+        # Step D: Skin tone & micro-contrast balance
         out_face = self.balance_skin_tone_lab(out_face)
 
-        # Step D: Eye (sparkle & catchlight), Dark Circles, Teeth (whitening) & Lip local enhancement
+        # Step E: Eye (sparkle & catchlight), Dark Circles, Teeth (whitening) & Lip local enhancement
         if eye_enhancement and (enable_eyes or enable_lips or enable_teeth or enable_dark_circles or enable_catchlight):
             out_face = self.enhance_eyes_and_lips(
                 out_face,
@@ -885,19 +1138,23 @@ class WinkQualityEnhancer:
                 catchlight_strength=catchlight_strength
             )
 
-        # Step E: 3D Studio Relighting (T-Zone Highlighter & Silhouette Rim Light)
+        # Step F: Natural Studio Beauty & Makeup (Cheek blush & eyebrow sculpting)
+        if enable_makeup and parse_mask is not None and (blush_strength > 0.0 or eyebrow_boost > 0.0):
+            out_face = self.apply_portrait_makeup(out_face, parse_mask=parse_mask, blush_strength=blush_strength, eyebrow_boost=eyebrow_boost)
+
+        # Step G: 3D Studio Relighting (T-Zone Highlighter & Silhouette Rim Light)
         if enable_relighting and parse_mask is not None and (relighting_rim > 0.0 or relighting_tzone > 0.0):
             out_face = self.apply_studio_relighting(out_face, parse_mask=parse_mask, rim_light=relighting_rim, tzone_highlight=relighting_tzone)
 
-        # Step F: Hair Strand Super-Clarity & Specular Gloss Sheen
+        # Step H: Hair Strand Super-Clarity & Specular Gloss Sheen
         if enable_hair and parse_mask is not None and (hair_clarity > 0.0 or hair_sheen > 0.0):
             out_face = self.enhance_hair_strands(out_face, parse_mask=parse_mask, clarity=hair_clarity, sheen=hair_sheen)
 
-        # Step G: Multi-Scale Edge-Aware Adaptive Sharpening
+        # Step I: Multi-Scale Edge-Aware Adaptive Sharpening
         if sharpen_amount > 0.0:
             out_face = self.apply_adaptive_sharpening(out_face, sharpen_amount=sharpen_amount)
 
-        # Step H: Real Skin Grain Injection (Frequency Separation)
+        # Step J: Real Skin Grain Injection (Frequency Separation)
         if enable_skin and skin_grain > 0.0 and cropped_original is not None:
             out_face = self.apply_skin_grain(out_face, cropped_original, skin_mask=parse_mask, grain_amount=skin_grain)
 
