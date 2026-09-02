@@ -1575,6 +1575,26 @@ Delivered 4 optical clarity and sharpness breakthroughs to eliminate blur, recov
 - [MODIFY] [app.py](file:///d:/.gemini-scratch/custom-ai-enhancer/app.py) (Added Razor-Sharp & Super-Clarity Engine sidebar controls, preset defaults, and bumped to `v2.8.0`)
 - [MODIFY] [tools/test_studio_features.py](file:///d:/.gemini-scratch/custom-ai-enhancer/tools/test_studio_features.py) (Added unit test cases for all 4 new clarity features)
 
+---
+
+## Task 36: ArcFace Identity Loss Training Engine & Cloud/Local Readiness (`Phase 2 & 3`)
+
+**Date:** 2026-09-02  
+**Status:** ✅ Completed & Verified
+
+### Overview
+Validated and streamlined the end-to-end model training workflow for Stage III CFT fine-tuning integrated with ArcFace identity preservation:
+
+1. **ArcFace Identity Loss Active Backpropagation**:
+   - `models/CodeFormer/options/CodeFormer_stage3_custom.yml` configured with `identity_loss_weight: 0.5`.
+   - Verified that `l_g_identity` computes and reduces face embedding distance during backpropagation (decreased from $1.3411 \times 10^{-2}$ to $8.9672 \times 10^{-3}$ in live verification run).
+   - Saved checkpoint state `net_g_latest.pth` and resumed cleanly from iter 2350.
+
+2. **Multi-Platform Training Pipelines**:
+   - **Local CPU Runner (`train_custom.py`)**: Automatic checkpoint discovery, benchmark holdout exclusion, and CPU thread management.
+   - **Google Colab GPU Notebook (`train_on_colab.ipynb`)**: Cloud GPU acceleration (T4/A100) with automatic Google Drive checkpoint backup and ONNX Static INT8 export.
+
+
 
 
 
