@@ -150,7 +150,7 @@ train:
   manual_seed: 0
 val:
   val_freq: 500
-  save_img: true
+  save_img: false
   metrics:
     psnr:
       type: calculate_psnr
@@ -158,7 +158,7 @@ val:
       test_y_channel: false
 logger:
   print_freq: 20
-  save_checkpoint_freq: 100
+  save_checkpoint_freq: 500
   use_tb_logger: false
   wandb:
     project: null

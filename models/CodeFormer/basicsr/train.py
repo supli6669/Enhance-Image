@@ -203,6 +203,18 @@ def train_pipeline(root_path):
             if current_iter % opt['logger']['save_checkpoint_freq'] == 0:
                 logger.info('Saving models and training states.')
                 model.save(epoch, current_iter)
+                # Keep only the latest 2 checkpoints to prevent disk exhaustion
+                try:
+                    import glob
+                    for ext, dir_key in [("net_g_*.pth", "models"), ("net_d_*.pth", "models"), ("*.state", "training_states")]:
+                        target_dir = opt['path'][dir_key]
+                        f_list = sorted(glob.glob(osp.join(target_dir, ext)), key=os.path.getmtime)
+                        while len(f_list) > 2:
+                            old_f = f_list.pop(0)
+                            if os.path.exists(old_f):
+                                os.remove(old_f)
+                except Exception as prune_err:
+                    logger.warning(f'Checkpoint prune warning: {prune_err}')
 
             # validation
             if opt.get('val') is not None and opt['datasets'].get('val') is not None \
