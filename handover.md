@@ -1630,6 +1630,35 @@ Delivered 4 aesthetic breakthroughs to transform portrait outputs into magazine-
 - [NEW] [tools/test_glamour_suite.py](file:///d:/.gemini-scratch/custom-ai-enhancer/tools/test_glamour_suite.py) (Unit test suite for glamour features)
 - [MODIFY] [tools/test_all.py](file:///d:/.gemini-scratch/custom-ai-enhancer/tools/test_all.py) (Integrated glamour test harness into master verification)
 
+## Task 38: Phase 7 Dynamic Engine Selector & GPU Training Optimization
+
+**Date:** 2026-09-02  
+**Status:** ✅ Completed & Verified
+
+### Overview
+1. **Dynamic AI Model Engine Selection**:
+   - Added `get_available_models()` in `pipeline.py` and connected sidebar selection in `app.py`.
+   - Enabled zero-restart dynamic switching between `⚡ CodeFormer v2.0 INT8 (Fast CPU)`, `🔥 CodeFormer v3.0 (ArcFace Fine-Tuned)`, and `💎 CodeFormer v1.0 FP32 Baseline`.
+2. **1-Click Windows Desktop Launchers**:
+   - Created `Run_AI_Enhancer.bat` for instant app startup.
+   - Created `start_silent.vbs` for background execution without command prompt window flicker.
+3. **GPU Training Bottleneck Resolution (Kaggle Version 7)**:
+   - Root cause identified: `num_gpu: 0` in YAML forced CPU fallback on cloud GPU instances.
+   - Fixed `num_gpu: 1`, `batch_size: 4`, `num_worker_per_gpu: 4`, `prefetch_mode: cuda`, and `total_iter: 2000`.
+   - Successfully deployed Version 7 autonomously on Kaggle GPU.
+
+### Code Changes
+- [MODIFY] [pipeline.py](file:///d:/.gemini-scratch/custom-ai-enhancer/pipeline.py) (Added `get_available_models()` and dynamic session resolution in `process_image`)
+- [MODIFY] [app.py](file:///d:/.gemini-scratch/custom-ai-enhancer/app.py) (Added AI Model Engine selector dropdown in sidebar)
+- [NEW] [Run_AI_Enhancer.bat](file:///d:/.gemini-scratch/custom-ai-enhancer/Run_AI_Enhancer.bat) (1-click batch launcher)
+- [NEW] [start_silent.vbs](file:///d:/.gemini-scratch/custom-ai-enhancer/start_silent.vbs) (Silent VBS launcher)
+- [MODIFY] [models/CodeFormer/options/CodeFormer_stage3_custom.yml](file:///d:/.gemini-scratch/custom-ai-enhancer/models/CodeFormer/options/CodeFormer_stage3_custom.yml) (num_gpu=1, batch_size=4, prefetch_mode=cuda, workers=4, total_iter=2000)
+- [MODIFY] [train_custom.py](file:///d:/.gemini-scratch/custom-ai-enhancer/train_custom.py) (Unblocked CUDA environment settings)
+
+### Verification
+- Master test suite `tools/test_all.py` passed 7/7 suites with exit code 0.
+- Kaggle Version 7 kernel deployed and confirmed RUNNING.
+
 
 
 
