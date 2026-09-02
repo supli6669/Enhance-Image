@@ -580,6 +580,22 @@ with st.sidebar:
         default_detector = "retinaface_mobile0.25"
         pipeline_preset_mode = 'Custom'
 
+    # Model Version Switcher
+    avail_models = {}
+    try:
+        if pipeline is not None:
+            avail_models = pipeline.get_available_models()
+    except Exception:
+        pass
+
+    model_options = ["Auto (Recommended)"] + list(avail_models.keys())
+    selected_model_ver = st.selectbox(
+        "🧠 AI Model Engine",
+        model_options,
+        index=0,
+        help="Select neural network weights (INT8 Fast CPU, ArcFace Cloud Fine-Tuned, or Baseline)."
+    )
+
     w_val = st.slider(
         "AI Detail vs Likeness (w)",
         min_value=0.0,
@@ -801,7 +817,8 @@ with tab_photo:
             'bokeh': bokeh_val,
             'chromatic': chromatic_fix,
             'bg_up': bg_upscale,
-            'face_up': face_upscale
+            'face_up': face_upscale,
+            'model_ver': selected_model_ver
         }
 
         # Parameters change guard: reset output state if parameters change while idle
@@ -838,6 +855,7 @@ with tab_photo:
                     'face_upsample': face_upscale,
                     'parallel': True,
                     'preset_mode': pipeline_preset_mode,
+                    'model_version': selected_model_ver,
                     'wink_mode': wink_mode,
                     'eye_enhancement': enable_eyes,
                     'skin_grain': skin_grain,
