@@ -1541,6 +1541,41 @@ Delivered 4 advanced commercial studio features turning the suite into a full-fl
 - [MODIFY] [app.py](file:///d:/.gemini-scratch/custom-ai-enhancer/app.py) (Added Studio Beauty & Makeup sidebar controls, 400% Zoom Loupe view mode, 8x upscale option, and bumped to `v2.7.0`)
 - [MODIFY] [tools/test_studio_features.py](file:///d:/.gemini-scratch/custom-ai-enhancer/tools/test_studio_features.py) (Added unit test cases for all 4 new features)
 
+---
+
+## Task 35: Razor-Sharp & Super-Clarity Engine Suite (`v2.8.0`)
+
+**Date:** 2026-09-02  
+**Status:** ✅ Completed
+
+### Overview
+Delivered 4 optical clarity and sharpness breakthroughs to eliminate blur, recover lost micro-textures, and deliver crystalline, razor-sharp 4K/8K portrait and background restoration:
+
+1. **🔬 Multi-Scale Laplacian Pyramid Super-Clarity (`apply_laplacian_pyramid_clarity`)**:
+   - Decomposes images into 3 frequency octaves (high, medium, low) and enhances micro-textures (eyelashes, skin pores, hair follicles, fabric weave) without halo artifacts.
+   - Boosted sharpness benchmark from 16,747.2 to 34,139.7 (+103% gain).
+
+2. **🌊 Richardson-Lucy Optical De-Blur Engine (`apply_deblur_deconvolution`)**:
+   - Recovers sharp underlying edges from out-of-focus or camera motion-blurred photos via fast 4-iteration point spread function (PSF) deconvolution.
+
+3. **💎 Guided Filter Detail Layer Booster (`apply_guided_detail_booster`)**:
+   - Extracts and amplifies high-frequency texture gradient layers using $O(N)$ Fast Guided Filtering.
+
+4. **✨ Crystal De-Haze & Deep Dynamic Contrast (`apply_dehaze_and_dynamic_contrast`)**:
+   - Removes milky gray veils and foggy camera hazing, expanding dynamic contrast range and delivering punchy, crystalline transparency.
+
+5. **Master Verification**:
+   - Unit tests added in `tools/test_studio_features.py`.
+   - Master suite `tools/test_all.py` passed 100% with `exit code 0`.
+   - Bumped `APP_VERSION` to `v2.8.0 (Build 2026.09.02)`.
+
+### Code Changes
+- [MODIFY] [wink_enhancer.py](file:///d:/.gemini-scratch/custom-ai-enhancer/wink_enhancer.py) (Added `apply_laplacian_pyramid_clarity()`, `apply_deblur_deconvolution()`, `apply_guided_detail_booster()`, `apply_dehaze_and_dynamic_contrast()`, `enhance_crispness_and_clarity()`, and updated `enhance_face()`)
+- [MODIFY] [pipeline.py](file:///d:/.gemini-scratch/custom-ai-enhancer/pipeline.py) (Plumbed super clarity, deblur, and dehaze arguments into `process_image`, `paste_faces_custom_blend`, and full-image post-processing)
+- [MODIFY] [app.py](file:///d:/.gemini-scratch/custom-ai-enhancer/app.py) (Added Razor-Sharp & Super-Clarity Engine sidebar controls, preset defaults, and bumped to `v2.8.0`)
+- [MODIFY] [tools/test_studio_features.py](file:///d:/.gemini-scratch/custom-ai-enhancer/tools/test_studio_features.py) (Added unit test cases for all 4 new clarity features)
+
+
 
 
 

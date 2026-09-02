@@ -271,7 +271,7 @@ class LocalAIEnhancerPipeline:
             ort_outs = self.ort_session_cf.run(None, ort_inputs)
         return ort_outs[0]
 
-    def process_image(self, img, w=0.5, detection_model='retinaface_mobile0.25', upscale=2, blend_softness=0.5, bg_upsampler=None, det_threshold=0.5, sharpen_amount=0.0, face_upsample=False, batch_size=0, parallel=False, face_restore=True, wink_mode=True, eye_enhancement=True, skin_grain=0.15, color_match=True, enable_eyes=True, enable_lips=True, enable_skin=True, enable_teeth=True, enable_tone_glow=True, enable_dark_circles=True, enable_catchlight=True, catchlight_strength=0.55, enable_hair=True, hair_clarity=0.35, hair_sheen=0.25, enable_relighting=True, relighting_rim=0.25, relighting_tzone=0.20, enable_anti_glare=True, anti_glare_strength=0.50, enable_makeup=True, blush_strength=0.30, eyebrow_boost=0.35, color_lut="None", lut_intensity=1.0, bokeh_strength=0.0, preset_mode='Custom', chromatic_aberration=False, progress_callback=None):
+    def process_image(self, img, w=0.5, detection_model='retinaface_mobile0.25', upscale=2, blend_softness=0.5, bg_upsampler=None, det_threshold=0.5, sharpen_amount=0.0, face_upsample=False, batch_size=0, parallel=False, face_restore=True, wink_mode=True, eye_enhancement=True, skin_grain=0.15, color_match=True, enable_eyes=True, enable_lips=True, enable_skin=True, enable_teeth=True, enable_tone_glow=True, enable_dark_circles=True, enable_catchlight=True, catchlight_strength=0.55, enable_hair=True, hair_clarity=0.35, hair_sheen=0.25, enable_relighting=True, relighting_rim=0.25, relighting_tzone=0.20, enable_anti_glare=True, anti_glare_strength=0.50, enable_makeup=True, blush_strength=0.30, eyebrow_boost=0.35, enable_super_clarity=True, clarity_strength=0.40, enable_deblur=False, deblur_strength=0.35, enable_dehaze=True, dehaze_strength=0.25, color_lut="None", lut_intensity=1.0, bokeh_strength=0.0, preset_mode='Custom', chromatic_aberration=False, progress_callback=None):
 
         """Enhance one image without sharing request-specific state.
 
@@ -292,13 +292,16 @@ class LocalAIEnhancerPipeline:
                     enable_relighting, relighting_rim, relighting_tzone,
                     enable_anti_glare, anti_glare_strength,
                     enable_makeup, blush_strength, eyebrow_boost,
+                    enable_super_clarity, clarity_strength,
+                    enable_deblur, deblur_strength,
+                    enable_dehaze, dehaze_strength,
                     color_lut, lut_intensity, bokeh_strength,
                     preset_mode, chromatic_aberration,
                 )
             finally:
                 _active_progress_callback.reset(callback_token)
 
-    def _process_image(self, img, w=0.5, detection_model='retinaface_mobile0.25', upscale=2, blend_softness=0.5, bg_upsampler=None, det_threshold=0.5, sharpen_amount=0.0, face_upsample=False, batch_size=0, parallel=False, face_restore=True, wink_mode=True, eye_enhancement=True, skin_grain=0.15, color_match=True, enable_eyes=True, enable_lips=True, enable_skin=True, enable_teeth=True, enable_tone_glow=True, enable_dark_circles=True, enable_catchlight=True, catchlight_strength=0.55, enable_hair=True, hair_clarity=0.35, hair_sheen=0.25, enable_relighting=True, relighting_rim=0.25, relighting_tzone=0.20, enable_anti_glare=True, anti_glare_strength=0.50, enable_makeup=True, blush_strength=0.30, eyebrow_boost=0.35, color_lut="None", lut_intensity=1.0, bokeh_strength=0.0, preset_mode='Custom', chromatic_aberration=False):
+    def _process_image(self, img, w=0.5, detection_model='retinaface_mobile0.25', upscale=2, blend_softness=0.5, bg_upsampler=None, det_threshold=0.5, sharpen_amount=0.0, face_upsample=False, batch_size=0, parallel=False, face_restore=True, wink_mode=True, eye_enhancement=True, skin_grain=0.15, color_match=True, enable_eyes=True, enable_lips=True, enable_skin=True, enable_teeth=True, enable_tone_glow=True, enable_dark_circles=True, enable_catchlight=True, catchlight_strength=0.55, enable_hair=True, hair_clarity=0.35, hair_sheen=0.25, enable_relighting=True, relighting_rim=0.25, relighting_tzone=0.20, enable_anti_glare=True, anti_glare_strength=0.50, enable_makeup=True, blush_strength=0.30, eyebrow_boost=0.35, enable_super_clarity=True, clarity_strength=0.40, enable_deblur=False, deblur_strength=0.35, enable_dehaze=True, dehaze_strength=0.25, color_lut="None", lut_intensity=1.0, bokeh_strength=0.0, preset_mode='Custom', chromatic_aberration=False):
 
         """
         Enhance an image using the local CodeFormer pipeline.
@@ -596,15 +599,28 @@ class LocalAIEnhancerPipeline:
             anti_glare_strength=anti_glare_strength,
             enable_makeup=enable_makeup,
             blush_strength=blush_strength,
-            eyebrow_boost=eyebrow_boost
+            eyebrow_boost=eyebrow_boost,
+            enable_super_clarity=enable_super_clarity,
+            clarity_strength=clarity_strength,
+            enable_deblur=enable_deblur,
+            deblur_strength=deblur_strength,
+            enable_dehaze=enable_dehaze,
+            dehaze_strength=dehaze_strength
         )
 
-        # 4. Apply Studio Optical Bokeh Blur if enabled
+        # 4. Apply Full-Image Multi-Scale Clarity & Crystal De-Haze if enabled
+        if hasattr(self, 'wink_enhancer'):
+            if enable_dehaze and dehaze_strength > 0.0:
+                enhanced_img = self.wink_enhancer.apply_dehaze_and_dynamic_contrast(enhanced_img, strength=dehaze_strength * 0.6)
+            if enable_super_clarity and clarity_strength > 0.0:
+                enhanced_img = self.wink_enhancer.apply_laplacian_pyramid_clarity(enhanced_img, strength=clarity_strength * 0.45)
+
+        # 5. Apply Studio Optical Bokeh Blur if enabled
         if bokeh_strength > 0.0 and hasattr(self, 'wink_enhancer'):
             self._report_progress("postprocess", 0.8, f"Applying optical portrait bokeh (f/1.4 blur)...")
             enhanced_img = self.wink_enhancer.apply_portrait_bokeh(enhanced_img, face_bboxes=None, bokeh_strength=bokeh_strength)
 
-        # 5. Apply Studio Cinematic Color LUT Grade if enabled
+        # 6. Apply Studio Cinematic Color LUT Grade if enabled
         if color_lut not in (None, "None", "Off", "") and hasattr(self, 'wink_enhancer'):
             self._report_progress("postprocess", 0.9, f"Applying cinematic {color_lut} LUT...")
             enhanced_img = self.wink_enhancer.apply_cinematic_lut(enhanced_img, lut_name=color_lut, intensity=lut_intensity)
@@ -614,7 +630,7 @@ class LocalAIEnhancerPipeline:
         
         return enhanced_img
 
-    def paste_faces_custom_blend(self, face_helper, upscale, blend_softness, bg_img=None, sharpen_amount=0.0, face_upsample=False, w=0.5, wink_mode=True, eye_enhancement=True, skin_grain=0.15, color_match=True, enable_eyes=True, enable_lips=True, enable_skin=True, enable_teeth=True, enable_tone_glow=True, enable_dark_circles=True, enable_catchlight=True, catchlight_strength=0.55, enable_hair=True, hair_clarity=0.35, hair_sheen=0.25, enable_relighting=True, relighting_rim=0.25, relighting_tzone=0.20, enable_anti_glare=True, anti_glare_strength=0.50, enable_makeup=True, blush_strength=0.30, eyebrow_boost=0.35):
+    def paste_faces_custom_blend(self, face_helper, upscale, blend_softness, bg_img=None, sharpen_amount=0.0, face_upsample=False, w=0.5, wink_mode=True, eye_enhancement=True, skin_grain=0.15, color_match=True, enable_eyes=True, enable_lips=True, enable_skin=True, enable_teeth=True, enable_tone_glow=True, enable_dark_circles=True, enable_catchlight=True, catchlight_strength=0.55, enable_hair=True, hair_clarity=0.35, hair_sheen=0.25, enable_relighting=True, relighting_rim=0.25, relighting_tzone=0.20, enable_anti_glare=True, anti_glare_strength=0.50, enable_makeup=True, blush_strength=0.30, eyebrow_boost=0.35, enable_super_clarity=True, clarity_strength=0.40, enable_deblur=False, deblur_strength=0.35, enable_dehaze=True, dehaze_strength=0.25):
         """Custom implementation of face pasting with adjustable soft blending mask."""
         h, w_img, _ = face_helper.input_img.shape
         h_up, w_up = int(h * upscale), int(w_img * upscale)
@@ -673,6 +689,12 @@ class LocalAIEnhancerPipeline:
                     enable_makeup=enable_makeup,
                     blush_strength=blush_strength,
                     eyebrow_boost=eyebrow_boost,
+                    enable_super_clarity=enable_super_clarity,
+                    clarity_strength=clarity_strength,
+                    enable_deblur=enable_deblur,
+                    deblur_strength=deblur_strength,
+                    enable_dehaze=enable_dehaze,
+                    dehaze_strength=dehaze_strength,
                     sharpen_amount=sharpen_amount
                 )
 

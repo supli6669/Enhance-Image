@@ -1100,7 +1100,152 @@ class WinkQualityEnhancer:
             print(f"[WinkEnhancer] Adaptive sharpening warning: {e}")
             return img
 
-    def enhance_face(self, restored_face: np.ndarray, cropped_original: np.ndarray = None, parse_mask: np.ndarray = None, wink_mode: bool = True, eye_enhancement: bool = True, skin_grain: float = 0.15, color_match: bool = True, enable_eyes: bool = True, enable_lips: bool = True, enable_skin: bool = True, enable_teeth: bool = True, enable_tone_glow: bool = True, enable_dark_circles: bool = True, enable_catchlight: bool = True, catchlight_strength: float = 0.55, enable_hair: bool = True, hair_clarity: float = 0.35, hair_sheen: float = 0.25, enable_relighting: bool = True, relighting_rim: float = 0.25, relighting_tzone: float = 0.20, enable_anti_glare: bool = True, anti_glare_strength: float = 0.50, enable_makeup: bool = True, blush_strength: float = 0.30, eyebrow_boost: float = 0.35, sharpen_amount: float = 0.2) -> np.ndarray:
+    def apply_laplacian_pyramid_clarity(self, img: np.ndarray, strength: float = 0.40) -> np.ndarray:
+        """
+        Multi-Scale Laplacian Pyramid Super-Clarity:
+        Decomposes image into 3 frequency octaves (high, medium, low) and enhances
+        micro-textures (pores, eyelashes, fabric, hair follicles) without halo clipping artifacts.
+        """
+        if strength <= 0.0 or img is None:
+            return img
+
+        try:
+            h, w = img.shape[:2]
+            if min(h, w) < 32:
+                return img
+
+            img_f = img.astype(np.float32)
+            
+            # Level 1
+            g1 = cv2.pyrDown(img_f)
+            g1_up = cv2.pyrUp(g1, dstsize=(w, h))
+            l0 = img_f - g1_up # Highest frequency (micro-textures: pores, eyelashes)
+
+            # Level 2
+            g2 = cv2.pyrDown(g1)
+            g2_up = cv2.pyrUp(g2, dstsize=(g1.shape[1], g1.shape[0]))
+            l1 = g1 - g2_up # Medium frequency (hair strands, lip ridges)
+
+            # Soft non-linear coring (boost fine details without harsh halo blowouts)
+            l0_boost = l0 * (1.0 + strength * 1.8) / (1.0 + np.abs(l0) / 160.0)
+            l1_boost = l1 * (1.0 + strength * 1.2) / (1.0 + np.abs(l1) / 180.0)
+
+            # Pyramid Reconstruction
+            recon1 = g2_up + l1_boost
+            recon0 = cv2.pyrUp(recon1, dstsize=(w, h)) + l0_boost
+
+            return np.clip(recon0, 0, 255).astype(np.uint8)
+        except Exception as e:
+            print(f"[WinkEnhancer] Laplacian clarity warning: {e}")
+            return img
+
+    def apply_deblur_deconvolution(self, img: np.ndarray, kernel_size: int = 5, iterations: int = 4, strength: float = 0.35) -> np.ndarray:
+        """
+        Optical De-Blur & Anti-Shake Deconvolution:
+        Applies fast Richardson-Lucy deconvolution with a Gaussian point-spread function (PSF)
+        to recover crisp underlying edge contours from camera motion blur or soft focus.
+        """
+        if strength <= 0.0 or img is None:
+            return img
+
+        try:
+            k = cv2.getGaussianKernel(kernel_size, -1)
+            psf = k @ k.T
+            psf_flipped = psf[::-1, ::-1]
+
+            img_f = img.astype(np.float32) / 255.0
+            est = img_f.copy()
+
+            for _ in range(iterations):
+                conv_est = cv2.filter2D(est, -1, psf)
+                relative_blur = img_f / (conv_est + 1e-5)
+                error_factor = cv2.filter2D(relative_blur, -1, psf_flipped)
+                est = np.clip(est * error_factor, 0.0, 1.0)
+
+            deblurred = (est * 255.0).astype(np.uint8)
+            return cv2.addWeighted(img, 1.0 - strength, deblurred, strength, 0)
+        except Exception as e:
+            print(f"[WinkEnhancer] Deblur deconvolution warning: {e}")
+            return img
+
+    def apply_guided_detail_booster(self, img: np.ndarray, radius: int = 4, eps: float = 0.04, boost: float = 0.30) -> np.ndarray:
+        """
+        Guided Filter Detail Layer Booster:
+        Separates edge-preserving smooth base from ultra-fine texture layer and amplifies
+        intricate patterns (jewelry, fabric, eye reflections).
+        """
+        if boost <= 0.0 or img is None:
+            return img
+
+        try:
+            img_f = img.astype(np.float32) / 255.0
+            mean_i = cv2.boxFilter(img_f, -1, (radius, radius))
+            mean_ii = cv2.boxFilter(img_f * img_f, -1, (radius, radius))
+            var_i = mean_ii - mean_i * mean_i
+            
+            a = var_i / (var_i + eps)
+            b = mean_i - a * mean_i
+            
+            mean_a = cv2.boxFilter(a, -1, (radius, radius))
+            mean_b = cv2.boxFilter(b, -1, (radius, radius))
+            
+            base = mean_a * img_f + mean_b
+            detail = img_f - base
+            
+            boosted = img_f + detail * (boost * 1.8)
+            return np.clip(boosted * 255.0, 0, 255).astype(np.uint8)
+        except Exception as e:
+            print(f"[WinkEnhancer] Guided detail booster warning: {e}")
+            return img
+
+    def apply_dehaze_and_dynamic_contrast(self, img: np.ndarray, strength: float = 0.25) -> np.ndarray:
+        """
+        Crystal De-Haze & Deep Dynamic Contrast:
+        Removes foggy camera gray veils and enhances local tonal dynamic range in LAB space,
+        delivering punchy, transparent, crystalline contrast.
+        """
+        if strength <= 0.0 or img is None:
+            return img
+
+        try:
+            lab = cv2.cvtColor(img, cv2.COLOR_BGR2LAB).astype(np.float32)
+            l, a, b = cv2.split(lab)
+
+            # Estimate haze / atmospheric veil map
+            veil_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (15, 15))
+            min_l = cv2.erode(l, veil_kernel)
+            transmission = 1.0 - (strength * 0.65) * (min_l / 255.0)
+            transmission = np.maximum(transmission, 0.40)
+
+            # Recover dehazed luminance
+            l_dehazed = (l - 12.0 * strength) / transmission
+            l_dehazed = np.clip(l_dehazed, 0, 255).astype(np.uint8)
+
+            # Apply gentle CLAHE for local micro-contrast
+            clahe = cv2.createCLAHE(clipLimit=1.6, tileGridSize=(8, 8))
+            l_contrast = clahe.apply(l_dehazed)
+
+            dehazed_lab = cv2.merge([l_contrast, a.astype(np.uint8), b.astype(np.uint8)])
+            return cv2.cvtColor(dehazed_lab, cv2.COLOR_LAB2BGR)
+        except Exception as e:
+            print(f"[WinkEnhancer] De-haze warning: {e}")
+            return img
+
+    def enhance_crispness_and_clarity(self, img: np.ndarray, clarity_strength: float = 0.40, deblur_strength: float = 0.0, dehaze_strength: float = 0.25) -> np.ndarray:
+        """
+        Master Razor-Sharp & Super-Clarity Engine:
+        Unified pipeline to sharpen, deblur, and dehaze any full image or face crop.
+        """
+        out = img
+        if deblur_strength > 0.0:
+            out = self.apply_deblur_deconvolution(out, strength=deblur_strength)
+        if dehaze_strength > 0.0:
+            out = self.apply_dehaze_and_dynamic_contrast(out, strength=dehaze_strength)
+        if clarity_strength > 0.0:
+            out = self.apply_laplacian_pyramid_clarity(out, strength=clarity_strength)
+        return out
+
+    def enhance_face(self, restored_face: np.ndarray, cropped_original: np.ndarray = None, parse_mask: np.ndarray = None, wink_mode: bool = True, eye_enhancement: bool = True, skin_grain: float = 0.15, color_match: bool = True, enable_eyes: bool = True, enable_lips: bool = True, enable_skin: bool = True, enable_teeth: bool = True, enable_tone_glow: bool = True, enable_dark_circles: bool = True, enable_catchlight: bool = True, catchlight_strength: float = 0.55, enable_hair: bool = True, hair_clarity: float = 0.35, hair_sheen: float = 0.25, enable_relighting: bool = True, relighting_rim: float = 0.25, relighting_tzone: float = 0.20, enable_anti_glare: bool = True, anti_glare_strength: float = 0.50, enable_makeup: bool = True, blush_strength: float = 0.30, eyebrow_boost: float = 0.35, enable_super_clarity: bool = True, clarity_strength: float = 0.40, enable_deblur: bool = False, deblur_strength: float = 0.35, enable_dehaze: bool = True, dehaze_strength: float = 0.25, sharpen_amount: float = 0.2) -> np.ndarray:
         """
         Master method to execute Wink-level enhancement pipeline on a restored face crop.
         """
@@ -1109,22 +1254,30 @@ class WinkQualityEnhancer:
 
         out_face = restored_face.copy()
 
-        # Step A: Studio Lighting and Skin Glow Tone Balance (Auto White Balance & Radiance)
+        # Step A: Optical De-Blur & Anti-Shake (if enabled)
+        if enable_deblur and deblur_strength > 0.0:
+            out_face = self.apply_deblur_deconvolution(out_face, strength=deblur_strength)
+
+        # Step B: Crystal De-Haze & Deep Contrast
+        if enable_dehaze and dehaze_strength > 0.0:
+            out_face = self.apply_dehaze_and_dynamic_contrast(out_face, strength=dehaze_strength)
+
+        # Step C: Studio Lighting and Skin Glow Tone Balance (Auto White Balance & Radiance)
         if enable_tone_glow:
             out_face = self.balance_portrait_lighting_and_tone(out_face, strength=0.25)
 
-        # Step B: AI Anti-Glare & Matte Skin Restoration (Removes harsh flash shine)
+        # Step D: AI Anti-Glare & Matte Skin Restoration (Removes harsh flash shine)
         if enable_anti_glare and parse_mask is not None and anti_glare_strength > 0.0:
             out_face = self.remove_skin_glare_and_shine(out_face, parse_mask=parse_mask, strength=anti_glare_strength)
 
-        # Step C: Reinhard Color Transfer (Auto Skin Tone Alignment to original face/neck)
+        # Step E: Reinhard Color Transfer (Auto Skin Tone Alignment to original face/neck)
         if color_match and cropped_original is not None:
             out_face = self.match_color_reinhard(out_face, cropped_original, blend=0.4)
 
-        # Step D: Skin tone & micro-contrast balance
+        # Step F: Skin tone & micro-contrast balance
         out_face = self.balance_skin_tone_lab(out_face)
 
-        # Step E: Eye (sparkle & catchlight), Dark Circles, Teeth (whitening) & Lip local enhancement
+        # Step G: Eye (sparkle & catchlight), Dark Circles, Teeth (whitening) & Lip local enhancement
         if eye_enhancement and (enable_eyes or enable_lips or enable_teeth or enable_dark_circles or enable_catchlight):
             out_face = self.enhance_eyes_and_lips(
                 out_face,
@@ -1138,23 +1291,27 @@ class WinkQualityEnhancer:
                 catchlight_strength=catchlight_strength
             )
 
-        # Step F: Natural Studio Beauty & Makeup (Cheek blush & eyebrow sculpting)
+        # Step H: Natural Studio Beauty & Makeup (Cheek blush & eyebrow sculpting)
         if enable_makeup and parse_mask is not None and (blush_strength > 0.0 or eyebrow_boost > 0.0):
             out_face = self.apply_portrait_makeup(out_face, parse_mask=parse_mask, blush_strength=blush_strength, eyebrow_boost=eyebrow_boost)
 
-        # Step G: 3D Studio Relighting (T-Zone Highlighter & Silhouette Rim Light)
+        # Step I: 3D Studio Relighting (T-Zone Highlighter & Silhouette Rim Light)
         if enable_relighting and parse_mask is not None and (relighting_rim > 0.0 or relighting_tzone > 0.0):
             out_face = self.apply_studio_relighting(out_face, parse_mask=parse_mask, rim_light=relighting_rim, tzone_highlight=relighting_tzone)
 
-        # Step H: Hair Strand Super-Clarity & Specular Gloss Sheen
+        # Step J: Hair Strand Super-Clarity & Specular Gloss Sheen
         if enable_hair and parse_mask is not None and (hair_clarity > 0.0 or hair_sheen > 0.0):
             out_face = self.enhance_hair_strands(out_face, parse_mask=parse_mask, clarity=hair_clarity, sheen=hair_sheen)
 
-        # Step I: Multi-Scale Edge-Aware Adaptive Sharpening
+        # Step K: Multi-Scale Laplacian Pyramid Super-Clarity
+        if enable_super_clarity and clarity_strength > 0.0:
+            out_face = self.apply_laplacian_pyramid_clarity(out_face, strength=clarity_strength)
+
+        # Step L: Multi-Scale Edge-Aware Adaptive Sharpening
         if sharpen_amount > 0.0:
             out_face = self.apply_adaptive_sharpening(out_face, sharpen_amount=sharpen_amount)
 
-        # Step J: Real Skin Grain Injection (Frequency Separation)
+        # Step M: Real Skin Grain Injection (Frequency Separation)
         if enable_skin and skin_grain > 0.0 and cropped_original is not None:
             out_face = self.apply_skin_grain(out_face, cropped_original, skin_mask=parse_mask, grain_amount=skin_grain)
 

@@ -303,7 +303,7 @@ def get_pipeline():
 # The dashboard must not initialise the heavy model while CPU training is live.
 pipeline = None
 
-APP_VERSION = "v2.7.0 (Build 2026.09.02)"
+APP_VERSION = "v2.8.0 (Build 2026.09.02)"
 
 # ── Sidebar Controls (Minimalist & Clean) ───────────────────────────────────────
 with st.sidebar:
@@ -359,6 +359,12 @@ with st.sidebar:
         default_makeup = cp.get('makeup', True)
         default_blush = cp.get('blush', 0.30)
         default_eyebrow = cp.get('eyebrow', 0.35)
+        default_super_clarity = cp.get('super_clarity', True)
+        default_clarity_val = cp.get('clarity_val', 0.40)
+        default_deblur = cp.get('deblur', False)
+        default_deblur_val = cp.get('deblur_val', 0.35)
+        default_dehaze = cp.get('dehaze', True)
+        default_dehaze_val = cp.get('dehaze_val', 0.25)
         default_bokeh = cp.get('bokeh', 0.0)
         default_lut = cp.get('lut', 'None')
         default_chromatic = cp.get('chromatic', False)
@@ -384,6 +390,12 @@ with st.sidebar:
         default_makeup = True
         default_blush = 0.30
         default_eyebrow = 0.35
+        default_super_clarity = True
+        default_clarity_val = 0.40
+        default_deblur = False
+        default_deblur_val = 0.35
+        default_dehaze = True
+        default_dehaze_val = 0.25
         default_bokeh = 0.0
         default_lut = "None"
         default_chromatic = False
@@ -409,6 +421,12 @@ with st.sidebar:
         default_makeup = False
         default_blush = 0.0
         default_eyebrow = 0.0
+        default_super_clarity = False
+        default_clarity_val = 0.0
+        default_deblur = False
+        default_deblur_val = 0.0
+        default_dehaze = False
+        default_dehaze_val = 0.0
         default_bokeh = 0.0
         default_lut = "None"
         default_chromatic = False
@@ -434,6 +452,12 @@ with st.sidebar:
         default_makeup = True
         default_blush = 0.20
         default_eyebrow = 0.40
+        default_super_clarity = True
+        default_clarity_val = 0.50
+        default_deblur = True
+        default_deblur_val = 0.40
+        default_dehaze = True
+        default_dehaze_val = 0.35
         default_bokeh = 0.0
         default_lut = "Kodak Portra 400 (Warm Gold)"
         default_chromatic = True
@@ -459,6 +483,12 @@ with st.sidebar:
         default_makeup = False
         default_blush = 0.0
         default_eyebrow = 0.0
+        default_super_clarity = True
+        default_clarity_val = 0.30
+        default_deblur = False
+        default_deblur_val = 0.0
+        default_dehaze = False
+        default_dehaze_val = 0.0
         default_bokeh = 0.0
         default_lut = "Teal & Orange / Cyberpunk"
         default_chromatic = False
@@ -484,6 +514,12 @@ with st.sidebar:
         default_makeup = False
         default_blush = 0.0
         default_eyebrow = 0.20
+        default_super_clarity = True
+        default_clarity_val = 0.35
+        default_deblur = False
+        default_deblur_val = 0.0
+        default_dehaze = True
+        default_dehaze_val = 0.20
         default_bokeh = 0.0
         default_lut = "None"
         default_chromatic = False
@@ -518,6 +554,14 @@ with st.sidebar:
         skin_grain = st.slider("Skin Grain Retention", 0.0, 0.5, default_grain, 0.05)
         sharpen_val = st.slider("🔥 Extra Sharpness Boost", 0.0, 1.0, default_sharpen, 0.05, help="Multi-scale edge-aware adaptive sharpening")
         color_match = st.checkbox("Auto Skin Tone Alignment", value=default_color)
+
+        st.markdown("**🔬 Razor-Sharp & Super-Clarity Engine**")
+        enable_super_clarity = st.checkbox("🔬 Laplacian Multi-Scale Super-Clarity", value=default_super_clarity, help="Tăng nét vi chi tiết đa tầng (lỗ chân lông, sợi mi, kẽ tóc) không quầng sáng")
+        clarity_val = st.slider("Micro-Texture Boost", 0.0, 1.0, default_clarity_val, 0.05) if enable_super_clarity else 0.0
+        enable_deblur = st.checkbox("🌊 Optical De-Blur (Khử Nhòe Rung Tay & Out Nét)", value=default_deblur, help="Tái tạo viền nét sắc nhọn cho ảnh mờ out nét")
+        deblur_val = st.slider("De-Blur Strength", 0.0, 1.0, default_deblur_val, 0.05) if enable_deblur else 0.0
+        enable_dehaze = st.checkbox("✨ Crystal De-Haze & Deep Contrast (Khử Màng Sương Mờ)", value=default_dehaze, help="Khử lớp màng mờ xám giúp ảnh trong veo và tương phản sâu")
+        dehaze_val = st.slider("De-Haze Strength", 0.0, 1.0, default_dehaze_val, 0.05) if enable_dehaze else 0.0
         
         st.markdown("**🎭 Facial Organ Enhancements**")
         enable_eyes = st.checkbox("👁️ Eye Sparkle & Sclera Glow", value=default_eye)
@@ -562,6 +606,12 @@ with st.sidebar:
                 'grain': skin_grain,
                 'sharpen': sharpen_val,
                 'color': color_match,
+                'super_clarity': enable_super_clarity,
+                'clarity_val': clarity_val,
+                'deblur': enable_deblur,
+                'deblur_val': deblur_val,
+                'dehaze': enable_dehaze,
+                'dehaze_val': dehaze_val,
                 'eye': enable_eyes,
                 'lip': enable_lips,
                 'skin': enable_skin,
@@ -644,6 +694,12 @@ with tab_photo:
             'grain': skin_grain,
             'sharpen': sharpen_val,
             'color': color_match,
+            'super_clarity': enable_super_clarity,
+            'clarity_val': clarity_val,
+            'deblur': enable_deblur,
+            'deblur_val': deblur_val,
+            'dehaze': enable_dehaze,
+            'dehaze_val': dehaze_val,
             'eye': enable_eyes,
             'lip': enable_lips,
             'skin': enable_skin,
@@ -703,6 +759,12 @@ with tab_photo:
                     'eye_enhancement': enable_eyes,
                     'skin_grain': skin_grain,
                     'color_match': color_match,
+                    'enable_super_clarity': enable_super_clarity,
+                    'clarity_strength': clarity_val,
+                    'enable_deblur': enable_deblur,
+                    'deblur_strength': deblur_val,
+                    'enable_dehaze': enable_dehaze,
+                    'dehaze_strength': dehaze_val,
                     'enable_eyes': enable_eyes,
                     'enable_lips': enable_lips,
                     'enable_skin': enable_skin,

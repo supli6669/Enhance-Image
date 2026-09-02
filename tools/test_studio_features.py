@@ -194,6 +194,65 @@ def test_zoom_loupe_inspector_html():
     assert "data:image/jpeg;base64," in html, "Base64 image stream missing in HTML"
     print(f"[OK] 400% Zoom Loupe HTML component generated ({len(html)} chars).")
 
+def test_laplacian_pyramid_clarity():
+    print("=== Testing Multi-Scale Laplacian Pyramid Super-Clarity ===")
+    enhancer = WinkQualityEnhancer()
+    test_img = np.random.randint(50, 200, (256, 256, 3), dtype=np.uint8)
+    
+    out = enhancer.apply_laplacian_pyramid_clarity(test_img, strength=0.5)
+    assert out is not None, "Laplacian clarity returned None"
+    assert out.shape == test_img.shape, "Shape mismatch"
+    
+    # Sharpness should increase
+    s_before = enhancer.calculate_sharpness(test_img)
+    s_after = enhancer.calculate_sharpness(out)
+    assert s_after >= s_before, f"Sharpness should increase: {s_after} vs {s_before}"
+    print(f"[OK] Laplacian pyramid super-clarity boosted sharpness: {s_before:.1f} -> {s_after:.1f}")
+
+def test_deblur_deconvolution():
+    print("=== Testing Optical De-Blur Richardson-Lucy Deconvolution ===")
+    enhancer = WinkQualityEnhancer()
+    test_img = np.zeros((128, 128, 3), dtype=np.uint8)
+    test_img[30:90, 30:90] = 255
+    # Artificially blur image
+    blurred = cv2.GaussianBlur(test_img, (7, 7), 2.0)
+    
+    out = enhancer.apply_deblur_deconvolution(blurred, kernel_size=5, iterations=4, strength=0.5)
+    assert out is not None, "Deblur returned None"
+    assert out.shape == test_img.shape, "Shape mismatch"
+    
+    s_blur = enhancer.calculate_sharpness(blurred)
+    s_deblur = enhancer.calculate_sharpness(out)
+    assert s_deblur > s_blur, f"Deblurring should recover sharper edges: {s_deblur} vs {s_blur}"
+    print(f"[OK] De-blur deconvolution recovered edge gradient: {s_blur:.1f} -> {s_deblur:.1f}")
+
+def test_guided_detail_booster():
+    print("=== Testing Guided Filter Detail Layer Booster ===")
+    enhancer = WinkQualityEnhancer()
+    test_img = np.random.randint(60, 190, (128, 128, 3), dtype=np.uint8)
+    
+    out = enhancer.apply_guided_detail_booster(test_img, radius=4, eps=0.04, boost=0.4)
+    assert out is not None, "Guided booster returned None"
+    assert out.shape == test_img.shape, "Shape mismatch"
+    print("[OK] Guided filter detail booster executed cleanly.")
+
+def test_dehaze_and_dynamic_contrast():
+    print("=== Testing Crystal De-Haze & Deep Dynamic Contrast ===")
+    enhancer = WinkQualityEnhancer()
+    # Create hazy/foggy test image (washed out gray dynamic range)
+    test_img = np.full((128, 128, 3), 140, dtype=np.uint8)
+    test_img[40:80, 40:80] = 160
+    
+    out = enhancer.apply_dehaze_and_dynamic_contrast(test_img, strength=0.35)
+    assert out is not None, "Dehaze returned None"
+    assert out.shape == test_img.shape, "Shape mismatch"
+    
+    # Contrast should be expanded
+    std_before = np.std(test_img)
+    std_after = np.std(out)
+    assert std_after >= std_before, f"Dehaze should expand dynamic contrast: {std_after} vs {std_before}"
+    print(f"[OK] Crystal de-haze expanded dynamic contrast range: {std_before:.2f} -> {std_after:.2f}")
+
 def test_full_pipeline_studio_run():
     print("=== Testing Full Pipeline with All Studio Features Enabled ===")
     pipeline = LocalAIEnhancerPipeline(device='cpu')
@@ -220,6 +279,12 @@ def test_full_pipeline_studio_run():
         enable_makeup=True,
         blush_strength=0.30,
         eyebrow_boost=0.35,
+        enable_super_clarity=True,
+        clarity_strength=0.40,
+        enable_deblur=True,
+        deblur_strength=0.35,
+        enable_dehaze=True,
+        dehaze_strength=0.25,
         enable_teeth=True,
         enable_tone_glow=True,
         color_lut="Kodak Portra 400 (Warm Gold)",
@@ -242,5 +307,9 @@ if __name__ == "__main__":
     test_portrait_makeup_palette()
     test_tile_upscale_8k()
     test_zoom_loupe_inspector_html()
+    test_laplacian_pyramid_clarity()
+    test_deblur_deconvolution()
+    test_guided_detail_booster()
+    test_dehaze_and_dynamic_contrast()
     test_full_pipeline_studio_run()
-    print("\nSUCCESS: All Ultimate Studio Pro (v2.7.0) Enhancements verified with exit code 0!")
+    print("\nSUCCESS: All Razor-Sharp Super-Clarity (v2.8.0) Enhancements verified with exit code 0!")
