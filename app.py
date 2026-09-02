@@ -303,7 +303,7 @@ def get_pipeline():
 # The dashboard must not initialise the heavy model while CPU training is live.
 pipeline = None
 
-APP_VERSION = "v2.8.0 (Build 2026.09.02)"
+APP_VERSION = "v2.9.0 (Build 2026.09.02)"
 
 # ── Sidebar Controls (Minimalist & Clean) ───────────────────────────────────────
 with st.sidebar:
@@ -359,6 +359,15 @@ with st.sidebar:
         default_makeup = cp.get('makeup', True)
         default_blush = cp.get('blush', 0.30)
         default_eyebrow = cp.get('eyebrow', 0.35)
+        default_crystal_skin = cp.get('crystal_skin', True)
+        default_crystal_skin_val = cp.get('crystal_skin_val', 0.45)
+        default_glossy_lips = cp.get('glossy_lips', True)
+        default_lip_gloss = cp.get('lip_gloss', 0.40)
+        default_lip_vibrance = cp.get('lip_vibrance', 0.25)
+        default_doll_eye = cp.get('doll_eye', True)
+        default_doll_eye_depth = cp.get('doll_eye_depth', 0.45)
+        default_golden_hour = cp.get('golden_hour', False)
+        default_golden_warmth = cp.get('golden_warmth', 0.25)
         default_super_clarity = cp.get('super_clarity', True)
         default_clarity_val = cp.get('clarity_val', 0.40)
         default_deblur = cp.get('deblur', False)
@@ -390,6 +399,15 @@ with st.sidebar:
         default_makeup = True
         default_blush = 0.30
         default_eyebrow = 0.35
+        default_crystal_skin = True
+        default_crystal_skin_val = 0.45
+        default_glossy_lips = True
+        default_lip_gloss = 0.40
+        default_lip_vibrance = 0.25
+        default_doll_eye = True
+        default_doll_eye_depth = 0.45
+        default_golden_hour = False
+        default_golden_warmth = 0.25
         default_super_clarity = True
         default_clarity_val = 0.40
         default_deblur = False
@@ -421,6 +439,15 @@ with st.sidebar:
         default_makeup = False
         default_blush = 0.0
         default_eyebrow = 0.0
+        default_crystal_skin = False
+        default_crystal_skin_val = 0.0
+        default_glossy_lips = False
+        default_lip_gloss = 0.0
+        default_lip_vibrance = 0.0
+        default_doll_eye = False
+        default_doll_eye_depth = 0.0
+        default_golden_hour = False
+        default_golden_warmth = 0.0
         default_super_clarity = False
         default_clarity_val = 0.0
         default_deblur = False
@@ -452,6 +479,15 @@ with st.sidebar:
         default_makeup = True
         default_blush = 0.20
         default_eyebrow = 0.40
+        default_crystal_skin = True
+        default_crystal_skin_val = 0.35
+        default_glossy_lips = True
+        default_lip_gloss = 0.30
+        default_lip_vibrance = 0.20
+        default_doll_eye = True
+        default_doll_eye_depth = 0.40
+        default_golden_hour = True
+        default_golden_warmth = 0.30
         default_super_clarity = True
         default_clarity_val = 0.50
         default_deblur = True
@@ -483,6 +519,15 @@ with st.sidebar:
         default_makeup = False
         default_blush = 0.0
         default_eyebrow = 0.0
+        default_crystal_skin = True
+        default_crystal_skin_val = 0.55
+        default_glossy_lips = True
+        default_lip_gloss = 0.50
+        default_lip_vibrance = 0.35
+        default_doll_eye = True
+        default_doll_eye_depth = 0.60
+        default_golden_hour = False
+        default_golden_warmth = 0.0
         default_super_clarity = True
         default_clarity_val = 0.30
         default_deblur = False
@@ -514,6 +559,15 @@ with st.sidebar:
         default_makeup = False
         default_blush = 0.0
         default_eyebrow = 0.20
+        default_crystal_skin = True
+        default_crystal_skin_val = 0.35
+        default_glossy_lips = False
+        default_lip_gloss = 0.0
+        default_lip_vibrance = 0.0
+        default_doll_eye = True
+        default_doll_eye_depth = 0.30
+        default_golden_hour = False
+        default_golden_warmth = 0.0
         default_super_clarity = True
         default_clarity_val = 0.35
         default_deblur = False
@@ -562,6 +616,17 @@ with st.sidebar:
         deblur_val = st.slider("De-Blur Strength", 0.0, 1.0, default_deblur_val, 0.05) if enable_deblur else 0.0
         enable_dehaze = st.checkbox("✨ Crystal De-Haze & Deep Contrast (Khử Màng Sương Mờ)", value=default_dehaze, help="Khử lớp màng mờ xám giúp ảnh trong veo và tương phản sâu")
         dehaze_val = st.slider("De-Haze Strength", 0.0, 1.0, default_dehaze_val, 0.05) if enable_dehaze else 0.0
+
+        st.markdown("**🌟 Ultimate Glamour & Aesthetics**")
+        enable_crystal_skin = st.checkbox("💎 Poreless Crystal Skin (Mịn Da Pha Lê)", value=default_crystal_skin, help="Mịn da tự nhiên, xóa mụn tàn nhang mà vẫn giữ trọn lỗ chân lông thật")
+        crystal_skin_val = st.slider("Skin Smooth Level", 0.0, 1.0, default_crystal_skin_val, 0.05) if enable_crystal_skin else 0.0
+        enable_glossy_lips = st.checkbox("👄 3D Glassy Gloss Lips (Môi Căng Mọng Nước)", value=default_glossy_lips, help="Tạo điểm sáng 3D thủy tinh và tăng sắc môi rạng rỡ")
+        lip_gloss_val = st.slider("Lip Glass Shine", 0.0, 1.0, default_lip_gloss, 0.05) if enable_glossy_lips else 0.0
+        lip_vibrance_val = st.slider("Lip Color Vibrance", 0.0, 1.0, default_lip_vibrance, 0.05) if enable_glossy_lips else 0.0
+        enable_doll_eye = st.checkbox("👁️ Doll-Eye & Limbal Ring (Mắt Búp Bê Có Hồn)", value=default_doll_eye, help="Tăng chiều sâu viền đen con ngươi và làm sáng mắt trong veo")
+        doll_eye_val = st.slider("Eye Soul Depth", 0.0, 1.0, default_doll_eye_depth, 0.05) if enable_doll_eye else 0.0
+        enable_golden_hour = st.checkbox("🌅 Sun-Kissed Golden Hour Glow (Nắng Hoàng Hôn Ấm Áp)", value=default_golden_hour, help="Hiệu ứng ánh sáng studio ấm áp và ánh hào quang mơ màng")
+        golden_warmth_val = st.slider("Golden Warmth", 0.0, 1.0, default_golden_warmth, 0.05) if enable_golden_hour else 0.0
         
         st.markdown("**🎭 Facial Organ Enhancements**")
         enable_eyes = st.checkbox("👁️ Eye Sparkle & Sclera Glow", value=default_eye)
@@ -612,6 +677,15 @@ with st.sidebar:
                 'deblur_val': deblur_val,
                 'dehaze': enable_dehaze,
                 'dehaze_val': dehaze_val,
+                'crystal_skin': enable_crystal_skin,
+                'crystal_skin_val': crystal_skin_val,
+                'glossy_lips': enable_glossy_lips,
+                'lip_gloss': lip_gloss_val,
+                'lip_vibrance': lip_vibrance_val,
+                'doll_eye': enable_doll_eye,
+                'doll_eye_depth': doll_eye_val,
+                'golden_hour': enable_golden_hour,
+                'golden_warmth': golden_warmth_val,
                 'eye': enable_eyes,
                 'lip': enable_lips,
                 'skin': enable_skin,
@@ -700,6 +774,15 @@ with tab_photo:
             'deblur_val': deblur_val,
             'dehaze': enable_dehaze,
             'dehaze_val': dehaze_val,
+            'crystal_skin': enable_crystal_skin,
+            'crystal_skin_val': crystal_skin_val,
+            'glossy_lips': enable_glossy_lips,
+            'lip_gloss': lip_gloss_val,
+            'lip_vibrance': lip_vibrance_val,
+            'doll_eye': enable_doll_eye,
+            'doll_eye_depth': doll_eye_val,
+            'golden_hour': enable_golden_hour,
+            'golden_warmth': golden_warmth_val,
             'eye': enable_eyes,
             'lip': enable_lips,
             'skin': enable_skin,
@@ -765,6 +848,16 @@ with tab_photo:
                     'deblur_strength': deblur_val,
                     'enable_dehaze': enable_dehaze,
                     'dehaze_strength': dehaze_val,
+                    'enable_crystal_skin': enable_crystal_skin,
+                    'crystal_skin_strength': crystal_skin_val,
+                    'enable_glossy_lips': enable_glossy_lips,
+                    'lip_gloss': lip_gloss_val,
+                    'lip_vibrance': lip_vibrance_val,
+                    'enable_doll_eye': enable_doll_eye,
+                    'doll_eye_depth': doll_eye_val,
+                    'enable_golden_hour': enable_golden_hour,
+                    'golden_warmth': golden_warmth_val,
+                    'golden_bloom': 0.20 if enable_golden_hour else 0.0,
                     'enable_eyes': enable_eyes,
                     'enable_lips': enable_lips,
                     'enable_skin': enable_skin,

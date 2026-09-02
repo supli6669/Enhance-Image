@@ -33,6 +33,7 @@ def main():
     print("==================================================")
     
     test_scripts = [
+        "test_glamour_suite.py",
         "test_studio_features.py",
         "test_batch_pipeline.py",
         "test_video_pipeline.py",

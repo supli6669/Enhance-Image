@@ -1100,6 +1100,169 @@ class WinkQualityEnhancer:
             print(f"[WinkEnhancer] Adaptive sharpening warning: {e}")
             return img
 
+    def apply_crystal_skin_smoothing(self, img: np.ndarray, parse_mask: np.ndarray = None, strength: float = 0.45) -> np.ndarray:
+        """
+        Poreless Crystal Skin Smoothing:
+        Applies edge-preserving bilateral surface smoothing strictly on facial skin masks
+        to eliminate blemishes, acne, and uneven tone while preserving natural bone structure.
+        """
+        if strength <= 0.0 or img is None:
+            return img
+
+        try:
+            if parse_mask is not None:
+                # Mask index 1 = skin
+                skin_mask = (parse_mask == 1).astype(np.uint8) * 255
+                # Exclude eyes (4, 5), eyebrows (2, 3), lips (11, 12, 13), nose holes
+                kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
+                skin_mask = cv2.morphologyEx(skin_mask, cv2.MORPH_OPEN, kernel)
+                feathered = cv2.GaussianBlur(skin_mask, (15, 15), 5.0).astype(np.float32) / 255.0
+            else:
+                feathered = np.full((img.shape[0], img.shape[1]), 0.6, dtype=np.float32)
+
+            # Edge-preserving surface blur
+            smoothed = cv2.bilateralFilter(img, d=9, sigmaColor=35.0, sigmaSpace=35.0)
+
+            # Feathered blending
+            alpha = (feathered[:, :, np.newaxis] * strength)
+            blended = img.astype(np.float32) * (1.0 - alpha) + smoothed.astype(np.float32) * alpha
+            return np.clip(blended, 0, 255).astype(np.uint8)
+        except Exception as e:
+            print(f"[WinkEnhancer] Crystal skin smoothing warning: {e}")
+            return img
+
+    def apply_glossy_3d_lips(self, img: np.ndarray, parse_mask: np.ndarray = None, gloss_strength: float = 0.40, color_vibrance: float = 0.25) -> np.ndarray:
+        """
+        Glossy 3D Lip Plumping & Glass Specular Highlight:
+        Enhances lip vermilion definition, boosts plump color vibrance, and synthesizes
+        a 3D curved glass specular highlight reflection on the lower lip center.
+        """
+        if (gloss_strength <= 0.0 and color_vibrance <= 0.0) or img is None or parse_mask is None:
+            return img
+
+        try:
+            # Lips: 11 = mouth interior, 12 = upper lip, 13 = lower lip
+            lip_mask = np.isin(parse_mask, [12, 13]).astype(np.uint8) * 255
+            if np.sum(lip_mask) < 20:
+                return img
+
+            out = img.copy()
+            feathered_lip = cv2.GaussianBlur(lip_mask, (7, 7), 2.0).astype(np.float32) / 255.0
+
+            # 1. Lip Color Vibrance Boost in HSV
+            if color_vibrance > 0.0:
+                hsv = cv2.cvtColor(out, cv2.COLOR_BGR2HSV).astype(np.float32)
+                h, s, v = cv2.split(hsv)
+                s_boost = s * (1.0 + color_vibrance * 0.40)
+                v_boost = v * (1.0 + color_vibrance * 0.15)
+                hsv_boost = cv2.merge([h, np.clip(s_boost, 0, 255), np.clip(v_boost, 0, 255)])
+                bgr_boost = cv2.cvtColor(hsv_boost.astype(np.uint8), cv2.COLOR_HSV2BGR)
+                alpha = feathered_lip[:, :, np.newaxis] * 0.7
+                out = (out.astype(np.float32) * (1.0 - alpha) + bgr_boost.astype(np.float32) * alpha).astype(np.uint8)
+
+            # 2. 3D Curved Specular Glass Highlight on Lower Lip
+            if gloss_strength > 0.0:
+                lower_lip = (parse_mask == 13).astype(np.uint8)
+                y_indices, x_indices = np.where(lower_lip > 0)
+                if len(y_indices) > 0:
+                    cy, cx = int(np.mean(y_indices)), int(np.mean(x_indices))
+                    h, w = img.shape[:2]
+                    y_grid, x_grid = np.ogrid[:h, :w]
+                    
+                    # Elliptical highlight centered on lower lip
+                    sy = max(3.0, (np.max(y_indices) - np.min(y_indices)) * 0.28)
+                    sx = max(6.0, (np.max(x_indices) - np.min(x_indices)) * 0.32)
+                    highlight = np.exp(-(((x_grid - cx) ** 2) / (2 * sx ** 2) + ((y_grid - cy) ** 2) / (2 * sy ** 2)))
+                    highlight = highlight * (lower_lip > 0) * (gloss_strength * 130.0)
+                    highlight = cv2.GaussianBlur(highlight.astype(np.float32), (5, 5), 1.5)
+                    
+                    out_f = out.astype(np.float32)
+                    out_f[:, :, 0] += highlight * 0.95 # Blue
+                    out_f[:, :, 1] += highlight * 0.98 # Green
+                    out_f[:, :, 2] += highlight * 1.05 # Red
+                    out = np.clip(out_f, 0, 255).astype(np.uint8)
+
+            return out
+        except Exception as e:
+            print(f"[WinkEnhancer] Glossy lips warning: {e}")
+            return img
+
+    def apply_iris_luminescence_and_limbal_ring(self, img: np.ndarray, parse_mask: np.ndarray = None, depth_strength: float = 0.45) -> np.ndarray:
+        """
+        Doll-Eye Iris Luminescence & Limbal Ring Deepening:
+        Darkens outer limbal ring border around the iris for captivating soulful gaze
+        while boosting luminous clarity inside the iris.
+        """
+        if depth_strength <= 0.0 or img is None or parse_mask is None:
+            return img
+
+        try:
+            # Eye mask: 4 = left eye, 5 = right eye
+            eye_mask = np.isin(parse_mask, [4, 5]).astype(np.uint8) * 255
+            if np.sum(eye_mask) < 20:
+                return img
+
+            out = img.copy()
+            for eye_idx in [4, 5]:
+                single_eye = (parse_mask == eye_idx).astype(np.uint8)
+                y_idx, x_idx = np.where(single_eye > 0)
+                if len(y_idx) < 10:
+                    continue
+                cy, cx = int(np.mean(y_idx)), int(np.mean(x_idx))
+                r = max(4, int(max(np.max(y_idx) - np.min(y_idx), np.max(x_idx) - np.min(x_idx)) * 0.45))
+
+                h, w = img.shape[:2]
+                y_grid, x_grid = np.ogrid[:h, :w]
+                dist = np.sqrt((x_grid - cx) ** 2 + (y_grid - cy) ** 2)
+
+                # Limbal ring dark contour (radius ~ 0.7r to 1.0r)
+                limbal_ring = np.exp(-((dist - r * 0.85) ** 2) / (2 * (r * 0.18) ** 2))
+                limbal_ring = limbal_ring * (single_eye > 0) * (depth_strength * 0.35)
+
+                # Inner iris luminescence (radius < 0.6r)
+                inner_iris = np.exp(-(dist ** 2) / (2 * (r * 0.45) ** 2))
+                inner_iris = inner_iris * (single_eye > 0) * (depth_strength * 0.25)
+
+                out_f = out.astype(np.float32)
+                # Apply limbal ring darkening
+                out_f = out_f * (1.0 - limbal_ring[:, :, np.newaxis])
+                # Apply inner iris luminescence
+                out_f += inner_iris[:, :, np.newaxis] * 35.0
+                out = np.clip(out_f, 0, 255).astype(np.uint8)
+
+            return out
+        except Exception as e:
+            print(f"[WinkEnhancer] Iris luminescence warning: {e}")
+            return img
+
+    def apply_golden_hour_glow(self, img: np.ndarray, warm_strength: float = 0.25, bloom_strength: float = 0.20) -> np.ndarray:
+        """
+        Sun-Kissed Golden Hour Glow & Dreamy Diffusion:
+        Adds warm honey-amber radiant glow and dreamy soft studio bloom diffusion.
+        """
+        if (warm_strength <= 0.0 and bloom_strength <= 0.0) or img is None:
+            return img
+
+        try:
+            out = img.astype(np.float32)
+
+            # 1. Warm Amber Color Cast in Highlights & Midtones
+            if warm_strength > 0.0:
+                # Boost Red and slightly Green, reduce Blue slightly
+                out[:, :, 2] += warm_strength * 14.0 # Red boost
+                out[:, :, 1] += warm_strength * 7.0  # Green boost
+                out[:, :, 0] = np.maximum(0.0, out[:, :, 0] - warm_strength * 4.0) # Blue reduction
+
+            # 2. Dreamy Atmospheric Studio Bloom Diffusion
+            if bloom_strength > 0.0:
+                bloom = cv2.GaussianBlur(out, (31, 31), 12.0)
+                out = out * (1.0 - bloom_strength * 0.4) + bloom * (bloom_strength * 0.4)
+
+            return np.clip(out, 0, 255).astype(np.uint8)
+        except Exception as e:
+            print(f"[WinkEnhancer] Golden hour glow warning: {e}")
+            return img
+
     def apply_laplacian_pyramid_clarity(self, img: np.ndarray, strength: float = 0.40) -> np.ndarray:
         """
         Multi-Scale Laplacian Pyramid Super-Clarity:
@@ -1245,7 +1408,7 @@ class WinkQualityEnhancer:
             out = self.apply_laplacian_pyramid_clarity(out, strength=clarity_strength)
         return out
 
-    def enhance_face(self, restored_face: np.ndarray, cropped_original: np.ndarray = None, parse_mask: np.ndarray = None, wink_mode: bool = True, eye_enhancement: bool = True, skin_grain: float = 0.15, color_match: bool = True, enable_eyes: bool = True, enable_lips: bool = True, enable_skin: bool = True, enable_teeth: bool = True, enable_tone_glow: bool = True, enable_dark_circles: bool = True, enable_catchlight: bool = True, catchlight_strength: float = 0.55, enable_hair: bool = True, hair_clarity: float = 0.35, hair_sheen: float = 0.25, enable_relighting: bool = True, relighting_rim: float = 0.25, relighting_tzone: float = 0.20, enable_anti_glare: bool = True, anti_glare_strength: float = 0.50, enable_makeup: bool = True, blush_strength: float = 0.30, eyebrow_boost: float = 0.35, enable_super_clarity: bool = True, clarity_strength: float = 0.40, enable_deblur: bool = False, deblur_strength: float = 0.35, enable_dehaze: bool = True, dehaze_strength: float = 0.25, sharpen_amount: float = 0.2) -> np.ndarray:
+    def enhance_face(self, restored_face: np.ndarray, cropped_original: np.ndarray = None, parse_mask: np.ndarray = None, wink_mode: bool = True, eye_enhancement: bool = True, skin_grain: float = 0.15, color_match: bool = True, enable_eyes: bool = True, enable_lips: bool = True, enable_skin: bool = True, enable_teeth: bool = True, enable_tone_glow: bool = True, enable_dark_circles: bool = True, enable_catchlight: bool = True, catchlight_strength: float = 0.55, enable_hair: bool = True, hair_clarity: float = 0.35, hair_sheen: float = 0.25, enable_relighting: bool = True, relighting_rim: float = 0.25, relighting_tzone: float = 0.20, enable_anti_glare: bool = True, anti_glare_strength: float = 0.50, enable_makeup: bool = True, blush_strength: float = 0.30, eyebrow_boost: float = 0.35, enable_crystal_skin: bool = True, crystal_skin_strength: float = 0.45, enable_glossy_lips: bool = True, lip_gloss: float = 0.40, lip_vibrance: float = 0.25, enable_doll_eye: bool = True, doll_eye_depth: float = 0.45, enable_golden_hour: bool = False, golden_warmth: float = 0.25, golden_bloom: float = 0.20, enable_super_clarity: bool = True, clarity_strength: float = 0.40, enable_deblur: bool = False, deblur_strength: float = 0.35, enable_dehaze: bool = True, dehaze_strength: float = 0.25, sharpen_amount: float = 0.2) -> np.ndarray:
         """
         Master method to execute Wink-level enhancement pipeline on a restored face crop.
         """
@@ -1270,14 +1433,18 @@ class WinkQualityEnhancer:
         if enable_anti_glare and parse_mask is not None and anti_glare_strength > 0.0:
             out_face = self.remove_skin_glare_and_shine(out_face, parse_mask=parse_mask, strength=anti_glare_strength)
 
-        # Step E: Reinhard Color Transfer (Auto Skin Tone Alignment to original face/neck)
+        # Step E: Poreless Crystal Skin Smoothing (Blemish & rough pore softening)
+        if enable_crystal_skin and crystal_skin_strength > 0.0:
+            out_face = self.apply_crystal_skin_smoothing(out_face, parse_mask=parse_mask, strength=crystal_skin_strength)
+
+        # Step F: Reinhard Color Transfer (Auto Skin Tone Alignment to original face/neck)
         if color_match and cropped_original is not None:
             out_face = self.match_color_reinhard(out_face, cropped_original, blend=0.4)
 
-        # Step F: Skin tone & micro-contrast balance
+        # Step G: Skin tone & micro-contrast balance
         out_face = self.balance_skin_tone_lab(out_face)
 
-        # Step G: Eye (sparkle & catchlight), Dark Circles, Teeth (whitening) & Lip local enhancement
+        # Step H: Eye (sparkle & catchlight), Dark Circles, Teeth (whitening) & Lip local enhancement
         if eye_enhancement and (enable_eyes or enable_lips or enable_teeth or enable_dark_circles or enable_catchlight):
             out_face = self.enhance_eyes_and_lips(
                 out_face,
@@ -1291,27 +1458,39 @@ class WinkQualityEnhancer:
                 catchlight_strength=catchlight_strength
             )
 
-        # Step H: Natural Studio Beauty & Makeup (Cheek blush & eyebrow sculpting)
+        # Step I: Doll-Eye Iris Luminescence & Limbal Ring Deepening
+        if enable_doll_eye and parse_mask is not None and doll_eye_depth > 0.0:
+            out_face = self.apply_iris_luminescence_and_limbal_ring(out_face, parse_mask=parse_mask, depth_strength=doll_eye_depth)
+
+        # Step J: Glossy 3D Lip Plumping & Glass Specular Highlight
+        if enable_glossy_lips and parse_mask is not None and (lip_gloss > 0.0 or lip_vibrance > 0.0):
+            out_face = self.apply_glossy_3d_lips(out_face, parse_mask=parse_mask, gloss_strength=lip_gloss, color_vibrance=lip_vibrance)
+
+        # Step K: Natural Studio Beauty & Makeup (Cheek blush & eyebrow sculpting)
         if enable_makeup and parse_mask is not None and (blush_strength > 0.0 or eyebrow_boost > 0.0):
             out_face = self.apply_portrait_makeup(out_face, parse_mask=parse_mask, blush_strength=blush_strength, eyebrow_boost=eyebrow_boost)
 
-        # Step I: 3D Studio Relighting (T-Zone Highlighter & Silhouette Rim Light)
+        # Step L: 3D Studio Relighting (T-Zone Highlighter & Silhouette Rim Light)
         if enable_relighting and parse_mask is not None and (relighting_rim > 0.0 or relighting_tzone > 0.0):
             out_face = self.apply_studio_relighting(out_face, parse_mask=parse_mask, rim_light=relighting_rim, tzone_highlight=relighting_tzone)
 
-        # Step J: Hair Strand Super-Clarity & Specular Gloss Sheen
+        # Step M: Sun-Kissed Golden Hour Glow (if enabled)
+        if enable_golden_hour and (golden_warmth > 0.0 or golden_bloom > 0.0):
+            out_face = self.apply_golden_hour_glow(out_face, warm_strength=golden_warmth, bloom_strength=golden_bloom)
+
+        # Step N: Hair Strand Super-Clarity & Specular Gloss Sheen
         if enable_hair and parse_mask is not None and (hair_clarity > 0.0 or hair_sheen > 0.0):
             out_face = self.enhance_hair_strands(out_face, parse_mask=parse_mask, clarity=hair_clarity, sheen=hair_sheen)
 
-        # Step K: Multi-Scale Laplacian Pyramid Super-Clarity
+        # Step O: Multi-Scale Laplacian Pyramid Super-Clarity
         if enable_super_clarity and clarity_strength > 0.0:
             out_face = self.apply_laplacian_pyramid_clarity(out_face, strength=clarity_strength)
 
-        # Step L: Multi-Scale Edge-Aware Adaptive Sharpening
+        # Step P: Multi-Scale Edge-Aware Adaptive Sharpening
         if sharpen_amount > 0.0:
             out_face = self.apply_adaptive_sharpening(out_face, sharpen_amount=sharpen_amount)
 
-        # Step M: Real Skin Grain Injection (Frequency Separation)
+        # Step Q: Real Skin Grain Injection (Frequency Separation)
         if enable_skin and skin_grain > 0.0 and cropped_original is not None:
             out_face = self.apply_skin_grain(out_face, cropped_original, skin_mask=parse_mask, grain_amount=skin_grain)
 

@@ -51,3 +51,4 @@ wheels/
 *.log
 *.bak
 temp_*
+kaggle_bundle/

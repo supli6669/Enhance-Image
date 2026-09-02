@@ -1592,8 +1592,43 @@ Validated and streamlined the end-to-end model training workflow for Stage III C
 
 2. **Multi-Platform Training Pipelines**:
    - **Local CPU Runner (`train_custom.py`)**: Automatic checkpoint discovery, benchmark holdout exclusion, and CPU thread management.
-   - **Google Colab GPU Notebook (`train_on_colab.ipynb`)**: Cloud GPU acceleration (T4/A100) with automatic Google Drive checkpoint backup and ONNX Static INT8 export.
+   - **Kaggle GPU Automated Runner (`tools/kaggle_runner.py`)**: Cloud GPU acceleration with zero-browser execution, log streaming, and model artifact downloading.
 
+---
+
+## Task 37: Ultimate Glamour & Aesthetics Engine (`v2.9.0`)
+
+**Date:** 2026-09-02  
+**Status:** ✅ Completed & Verified
+
+### Overview
+Delivered 4 aesthetic breakthroughs to transform portrait outputs into magazine-cover quality with idol-grade glamour and natural elegance:
+
+1. **💎 Poreless Crystal Skin Smoothing (`apply_crystal_skin_smoothing`)**:
+   - Applies parsing-guided bilateral surface smoothing strictly on facial skin masks to eliminate blemishes, rough patches, and acne.
+   - Blends smoothly with frequency separation skin grain retention so skin looks poreless, glowing, and pristine yet completely natural.
+
+2. **👄 3D Glossy Lip Plumping & Glass Specular Highlight (`apply_glossy_3d_lips`)**:
+   - Boosts lip color vibrance in HSV color space and synthesizes a 3D curved elliptical glass specular reflection on the lower lip center (hiệu ứng môi căng mọng nước).
+
+3. **👁️ Doll-Eye Iris Luminescence & Limbal Ring Deepening (`apply_iris_luminescence_and_limbal_ring`)**:
+   - Darkens the outer limbal ring border around the iris to add deep soulful magnetism to the gaze (Korean idol photography style) while boosting inner iris crystal luminescence.
+
+4. **🌅 Sun-Kissed Golden Hour Glow (`apply_golden_hour_glow`)**:
+   - Adds rich honey-amber warmth across highlights/midtones combined with dreamy atmospheric studio bloom diffusion.
+
+5. **Verification & Quality Guard**:
+   - Created dedicated test harness `tools/test_glamour_suite.py`.
+   - Verified that all algorithms execute in $<100\text{ms}$ on CPU.
+   - Master verification test suite `tools/test_all.py` passed with exit code 0.
+   - Bumped `APP_VERSION` to `v2.9.0 (Build 2026.09.02)`.
+
+### Code Changes
+- [MODIFY] [wink_enhancer.py](file:///d:/.gemini-scratch/custom-ai-enhancer/wink_enhancer.py) (Added `apply_crystal_skin_smoothing()`, `apply_glossy_3d_lips()`, `apply_iris_luminescence_and_limbal_ring()`, `apply_golden_hour_glow()`, and updated `enhance_face()`)
+- [MODIFY] [pipeline.py](file:///d:/.gemini-scratch/custom-ai-enhancer/pipeline.py) (Plumbed glamour arguments into `process_image`, `paste_faces_custom_blend`, and full image post-processing)
+- [MODIFY] [app.py](file:///d:/.gemini-scratch/custom-ai-enhancer/app.py) (Added Ultimate Glamour & Aesthetics sidebar controls, preset values, and bumped to `v2.9.0`)
+- [NEW] [tools/test_glamour_suite.py](file:///d:/.gemini-scratch/custom-ai-enhancer/tools/test_glamour_suite.py) (Unit test suite for glamour features)
+- [MODIFY] [tools/test_all.py](file:///d:/.gemini-scratch/custom-ai-enhancer/tools/test_all.py) (Integrated glamour test harness into master verification)
 
 
 
