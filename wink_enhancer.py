@@ -1111,8 +1111,11 @@ class WinkQualityEnhancer:
 
         try:
             if parse_mask is not None:
+                parse_mask_2d = np.squeeze(parse_mask)
+                if parse_mask_2d.ndim != 2:
+                    parse_mask_2d = parse_mask_2d[0] if parse_mask_2d.ndim > 2 else parse_mask_2d
                 # Mask index 1 = skin
-                skin_mask = (parse_mask == 1).astype(np.uint8) * 255
+                skin_mask = (parse_mask_2d == 1).astype(np.uint8) * 255
                 # Exclude eyes (4, 5), eyebrows (2, 3), lips (11, 12, 13), nose holes
                 kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
                 skin_mask = cv2.morphologyEx(skin_mask, cv2.MORPH_OPEN, kernel)
