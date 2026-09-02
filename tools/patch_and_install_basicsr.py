@@ -87,6 +87,15 @@ def main():
     # 5. Clean up
     print("Cleaning up temp directory...")
     shutil.rmtree(temp_dir, ignore_errors=True)
+
+    # 6. Ensure local CodeFormer basicsr/version.py is written
+    cf_basicsr_dir = os.path.join(os.path.dirname(project_dir), "models", "CodeFormer", "basicsr")
+    if os.path.exists(cf_basicsr_dir):
+        v_file = os.path.join(cf_basicsr_dir, "version.py")
+        with open(v_file, "w", encoding="utf-8") as f:
+            f.write("# GENERATED VERSION FILE FOR CODEFORMER LOCAL BASICSR\n__version__ = '1.4.2'\n__gitsha__ = 'unknown'\nversion_info = (1, 4, 2)\n")
+        print(f"Generated local version file at {v_file}")
+
     print("BasicSR installed successfully!")
 
 if __name__ == "__main__":
