@@ -68,6 +68,7 @@ def main():
     if not os.path.exists(dataset_dir) or len(os.listdir(dataset_dir)) == 0:
         print("Dataset directory is empty. Preparing dataset images...")
         try:
+            sys.path.insert(0, os.path.join(project_dir, "tools"))
             import prepare_toy_training
             prepare_toy_training.main()
             print("Dataset preparation completed.")

@@ -3,7 +3,7 @@ import requests
 import yaml
 
 def main():
-    project_dir = os.path.dirname(os.path.abspath(__file__))
+    project_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     codeformer_dir = os.path.join(project_dir, "models", "CodeFormer")
     
     # 1. Create target dataset directory
