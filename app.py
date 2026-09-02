@@ -319,9 +319,10 @@ with st.sidebar:
 
     # Base preset options + any user created presets
     base_presets = [
-        "✨ Wink Studio (Best Quality)",
+        "💎 Pure Quality & Sharpness (Mọi Loại Ảnh - 100% Trung Thực)",
+        "🌿 Natural Likeness (Chân Dung Tự Nhiên)",
+        "✨ Wink Studio (Chân Dung Nghệ Thuật)",
         "⚡ Ultra Fast CPU",
-        "🎨 Natural Likeness",
         "📜 Old Photo Restoration",
         "🎮 Game / Anime Character"
     ]
@@ -340,37 +341,37 @@ with st.sidebar:
     if preset_choice.startswith("⭐ "):
         custom_key = preset_choice[2:]
         cp = st.session_state.custom_presets.get(custom_key, {})
-        default_w = cp.get('w', 0.5)
+        default_w = cp.get('w', 0.8)
         default_upscale = cp.get('upscale', 2)
-        default_wink = cp.get('wink', True)
-        default_grain = cp.get('grain', 0.15)
-        default_sharpen = cp.get('sharpen', 0.2)
+        default_wink = cp.get('wink', False)
+        default_grain = cp.get('grain', 0.20)
+        default_sharpen = cp.get('sharpen', 0.25)
         default_color = cp.get('color', True)
-        default_eye = cp.get('eye', True)
-        default_lip = cp.get('lip', True)
-        default_skin = cp.get('skin', True)
-        default_teeth = cp.get('teeth', True)
-        default_tone_glow = cp.get('tone_glow', True)
-        default_dark_circles = cp.get('dark_circles', True)
-        default_catchlight = cp.get('catchlight', True)
-        default_hair = cp.get('hair', True)
-        default_relighting = cp.get('relighting', True)
-        default_anti_glare = cp.get('anti_glare', True)
-        default_makeup = cp.get('makeup', True)
-        default_blush = cp.get('blush', 0.30)
-        default_eyebrow = cp.get('eyebrow', 0.35)
-        default_crystal_skin = cp.get('crystal_skin', True)
-        default_crystal_skin_val = cp.get('crystal_skin_val', 0.45)
-        default_glossy_lips = cp.get('glossy_lips', True)
-        default_lip_gloss = cp.get('lip_gloss', 0.40)
-        default_lip_vibrance = cp.get('lip_vibrance', 0.25)
-        default_doll_eye = cp.get('doll_eye', True)
-        default_doll_eye_depth = cp.get('doll_eye_depth', 0.45)
+        default_eye = cp.get('eye', False)
+        default_lip = cp.get('lip', False)
+        default_skin = cp.get('skin', False)
+        default_teeth = cp.get('teeth', False)
+        default_tone_glow = cp.get('tone_glow', False)
+        default_dark_circles = cp.get('dark_circles', False)
+        default_catchlight = cp.get('catchlight', False)
+        default_hair = cp.get('hair', False)
+        default_relighting = cp.get('relighting', False)
+        default_anti_glare = cp.get('anti_glare', False)
+        default_makeup = cp.get('makeup', False)
+        default_blush = cp.get('blush', 0.0)
+        default_eyebrow = cp.get('eyebrow', 0.0)
+        default_crystal_skin = cp.get('crystal_skin', False)
+        default_crystal_skin_val = cp.get('crystal_skin_val', 0.0)
+        default_glossy_lips = cp.get('glossy_lips', False)
+        default_lip_gloss = cp.get('lip_gloss', 0.0)
+        default_lip_vibrance = cp.get('lip_vibrance', 0.0)
+        default_doll_eye = cp.get('doll_eye', False)
+        default_doll_eye_depth = cp.get('doll_eye_depth', 0.0)
         default_golden_hour = cp.get('golden_hour', False)
-        default_golden_warmth = cp.get('golden_warmth', 0.25)
+        default_golden_warmth = cp.get('golden_warmth', 0.0)
         default_super_clarity = cp.get('super_clarity', True)
-        default_clarity_val = cp.get('clarity_val', 0.40)
-        default_deblur = cp.get('deblur', False)
+        default_clarity_val = cp.get('clarity_val', 0.45)
+        default_deblur = cp.get('deblur', True)
         default_deblur_val = cp.get('deblur_val', 0.35)
         default_dehaze = cp.get('dehaze', True)
         default_dehaze_val = cp.get('dehaze_val', 0.25)
@@ -379,6 +380,46 @@ with st.sidebar:
         default_chromatic = cp.get('chromatic', False)
         default_detector = cp.get('detector', 'retinaface_mobile0.25')
         pipeline_preset_mode = 'Custom'
+    elif "Pure Quality & Sharpness" in preset_choice:
+        default_w = 0.85
+        default_upscale = 2
+        default_wink = False
+        default_grain = 0.20
+        default_sharpen = 0.25
+        default_color = True
+        default_eye = False
+        default_lip = False
+        default_skin = False
+        default_teeth = False
+        default_tone_glow = False
+        default_dark_circles = False
+        default_catchlight = False
+        default_hair = False
+        default_relighting = False
+        default_anti_glare = False
+        default_makeup = False
+        default_blush = 0.0
+        default_eyebrow = 0.0
+        default_crystal_skin = False
+        default_crystal_skin_val = 0.0
+        default_glossy_lips = False
+        default_lip_gloss = 0.0
+        default_lip_vibrance = 0.0
+        default_doll_eye = False
+        default_doll_eye_depth = 0.0
+        default_golden_hour = False
+        default_golden_warmth = 0.0
+        default_super_clarity = True
+        default_clarity_val = 0.45
+        default_deblur = True
+        default_deblur_val = 0.35
+        default_dehaze = True
+        default_dehaze_val = 0.25
+        default_bokeh = 0.0
+        default_lut = "None"
+        default_chromatic = False
+        default_detector = "retinaface_mobile0.25"
+        pipeline_preset_mode = 'Pure Quality'
     elif "Wink Studio" in preset_choice:
         default_w = 0.3
         default_upscale = 2
