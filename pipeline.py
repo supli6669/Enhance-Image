@@ -11,6 +11,11 @@ from concurrent.futures import ThreadPoolExecutor
 from torchvision.transforms.functional import normalize
 
 try:
+    import tools.compat_shim
+except Exception:
+    pass
+
+try:
     import onnxruntime as ort
     HAS_ONNX = True
 except ImportError:
@@ -128,9 +133,20 @@ class LocalAIEnhancerPipeline:
                         print(f"[Pipeline] Warning: Failed to load ONNX model {candidate}: {e}")
                         # If a candidate fails, continue trying the next candidate
 
-        base_re = os.path.join(project_dir, "weights", "realesrgan", "realesrgan")
-        self.realesrgan_onnx_path = base_re + "_int8.onnx" if os.path.exists(base_re + "_int8.onnx") else base_re + ".onnx"
-        self.use_re_onnx = HAS_ONNX and os.path.exists(self.realesrgan_onnx_path)
+        re_dir = os.path.join(project_dir, "weights", "realesrgan")
+        re_candidates = [
+            os.path.join(re_dir, "realesrgan_custom.onnx"),
+            os.path.join(re_dir, "realesrgan_int8.onnx"),
+            os.path.join(re_dir, "realesrgan.onnx"),
+            os.path.join(project_dir, "realesrgan_custom.onnx")
+        ]
+        self.realesrgan_onnx_path = None
+        for cand in re_candidates:
+            if os.path.exists(cand):
+                self.realesrgan_onnx_path = cand
+                print(f"[Pipeline] Loaded Real-ESRGAN upscaler: {cand}")
+                break
+        self.use_re_onnx = HAS_ONNX and (self.realesrgan_onnx_path is not None)
         
         # Cache for ONNX sessions
         self._onnx_session_cache = {}
@@ -211,16 +227,16 @@ class LocalAIEnhancerPipeline:
                 providers = _get_ort_providers()
             self._onnx_session_cache[path] = ort.InferenceSession(path, sess_options=opts, providers=providers)
         return self._onnx_session_cache[path]
-    def _enhance_realesrgan_onnx_single(self, img, upscale):
+    def _enhance_realesrgan_onnx_single(self, img, upscale, model_path=None):
         h, w, c = img.shape
         img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
         img_rgb = img_rgb.astype(np.float32) / 255.0
         img_input = np.transpose(img_rgb, (2, 0, 1))
         img_input = np.expand_dims(img_input, axis=0)
 
-        # B8 FIX: Use unified _get_onnx_session() cache instead of ad-hoc
-        # hasattr/None check, which would not survive garbage collection.
-        session = self._get_onnx_session(self.realesrgan_onnx_path)
+        # Use passed model_path or default cached path
+        active_path = model_path if (model_path and os.path.exists(model_path)) else self.realesrgan_onnx_path
+        session = self._get_onnx_session(active_path)
 
         ort_inputs = {session.get_inputs()[0].name: img_input}
         ort_outs = session.run(None, ort_inputs)
@@ -237,14 +253,14 @@ class LocalAIEnhancerPipeline:
             
         return output_bgr
 
-    def enhance_realesrgan_onnx(self, img, upscale):
+    def enhance_realesrgan_onnx(self, img, upscale, model_path=None):
         h, w, c = img.shape
         tile_size = 400
         tile_pad = 40
         
         # If the image is small enough, run single inference directly
         if h <= tile_size and w <= tile_size:
-            return self._enhance_realesrgan_onnx_single(img, upscale)
+            return self._enhance_realesrgan_onnx_single(img, upscale, model_path=model_path)
             
         print(f"[Pipeline] Image dimensions {w}x{h} exceed tile size {tile_size}. Running tile-based ONNX upscaling...")
         
@@ -265,7 +281,7 @@ class LocalAIEnhancerPipeline:
                 tile = img[y1:y2, x1:x2]
                 
                 # Inference tile at 2x
-                enhanced_tile = self._enhance_realesrgan_onnx_single(tile, 2)
+                enhanced_tile = self._enhance_realesrgan_onnx_single(tile, 2, model_path=model_path)
                 
                 # Stitch back by calculating crop regions to drop the overlap padding
                 pad_top = y - y1
@@ -313,6 +329,24 @@ class LocalAIEnhancerPipeline:
             
         return models
 
+    def get_available_upscalers(self):
+        """Scan and return dictionary of available Real-ESRGAN upscaler models."""
+        upscalers = {}
+        re_dir = os.path.join(self.project_dir, "weights", "realesrgan")
+        custom_onnx = os.path.join(re_dir, "realesrgan_custom.onnx")
+        int8_onnx = os.path.join(re_dir, "realesrgan_int8.onnx")
+        base_onnx = os.path.join(re_dir, "realesrgan.onnx")
+
+        if os.path.exists(custom_onnx):
+            upscalers["🚀 Real-ESRGAN Custom ONNX (Universal Mới Train)"] = custom_onnx
+        if os.path.exists(int8_onnx):
+            upscalers["⚡ Real-ESRGAN INT8 ONNX (Siêu Tốc CPU)"] = int8_onnx
+        if os.path.exists(base_onnx):
+            upscalers["💎 Real-ESRGAN x2plus ONNX (Chuẩn Xintao)"] = base_onnx
+            
+        upscalers["⚡ Lanczos Fast CPU (Không Dùng AI)"] = "lanczos"
+        return upscalers
+
     def run_onnx_batch(self, faces_np, w_val, session_override=None):
         """Helper to run ONNX batch inference."""
         session = session_override if session_override is not None else self.ort_session_cf
@@ -325,7 +359,7 @@ class LocalAIEnhancerPipeline:
             ort_outs = session.run(None, ort_inputs)
         return ort_outs[0]
 
-    def process_image(self, img, w=0.5, detection_model='retinaface_mobile0.25', upscale=2, blend_softness=0.5, bg_upsampler=None, det_threshold=0.5, sharpen_amount=0.0, face_upsample=False, batch_size=0, parallel=False, face_restore=True, wink_mode=True, eye_enhancement=True, skin_grain=0.15, color_match=True, enable_eyes=True, enable_lips=True, enable_skin=True, enable_teeth=True, enable_tone_glow=True, enable_dark_circles=True, enable_catchlight=True, catchlight_strength=0.55, enable_hair=True, hair_clarity=0.35, hair_sheen=0.25, enable_relighting=True, relighting_rim=0.25, relighting_tzone=0.20, enable_anti_glare=True, anti_glare_strength=0.50, enable_makeup=True, blush_strength=0.30, eyebrow_boost=0.35, enable_crystal_skin=True, crystal_skin_strength=0.45, enable_glossy_lips=True, lip_gloss=0.40, lip_vibrance=0.25, enable_doll_eye=True, doll_eye_depth=0.45, enable_golden_hour=False, golden_warmth=0.25, golden_bloom=0.20, enable_super_clarity=True, clarity_strength=0.40, enable_deblur=False, deblur_strength=0.35, enable_dehaze=True, dehaze_strength=0.25, color_lut="None", lut_intensity=1.0, bokeh_strength=0.0, preset_mode='Custom', chromatic_aberration=False, model_version='Auto', progress_callback=None):
+    def process_image(self, img, w=0.5, detection_model='retinaface_mobile0.25', upscale=2, blend_softness=0.5, bg_upsampler=None, det_threshold=0.5, sharpen_amount=0.0, face_upsample=False, batch_size=0, parallel=False, face_restore=True, wink_mode=True, eye_enhancement=True, skin_grain=0.15, color_match=True, enable_eyes=True, enable_lips=True, enable_skin=True, enable_teeth=True, enable_tone_glow=True, enable_dark_circles=True, enable_catchlight=True, catchlight_strength=0.55, enable_hair=True, hair_clarity=0.35, hair_sheen=0.25, enable_relighting=True, relighting_rim=0.25, relighting_tzone=0.20, enable_anti_glare=True, anti_glare_strength=0.50, enable_makeup=True, blush_strength=0.30, eyebrow_boost=0.35, enable_crystal_skin=True, crystal_skin_strength=0.45, enable_glossy_lips=True, lip_gloss=0.40, lip_vibrance=0.25, enable_doll_eye=True, doll_eye_depth=0.45, enable_golden_hour=False, golden_warmth=0.25, golden_bloom=0.20, enable_super_clarity=True, clarity_strength=0.40, enable_deblur=False, deblur_strength=0.35, enable_dehaze=True, dehaze_strength=0.25, color_lut="None", lut_intensity=1.0, bokeh_strength=0.0, preset_mode='Custom', chromatic_aberration=False, model_version='Auto', bg_upsampler_model=None, progress_callback=None):
 
         """Enhance one image without sharing request-specific state.
 
@@ -355,12 +389,12 @@ class LocalAIEnhancerPipeline:
                     enable_dehaze, dehaze_strength,
                     color_lut, lut_intensity, bokeh_strength,
                     preset_mode, chromatic_aberration,
-                    model_version,
+                    model_version, bg_upsampler_model
                 )
             finally:
                 _active_progress_callback.reset(callback_token)
 
-    def _process_image(self, img, w=0.5, detection_model='retinaface_mobile0.25', upscale=2, blend_softness=0.5, bg_upsampler=None, det_threshold=0.5, sharpen_amount=0.0, face_upsample=False, batch_size=0, parallel=False, face_restore=True, wink_mode=True, eye_enhancement=True, skin_grain=0.15, color_match=True, enable_eyes=True, enable_lips=True, enable_skin=True, enable_teeth=True, enable_tone_glow=True, enable_dark_circles=True, enable_catchlight=True, catchlight_strength=0.55, enable_hair=True, hair_clarity=0.35, hair_sheen=0.25, enable_relighting=True, relighting_rim=0.25, relighting_tzone=0.20, enable_anti_glare=True, anti_glare_strength=0.50, enable_makeup=True, blush_strength=0.30, eyebrow_boost=0.35, enable_crystal_skin=True, crystal_skin_strength=0.45, enable_glossy_lips=True, lip_gloss=0.40, lip_vibrance=0.25, enable_doll_eye=True, doll_eye_depth=0.45, enable_golden_hour=False, golden_warmth=0.25, golden_bloom=0.20, enable_super_clarity=True, clarity_strength=0.40, enable_deblur=False, deblur_strength=0.35, enable_dehaze=True, dehaze_strength=0.25, color_lut="None", lut_intensity=1.0, bokeh_strength=0.0, preset_mode='Custom', chromatic_aberration=False, model_version='Auto'):
+    def _process_image(self, img, w=0.5, detection_model='retinaface_mobile0.25', upscale=2, blend_softness=0.5, bg_upsampler=None, det_threshold=0.5, sharpen_amount=0.0, face_upsample=False, batch_size=0, parallel=False, face_restore=True, wink_mode=True, eye_enhancement=True, skin_grain=0.15, color_match=True, enable_eyes=True, enable_lips=True, enable_skin=True, enable_teeth=True, enable_tone_glow=True, enable_dark_circles=True, enable_catchlight=True, catchlight_strength=0.55, enable_hair=True, hair_clarity=0.35, hair_sheen=0.25, enable_relighting=True, relighting_rim=0.25, relighting_tzone=0.20, enable_anti_glare=True, anti_glare_strength=0.50, enable_makeup=True, blush_strength=0.30, eyebrow_boost=0.35, enable_crystal_skin=True, crystal_skin_strength=0.45, enable_glossy_lips=True, lip_gloss=0.40, lip_vibrance=0.25, enable_doll_eye=True, doll_eye_depth=0.45, enable_golden_hour=False, golden_warmth=0.25, golden_bloom=0.20, enable_super_clarity=True, clarity_strength=0.40, enable_deblur=False, deblur_strength=0.35, enable_dehaze=True, dehaze_strength=0.25, color_lut="None", lut_intensity=1.0, bokeh_strength=0.0, preset_mode='Custom', chromatic_aberration=False, model_version='Auto', bg_upsampler_model=None):
 
         """
         Enhance an image using the local CodeFormer pipeline.
@@ -375,6 +409,7 @@ class LocalAIEnhancerPipeline:
             det_threshold (float): Face detection confidence threshold.
             batch_size (int): Number of faces to process at once.
             face_restore (bool): Whether to perform face restoration.
+            bg_upsampler_model (str): Optional path to specific Real-ESRGAN ONNX model.
             
         Returns:
             numpy.ndarray: Enhanced output image in BGR format.
@@ -415,11 +450,11 @@ class LocalAIEnhancerPipeline:
         # 1. Handle background upsampling first
         bg_img = None
         if bg_upsampler == 'realesrgan':
-            self._report_progress("background", 0.1, "Upscaling background with Real-ESRGAN...")
+            self._report_progress("background", 0.1, "Upscaling image with Real-ESRGAN...")
             if self.use_re_onnx:
-                print("[Pipeline] Running Real-ESRGAN background super-resolution using ONNX Runtime...")
-                bg_img = self.enhance_realesrgan_onnx(img, upscale)
-                self._report_progress("background", 0.5, "Background upscaled")
+                print("[Pipeline] Running Real-ESRGAN super-resolution using ONNX Runtime...")
+                bg_img = self.enhance_realesrgan_onnx(img, upscale, model_path=bg_upsampler_model)
+                self._report_progress("background", 0.5, "Real-ESRGAN super-resolution complete")
             else:
                 if not hasattr(self, 'bg_upsampler_instance') or self.bg_upsampler_instance is None:
                     print("[Pipeline] Loading Real-ESRGAN background upsampler...")
@@ -533,21 +568,50 @@ class LocalAIEnhancerPipeline:
         self._report_progress("detection", 0.5, f"Detected {num_faces} face(s)")
         
         if num_faces == 0:
-            print("[Pipeline] No faces detected in input image.")
-            self._report_progress("complete", 1.0, "No faces detected. Returning background.")
+            print("[Pipeline] No faces detected in input image. Processing as Universal Image...")
+            self._report_progress("enhancement", 0.5, "Enhancing full image (Real-ESRGAN / Clarity)...")
             if bg_img is not None:
-                return bg_img
-            h, w_img, _ = img.shape
-            return cv2.resize(img, (w_img * upscale, h * upscale), interpolation=cv2.INTER_LANCZOS4)
+                enhanced_img = bg_img
+            elif self.use_re_onnx:
+                enhanced_img = self.enhance_realesrgan_onnx(img, upscale)
+            else:
+                h, w_img, _ = img.shape
+                enhanced_img = cv2.resize(img, (w_img * upscale, h * upscale), interpolation=cv2.INTER_LANCZOS4)
+
+            # Apply Universal Clarity, Deblur, Dehaze, and Texture sharpening for non-face images
+            if hasattr(self, 'wink_enhancer'):
+                if enable_dehaze and dehaze_strength > 0.0:
+                    enhanced_img = self.wink_enhancer.apply_dehaze_and_dynamic_contrast(enhanced_img, strength=dehaze_strength * 0.6)
+                if enable_super_clarity and clarity_strength > 0.0:
+                    enhanced_img = self.wink_enhancer.apply_laplacian_pyramid_clarity(enhanced_img, strength=clarity_strength * 0.45)
+                if sharpen_amount > 0.0:
+                    enhanced_img = self.wink_enhancer.unsharp_mask(enhanced_img, amount=sharpen_amount)
+
+            self._report_progress("complete", 1.0, "Universal enhancement complete!")
+            return enhanced_img
             
         face_helper.align_warp_face()
         if len(face_helper.cropped_faces) == 0:
-            print("[Pipeline] No cropped faces extracted from detected landmarks.")
-            self._report_progress("complete", 1.0, "No faces cropped. Returning background.")
+            print("[Pipeline] No cropped faces extracted from detected landmarks. Processing as Universal Image...")
+            self._report_progress("enhancement", 0.5, "Enhancing full image (Real-ESRGAN / Clarity)...")
             if bg_img is not None:
-                return bg_img
-            h, w_img, _ = img.shape
-            return cv2.resize(img, (w_img * upscale, h * upscale), interpolation=cv2.INTER_LANCZOS4)
+                enhanced_img = bg_img
+            elif self.use_re_onnx:
+                enhanced_img = self.enhance_realesrgan_onnx(img, upscale)
+            else:
+                h, w_img, _ = img.shape
+                enhanced_img = cv2.resize(img, (w_img * upscale, h * upscale), interpolation=cv2.INTER_LANCZOS4)
+
+            if hasattr(self, 'wink_enhancer'):
+                if enable_dehaze and dehaze_strength > 0.0:
+                    enhanced_img = self.wink_enhancer.apply_dehaze_and_dynamic_contrast(enhanced_img, strength=dehaze_strength * 0.6)
+                if enable_super_clarity and clarity_strength > 0.0:
+                    enhanced_img = self.wink_enhancer.apply_laplacian_pyramid_clarity(enhanced_img, strength=clarity_strength * 0.45)
+                if sharpen_amount > 0.0:
+                    enhanced_img = self.wink_enhancer.unsharp_mask(enhanced_img, amount=sharpen_amount)
+
+            self._report_progress("complete", 1.0, "Universal enhancement complete!")
+            return enhanced_img
 
         print(f"[Pipeline] Cropped {len(face_helper.cropped_faces)} face(s).")
         

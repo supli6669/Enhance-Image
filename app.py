@@ -637,6 +637,22 @@ with st.sidebar:
         help="Select neural network weights (INT8 Fast CPU, ArcFace Cloud Fine-Tuned, or Baseline)."
     )
 
+    # Universal / Background Upscaler Switcher
+    avail_upscalers = {}
+    try:
+        if pipeline is not None:
+            avail_upscalers = pipeline.get_available_upscalers()
+    except Exception:
+        pass
+
+    upscaler_options = list(avail_upscalers.keys()) if avail_upscalers else ["Auto (Real-ESRGAN / Lanczos)"]
+    selected_upscaler = st.selectbox(
+        "🌐 Universal Super-Resolution Engine",
+        upscaler_options,
+        index=0,
+        help="Select neural network for full-image super-resolution (landscapes, anime, products, textures, background)."
+    )
+
     w_val = st.slider(
         "AI Detail vs Likeness (w)",
         min_value=0.0,
@@ -859,7 +875,8 @@ with tab_photo:
             'chromatic': chromatic_fix,
             'bg_up': bg_upscale,
             'face_up': face_upscale,
-            'model_ver': selected_model_ver
+            'model_ver': selected_model_ver,
+            'upscaler_choice': selected_upscaler
         }
 
         # Parameters change guard: reset output state if parameters change while idle
@@ -885,12 +902,15 @@ with tab_photo:
                 def local_progress_callback(stage, progress, message):
                     res_queue.put({'type': 'progress', 'stage': stage, 'progress': progress, 'message': message})
 
+                chosen_upscaler_path = avail_upscalers.get(selected_upscaler)
+                is_lanczos = chosen_upscaler_path == "lanczos"
                 process_args = {
                     'w': w_val,
                     'detection_model': face_detector,
                     'upscale': upscale_val,
                     'blend_softness': 0.5,
-                    'bg_upsampler': 'realesrgan' if bg_upscale else None,
+                    'bg_upsampler': None if is_lanczos else ('realesrgan' if bg_upscale else None),
+                    'bg_upsampler_model': None if is_lanczos else chosen_upscaler_path,
                     'det_threshold': det_thresh,
                     'sharpen_amount': sharpen_val,
                     'face_upsample': face_upscale,
