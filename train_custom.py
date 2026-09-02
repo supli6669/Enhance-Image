@@ -146,6 +146,7 @@ def main():
             print(f"    Resuming training from iter {latest_state_iter} to {config['train']['total_iter']}...")
     else:
         print("\n>>> FRESH START: No previous checkpoint found. Starting from pretrained weights.")
+        config["path"]["resume_state"] = None
         if args.verify:
             config["train"]["total_iter"] = 2
             print(f"    Training from scratch to {config['train']['total_iter']} (verification mode)...")
