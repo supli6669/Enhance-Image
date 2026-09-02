@@ -90,6 +90,7 @@ class LocalAIEnhancerPipeline:
         
         self.progress_callback = progress_callback
         self.cancel_flag = False
+        self.project_dir = project_dir
         self.wink_enhancer = WinkQualityEnhancer()
             
         print(f"[Pipeline] Initializing pipeline on device: {self.device}")
