@@ -56,8 +56,8 @@ datasets:
     - 5
     - 50
     latent_gt_path: null
-    num_worker_per_gpu: 4
-    batch_size_per_gpu: 4
+    num_worker_per_gpu: 2
+    batch_size_per_gpu: 2
     dataset_enlarge_ratio: 5
     prefetch_mode: cuda
     pin_memory: true

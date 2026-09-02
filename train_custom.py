@@ -130,8 +130,9 @@ def main():
                 # workers which cause MemoryError/segfaults on Windows (Task 8).
                 dataset["prefetch_mode"] = None
             else:
-                dataset["num_worker_per_gpu"] = 4
-                dataset["batch_size_per_gpu"] = 4
+                dataset["num_worker_per_gpu"] = 2
+                dataset["batch_size_per_gpu"] = 2
+                dataset["prefetch_mode"] = "cuda"
                 
     # Update weights path if they are in the project weights folder
     project_weights_path = os.path.join(project_dir, "weights", "CodeFormer", "codeformer.pth")
@@ -212,6 +213,7 @@ def main():
         else:
             env["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
             env["CUDA_VISIBLE_DEVICES"] = "0"
+            env["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
         env["PYTHONPATH"] = os.path.pathsep.join([codeformer_dir, env.get("PYTHONPATH", "")])
 
         print("\nStarting training process. Command:")
