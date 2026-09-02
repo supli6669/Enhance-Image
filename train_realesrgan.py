@@ -66,21 +66,28 @@ def install_realesrgan_deps():
         else:
             print(f"  [warn] {pkg} install failed (may already be present): {result.stderr[-200:]}")
             
-    # Patch torchvision functional_tensor if needed
-    try:
-        import basicsr
-        basicsr_dir = os.path.dirname(basicsr.__file__)
-        deg_path = os.path.join(basicsr_dir, "data", "degradations.py")
-        if os.path.exists(deg_path):
-            with open(deg_path, "r", encoding="utf-8") as f:
-                txt = f.read()
-            if "functional_tensor" in txt:
-                txt = txt.replace("torchvision.transforms.functional_tensor", "torchvision.transforms.functional")
-                with open(deg_path, "w", encoding="utf-8") as f:
-                    f.write(txt)
-                print(f"  [OK] Patched degradations.py at {deg_path}")
-    except Exception as e:
-        print(f"  [warn] Could not patch degradations.py: {e}")
+    # Patch torchvision functional_tensor directly via filesystem (no import needed)
+    import site
+    candidate_dirs = list(sys.path)
+    if hasattr(site, 'getsitepackages'):
+        candidate_dirs.extend(site.getsitepackages())
+    candidate_dirs.append(site.getusersitepackages())
+    
+    for base in set(candidate_dirs):
+        if not base or not os.path.exists(base):
+            continue
+        for deg_path in glob.glob(os.path.join(base, "**", "basicsr", "data", "degradations.py"), recursive=True):
+            if os.path.exists(deg_path):
+                try:
+                    with open(deg_path, "r", encoding="utf-8") as f:
+                        txt = f.read()
+                    if "functional_tensor" in txt:
+                        txt = txt.replace("torchvision.transforms.functional_tensor", "torchvision.transforms.functional")
+                        with open(deg_path, "w", encoding="utf-8") as f:
+                            f.write(txt)
+                        print(f"  [OK] Patched degradations.py at {deg_path}")
+                except Exception as e:
+                    print(f"  [warn] Could not write to {deg_path}: {e}")
         
     print("[OK] Dependencies ready.")
 
