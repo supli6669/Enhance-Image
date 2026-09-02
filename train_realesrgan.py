@@ -338,6 +338,19 @@ def main():
     if not clone_realesrgan():
         sys.exit(1)
 
+    # 1.5 Ensure train.py exists in Real-ESRGAN package
+    train_py_path = os.path.join(REALESRGAN_DIR, "realesrgan", "train.py")
+    if not os.path.exists(train_py_path):
+        os.makedirs(os.path.dirname(train_py_path), exist_ok=True)
+        with open(train_py_path, "w", encoding="utf-8") as f:
+            f.write("# flake8: noqa\nimport os.path as osp\nimport torch\n")
+            f.write("from basicsr.train import train_pipeline\n\n")
+            f.write("import realesrgan.archs\nimport realesrgan.data\nimport realesrgan.models\n\n")
+            f.write("if __name__ == '__main__':\n")
+            f.write("    root_path = osp.abspath(osp.join(__file__, osp.pardir, osp.pardir))\n")
+            f.write("    train_pipeline(root_path)\n")
+        print(f"[OK] Created missing train.py at {train_py_path}")
+
     # 2. Install deps
     install_realesrgan_deps()
 
