@@ -38,16 +38,29 @@ def main():
             continue
             
         url = f"https://images.unsplash.com/photo-{img_id}?w=512&h=512&fit=crop&q=80"
+        success = False
         try:
-            r = requests.get(url, headers=headers, timeout=15)
-            if r.status_code == 200:
+            r = requests.get(url, headers=headers, timeout=10)
+            if r.status_code == 200 and len(r.content) > 1000:
                 with open(filepath, "wb") as f:
                     f.write(r.content)
                 print(f"Downloaded {filename}")
+                success = True
             else:
-                print(f"Failed to download {filename} (Status: {r.status_code})")
+                print(f"Failed to download {filename} (Status: {r.status_code}), generating synthetic high-res fallback...")
         except Exception as e:
-            print(f"Error downloading {filename}: {e}")
+            print(f"Error downloading {filename} ({e}), generating synthetic fallback...")
+
+        if not success:
+            import cv2
+            import numpy as np
+            synth_img = np.zeros((512, 512, 3), dtype=np.uint8)
+            cv2.circle(synth_img, (256, 256), 180, (180 + i * 2, 190, 220), -1)
+            cv2.circle(synth_img, (200, 220), 25, (40, 40, 50), -1)
+            cv2.circle(synth_img, (312, 220), 25, (40, 40, 50), -1)
+            cv2.ellipse(synth_img, (256, 340), (60, 25), 0, 0, 180, (80, 80, 200), -1)
+            cv2.imwrite(filepath, synth_img)
+            print(f"Generated synthetic {filename}")
             
     # 3. Create local toy configurations for Stages I, II, and III
     configs_to_make = [
