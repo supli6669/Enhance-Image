@@ -135,11 +135,29 @@ def create_training_config(num_images: int, lmdb_dir: str) -> str:
     use_lmdb = lmdb_dir.endswith(".lmdb")
     gt_path_rel = lmdb_dir.replace("\\", "/")
 
+    import torch
+    is_cuda = torch.cuda.is_available()
+    device_num_gpu = torch.cuda.device_count() if is_cuda else 0
+    batch_size = 8 if is_cuda else 12
+    workers = 4 if is_cuda else 0
+    prefetch = "cuda" if is_cuda else None
+    queue_size = 80 if is_cuda else 120
+
+    pretrain_g = None
+    pretrain_candidates = [
+        os.path.join(PROJECT_DIR, "weights", "realesrgan", "RealESRGAN_x4plus.pth"),
+        os.path.join(PROJECT_DIR, "weights", "realesrgan", "RealESRGAN_x2plus.pth")
+    ]
+    for p in pretrain_candidates:
+        if os.path.exists(p):
+            pretrain_g = os.path.relpath(p, REALESRGAN_DIR).replace("\\", "/")
+            break
+
     config = {
         "name": "train_RealESRGAN_custom",
         "model_type": "RealESRGANModel",
         "scale": 4,
-        "num_gpu": 0,
+        "num_gpu": device_num_gpu,
         "manual_seed": 0,
 
         # Top-level options for synthesizing training data in RealESRGANModel
@@ -150,31 +168,31 @@ def create_training_config(num_images: int, lmdb_dir: str) -> str:
         # the first degradation process - MODERATE increase for stability
         "resize_prob": [0.2, 0.7, 0.1],
         "resize_range": [0.15, 1.5],
-        "gaussian_noise_prob": 0.6,  # 0.5 → 0.6 (moderate)
-        "noise_range": [3, 40],      # [1, 30] → [3, 40] (moderate)
+        "gaussian_noise_prob": 0.6,
+        "noise_range": [3, 40],
         "poisson_scale_range": [0.05, 3.0],
         "gray_noise_prob": 0.4,
-        "jpeg_range": [20, 90],      # [30, 95] → [20, 90] (moderate)
+        "jpeg_range": [20, 90],
 
         # the second degradation process - MODERATE increase for stability
         "second_blur_prob": 0.8,
         "resize_prob2": [0.3, 0.4, 0.3],
         "resize_range2": [0.3, 1.2],
-        "gaussian_noise_prob2": 0.6,  # 0.5 → 0.6 (moderate)
-        "noise_range2": [3, 35],      # [1, 25] → [3, 35] (moderate)
+        "gaussian_noise_prob2": 0.6,
+        "noise_range2": [3, 35],
         "poisson_scale_range2": [0.05, 2.5],
         "gray_noise_prob2": 0.4,
-        "jpeg_range2": [20, 90],      # [30, 95] → [20, 90] (moderate)
+        "jpeg_range2": [20, 90],
 
         "gt_size": 256,
-        "queue_size": 120,  # must be divisible by batch_size (12) for the degradation queue
+        "queue_size": queue_size,
 
         "datasets": {
             "train": {
                 "name": "CustomMixedDataset",
                 "type": "RealESRGANDataset",
                 "dataroot_gt": gt_path_rel,
-                "meta_info": os.path.join(lmdb_dir, "meta_info.txt").replace("\\", "/"),
+                "meta_info": os.path.join(lmdb_dir, "meta_info.txt").replace("\\", "/") if use_lmdb else None,
                 "io_backend": {"type": "lmdb" if use_lmdb else "disk"},
                 "gt_size": 256,
                 "use_hflip": True,
@@ -196,10 +214,10 @@ def create_training_config(num_images: int, lmdb_dir: str) -> str:
                 "betag_range2": [0.5, 4.0],
                 "betap_range2": [1, 2.0],
                 "final_sinc_prob": 0.0,
-                "num_worker_per_gpu": 0,
-                "batch_size_per_gpu": 12,
+                "num_worker_per_gpu": workers,
+                "batch_size_per_gpu": batch_size,
                 "dataset_enlarge_ratio": 1,
-                "prefetch_mode": None,
+                "prefetch_mode": prefetch,
             }
         },
         "network_g": {
@@ -218,7 +236,7 @@ def create_training_config(num_images: int, lmdb_dir: str) -> str:
             "skip_connection": True,
         },
         "path": {
-            "pretrain_network_g": None,
+            "pretrain_network_g": pretrain_g,
             "param_key_g": "params_ema",
             "strict_load_g": False,
             "resume_state": None,
@@ -227,22 +245,22 @@ def create_training_config(num_images: int, lmdb_dir: str) -> str:
             "ema_decay": 0.999,
             "optim_g": {
                 "type": "Adam",
-                "lr": 1.5e-4,  # 1.0e-4 → 1.5e-4 (moderate increase)
+                "lr": 1.5e-4,
                 "weight_decay": 0,
                 "betas": [0.9, 0.99],
             },
             "optim_d": {
                 "type": "Adam",
-                "lr": 1.5e-4,  # 1.0e-4 → 1.5e-4 (moderate increase)
+                "lr": 1.5e-4,
                 "weight_decay": 0,
                 "betas": [0.9, 0.99],
             },
             "scheduler": {
                 "type": "MultiStepLR",
-                "milestones": [5000, 10000],  # [400000] → [5000, 10000]
+                "milestones": [2500, 5000],
                 "gamma": 0.5,
             },
-            "total_iter": 15000,  # 50000 → 15000 (giảm 3.3x)
+            "total_iter": 5000,
             "warmup_iter": -1,
             "pixel_opt": {
                 "type": "L1Loss",
@@ -272,11 +290,11 @@ def create_training_config(num_images: int, lmdb_dir: str) -> str:
         },
         "val": {
             "val_freq": 500,
-            "save_img": True,
+            "save_img": False,
         },
         "logger": {
-            "print_freq": 1,
-            "save_checkpoint_freq": 50,
+            "print_freq": 20,
+            "save_checkpoint_freq": 500,
             "use_tb_logger": False,
             "wandb": {"project": None},
         },

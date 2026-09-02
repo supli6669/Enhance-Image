@@ -25,10 +25,11 @@ KERNEL_ID = 132851372
 def get_auth():
     return (KAGGLE_USERNAME, KAGGLE_KEY)
 
-def push_training_kernel(kernel_slug=KERNEL_SLUG):
-    print(f"[KaggleRunner] Preparing to push kernel '{kernel_slug}' to Kaggle GPU...")
+def push_training_kernel(kernel_slug=KERNEL_SLUG, model="codeformer"):
+    print(f"[KaggleRunner] Preparing to push kernel '{kernel_slug}' ({model.upper()}) to Kaggle GPU...")
     
-    nb_path = Path(__file__).resolve().parent.parent / "train_kaggle.ipynb"
+    nb_file = "train_realesrgan_kaggle.ipynb" if model.lower() == "realesrgan" else "train_kaggle.ipynb"
+    nb_path = Path(__file__).resolve().parent.parent / nb_file
     if not nb_path.exists():
         print(f"Error: Notebook not found at {nb_path}")
         return False
@@ -55,7 +56,7 @@ def push_training_kernel(kernel_slug=KERNEL_SLUG):
     url = f"{BASE_URL}/kernels/push"
     headers = {"Content-Type": "application/json"}
     
-    print("[KaggleRunner] Uploading notebook and initiating GPU execution...")
+    print(f"[KaggleRunner] Uploading {nb_file} and initiating GPU execution...")
     resp = requests.post(url, auth=get_auth(), headers=headers, json=payload)
     
     if resp.status_code == 200:
@@ -161,13 +162,14 @@ def download_outputs(kernel_slug=KERNEL_SLUG):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Kaggle Automated Cloud GPU Training Runner")
     parser.add_argument("--push", action="store_true", help="Push notebook and start GPU training on Kaggle")
+    parser.add_argument("--model", type=str, default="realesrgan", choices=["codeformer", "realesrgan"], help="Target model to train")
     parser.add_argument("--status", action="store_true", help="Check current GPU execution status")
     parser.add_argument("--logs", action="store_true", help="Stream current Kaggle execution logs")
     parser.add_argument("--download", action="store_true", help="Download trained model outputs")
     args = parser.parse_args()
 
     if args.push:
-        push_training_kernel()
+        push_training_kernel(model=args.model)
     elif args.status:
         check_status()
     elif args.logs:
