@@ -50,6 +50,7 @@ def find_latest_complete_checkpoint(experiments_dir: str):
 def main():
     parser = argparse.ArgumentParser(description="Train CodeFormer with custom parameters.")
     parser.add_argument("--verify", action="store_true", help="Run 2 iterations for verification purposes.")
+    parser.add_argument("--fresh", action="store_true", help="Start training fresh from pretrained weights, ignoring existing checkpoints.")
     args = parser.parse_args()
 
     project_dir = os.path.dirname(os.path.abspath(__file__))
@@ -124,11 +125,13 @@ def main():
             dataset = config["datasets"][phase]
             if device == "cpu":
                 dataset["num_worker_per_gpu"] = 0
+                dataset["batch_size_per_gpu"] = 1
                 # MUST be null on CPU — 'cpu' prefetch spawns multiprocessing
                 # workers which cause MemoryError/segfaults on Windows (Task 8).
                 dataset["prefetch_mode"] = None
             else:
                 dataset["num_worker_per_gpu"] = 4
+                dataset["batch_size_per_gpu"] = 4
                 
     # Update weights path if they are in the project weights folder
     project_weights_path = os.path.join(project_dir, "weights", "CodeFormer", "codeformer.pth")
@@ -139,7 +142,11 @@ def main():
     
     # 4. Auto-detect resume state from the latest experiment checkpoint
     experiments_dir = os.path.join(codeformer_dir, "experiments")
-    latest_state_iter, latest_state = find_latest_complete_checkpoint(experiments_dir)
+    if args.fresh:
+        latest_state_iter, latest_state = None, None
+        print("\n>>> FRESH MODE: --fresh flag specified. Starting training from scratch.")
+    else:
+        latest_state_iter, latest_state = find_latest_complete_checkpoint(experiments_dir)
     
     if latest_state:
         print(f"\n>>> RESUME MODE: Found checkpoint at iteration {latest_state_iter}")

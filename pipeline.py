@@ -42,42 +42,64 @@ from basicsr.utils.registry import ARCH_REGISTRY
 from facelib.utils.face_restoration_helper import FaceRestoreHelper
 from wink_enhancer import WinkQualityEnhancer
 
-# The Streamlit app caches one pipeline instance.  Keep callback state in the
+def get_available_models(weights_dir=None):
+    """Return dictionary of available CodeFormer models found in weights directory."""
+    if weights_dir is None:
+        weights_dir = os.path.join(project_dir, "weights", "CodeFormer")
+    models = {}
+    if not os.path.exists(weights_dir):
+        return models
+    
+    candidates = [
+        ("codeformer_int8_v3.onnx", "CodeFormer v3.0 (Fast INT8 ArcFace) [⚡ Recommended]"),
+        ("codeformer_v3.onnx", "CodeFormer v3.0 (FP32 ArcFace High-Identity)"),
+        ("codeformer_int8_v2.onnx", "CodeFormer v2.0 (Fast INT8 Quantized)"),
+        ("codeformer_int8.onnx", "CodeFormer v1.0 (Fast INT8 Baseline)"),
+        ("codeformer.onnx", "CodeFormer Standard ONNX (FP32)"),
+        ("codeformer.pth", "CodeFormer PyTorch Native (FP32 Weights)"),
+    ]
+    for filename, label in candidates:
+        full_path = os.path.join(weights_dir, filename)
+        if os.path.isfile(full_path):
+            models[label] = full_path
+    return models
+
+# The Streamlit app caches one pipeline instance. Keep callback state in the
 # calling context rather than on that shared instance so progress cannot leak
 # between users/requests.
 _active_progress_callback = ContextVar("active_progress_callback", default=None)
 
 class LocalAIEnhancerPipeline:
-    def __init__(self, device=None, progress_callback=None):
+    def __init__(self, device=None, progress_callback=None, model_path_override=None):
         """Initialize the CodeFormer model and helper pipeline.
         
         Args:
             device: torch device ('cuda' or 'cpu')
             progress_callback: Optional callback function(stage, progress, message) for progress reporting
+            model_path_override: Optional path to specific ONNX or PyTorch model
         """
         if device is None:
             self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         else:
             self.device = torch.device(device)
         
-        # Retain the constructor argument as a backwards-compatible default.
-        # New callers should pass ``progress_callback`` to ``process_image``.
         self.progress_callback = progress_callback
         self.cancel_flag = False
         self.wink_enhancer = WinkQualityEnhancer()
             
         print(f"[Pipeline] Initializing pipeline on device: {self.device}")
-        
-        # Report initialization progress
         self._report_progress("initialization", 0.1, "Loading CodeFormer model...")
         
-        # Check if ONNX models exist and should be used
         base_cf = os.path.join(project_dir, "weights", "CodeFormer", "codeformer")
         onnx_candidates = [
+            base_cf + "_int8_v3.onnx",
+            base_cf + "_v3.onnx",
             base_cf + "_int8_v2.onnx",
             base_cf + "_int8.onnx",
             base_cf + ".onnx"
         ]
+        if model_path_override and os.path.exists(model_path_override):
+            onnx_candidates.insert(0, model_path_override)
         
         self.use_onnx = False
         self.ort_session_cf = None

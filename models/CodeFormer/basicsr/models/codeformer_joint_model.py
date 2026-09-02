@@ -97,11 +97,21 @@ class CodeFormerJointModel(SRModel):
             logger.info(f'Use ArcFace identity loss with weight: {self.identity_loss_weight}')
             from facexlib.recognition.arcface_arch import Backbone
             self.arcface = Backbone(num_layers=50, drop_ratio=0.6, mode='ir_se').to(self.device)
-            arcface_path = osp.join(self.opt['path'].get('root', '.'), 'weights', 'facelib', 'recognition_arcface_ir_se50.pth')
-            if not osp.exists(arcface_path):
-                arcface_path = 'weights/facelib/recognition_arcface_ir_se50.pth'
-            if osp.exists(arcface_path):
-                self.arcface.load_state_dict(torch.load(arcface_path, map_location=self.device), strict=True)
+            arcface_candidates = [
+                osp.join(self.opt['path'].get('root', '.'), 'weights', 'facelib', 'recognition_arcface_ir_se50.pth'),
+                'weights/facelib/recognition_arcface_ir_se50.pth',
+                '../../weights/facelib/recognition_arcface_ir_se50.pth',
+                osp.join(osp.dirname(osp.dirname(osp.dirname(osp.abspath(__file__)))), 'weights', 'facelib', 'recognition_arcface_ir_se50.pth')
+            ]
+            loaded_arcface = False
+            for arcface_path in arcface_candidates:
+                if osp.exists(arcface_path):
+                    self.arcface.load_state_dict(torch.load(arcface_path, map_location=self.device), strict=True)
+                    logger.info(f'Loaded ArcFace identity weights from: {arcface_path}')
+                    loaded_arcface = True
+                    break
+            if not loaded_arcface:
+                logger.warning('ArcFace pretrained weights recognition_arcface_ir_se50.pth not found in candidate paths. Using initialized weights.')
             self.arcface.eval()
             for param in self.arcface.parameters():
                 param.requires_grad = False

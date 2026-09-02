@@ -51,6 +51,7 @@ def main():
         "weights/facelib/parsing_parsenet.pth": ("https://github.com/sczhou/CodeFormer/releases/download/v0.1.0/parsing_parsenet.pth", 80_000_000),
         "weights/facelib/yolov5l-face.pth": ("https://github.com/sczhou/CodeFormer/releases/download/v0.1.0/yolov5l-face.pth", 150_000_000),
         "weights/facelib/vqgan_code1024.pth": ("https://github.com/sczhou/CodeFormer/releases/download/v0.1.0/vqgan_code1024.pth", 200_000_000),
+        "weights/facelib/recognition_arcface_ir_se50.pth": ("https://github.com/xinntao/facexlib/releases/download/v0.1.0/recognition_arcface_ir_se50.pth", 170_000_000),
         "weights/realesrgan/RealESRGAN_x2plus.pth": ("https://github.com/xinntao/Real-ESRGAN/releases/download/v0.2.1/RealESRGAN_x2plus.pth", 60_000_000)
     }
     

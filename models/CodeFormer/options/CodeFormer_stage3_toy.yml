@@ -96,7 +96,7 @@ path:
   pretrain_network_g: ./experiments/pretrained_models/CodeFormer_stage2/net_g_latest.pth
   param_key_g: params_ema
   strict_load_g: false
-  pretrain_network_d: null
+  pretrain_network_d: ./experiments/pretrained_models/CodeFormer_stage2/net_d_latest.pth
   resume_state: null
 train:
   use_hq_feat_loss: true

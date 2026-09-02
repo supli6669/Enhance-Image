@@ -6,10 +6,15 @@ Automates pushing training notebooks to Kaggle GPU, monitoring execution, and do
 import os
 import sys
 import json
-import time
-import requests
+import base64
 import argparse
+import requests
 from pathlib import Path
+
+if hasattr(sys.stdout, 'reconfigure'):
+    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+if hasattr(sys.stderr, 'reconfigure'):
+    sys.stderr.reconfigure(encoding='utf-8', errors='replace')
 
 KAGGLE_USERNAME = "suplo6669"
 KAGGLE_KEY = "e28e97a8021e210e91d7ed7c5603d49e"
@@ -87,30 +92,67 @@ def stream_logs(kernel_slug=KERNEL_SLUG):
     if resp.status_code == 200:
         try:
             data = resp.json()
-            if "logNullable" in data and data["logNullable"]:
-                logs = json.loads(data["logNullable"])
-                print("".join([entry.get("data", "") for entry in logs]))
+            raw_logs = data.get("logNullable") or data.get("logs") or ""
+            if isinstance(raw_logs, str):
+                try:
+                    logs = json.loads(raw_logs)
+                    if isinstance(logs, list):
+                        print("".join([entry.get("data", "") for entry in logs]))
+                    else:
+                        print(raw_logs)
+                except Exception:
+                    print(raw_logs)
+            elif isinstance(raw_logs, list):
+                print("".join([entry.get("data", "") if isinstance(entry, dict) else str(entry) for entry in raw_logs]))
             else:
-                print("[KaggleRunner] No logs available yet.")
+                print(str(raw_logs))
         except Exception as e:
-            print(f"[KaggleRunner] Raw output: {resp.text[:300]}")
+            print(f"[KaggleRunner] Error parsing logs: {e}\n{resp.text[:500]}")
     else:
         print(f"Error: {resp.status_code} - {resp.text}")
 
-def download_outputs(kernel_slug=KERNEL_SLUG, output_dir="weights/CodeFormer"):
-    print(f"[KaggleRunner] Fetching outputs from '{kernel_slug}'...")
+def download_outputs(kernel_slug=KERNEL_SLUG):
+    print(f"[KaggleRunner] Fetching outputs list from '{kernel_slug}'...")
     url = f"{BASE_URL}/kernels/output"
     params = {"userName": KAGGLE_USERNAME, "kernelSlug": kernel_slug}
     resp = requests.get(url, auth=get_auth(), params=params)
     
     if resp.status_code == 200:
-        out_path = Path(output_dir)
-        out_path.mkdir(parents=True, exist_ok=True)
-        
-        zip_file = out_path / "kaggle_output.zip"
-        with open(zip_file, "wb") as f:
-            f.write(resp.content)
-        print(f"[KaggleRunner] Downloaded outputs to {zip_file}")
+        data = resp.json()
+        files = data.get("files", [])
+        if not files:
+            print("[KaggleRunner] No output files found in kernel response.")
+            return False
+            
+        print(f"[KaggleRunner] Found {len(files)} total files in Kaggle output. Downloading model assets...")
+        downloaded_count = 0
+        for item in files:
+            file_name = item.get("fileName") or ""
+            file_url = item.get("url") or item.get("urlNullable") or ""
+            
+            # We want to pull weights, ONNX models, and checkpoints
+            if any(ext in file_name.lower() for ext in [".onnx", ".pth", ".state", ".onnx.data"]):
+                # Clean prefix: custom-ai-enhancer/weights/... -> weights/...
+                clean_rel_path = file_name.replace("custom-ai-enhancer/", "").strip("/")
+                dest_path = Path(clean_rel_path)
+                dest_path.parent.mkdir(parents=True, exist_ok=True)
+                
+                print(f"[KaggleRunner] Downloading {clean_rel_path}...")
+                try:
+                    file_resp = requests.get(file_url, stream=True, timeout=120)
+                    if file_resp.status_code == 200:
+                        with open(dest_path, "wb") as f:
+                            for chunk in file_resp.iter_content(chunk_size=1024 * 1024):
+                                if chunk:
+                                    f.write(chunk)
+                        print(f"  -> Saved {dest_path} ({dest_path.stat().st_size / 1024 / 1024:.2f} MB)")
+                        downloaded_count += 1
+                    else:
+                        print(f"  -> Failed: Status {file_resp.status_code}")
+                except Exception as e:
+                    print(f"  -> Error downloading {clean_rel_path}: {e}")
+                    
+        print(f"\n[KaggleRunner] SUCCESS! Downloaded {downloaded_count} model asset(s).")
         return True
     else:
         print(f"[KaggleRunner] Error downloading outputs: {resp.status_code} - {resp.text}")
