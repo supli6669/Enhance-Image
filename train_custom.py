@@ -193,14 +193,18 @@ def main():
             "none"
         ]
 
-        # Environment setup — CPU stability settings (Task 8 findings)
+        # Environment setup
         env = os.environ.copy()
-        for _k in ["OMP_NUM_THREADS", "MKL_NUM_THREADS", "OPENBLAS_NUM_THREADS",
-                   "NUMEXPR_NUM_THREADS", "VECLIB_MAXIMUM_THREADS"]:
-            env[_k] = "8"  # Match torch.set_num_threads — Ryzen 7735HS 8C/16T
-        env["OPENCV_OPENCL_RUNTIME"] = "disabled"
-        env["OPENCV_THREAD_LIMIT"] = "1"
-        cv2.setNumThreads(0)
+        if device == "cpu":
+            for _k in ["OMP_NUM_THREADS", "MKL_NUM_THREADS", "OPENBLAS_NUM_THREADS",
+                       "NUMEXPR_NUM_THREADS", "VECLIB_MAXIMUM_THREADS"]:
+                env[_k] = "8"
+            env["OPENCV_OPENCL_RUNTIME"] = "disabled"
+            env["OPENCV_THREAD_LIMIT"] = "1"
+            cv2.setNumThreads(0)
+        else:
+            env["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
+            env["CUDA_VISIBLE_DEVICES"] = "0"
         env["PYTHONPATH"] = os.path.pathsep.join([codeformer_dir, env.get("PYTHONPATH", "")])
 
         print("\nStarting training process. Command:")
