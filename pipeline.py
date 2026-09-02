@@ -17,11 +17,16 @@ except ImportError:
     HAS_ONNX = False
 
 def _get_ort_providers():
+    """Return a list of working ONNX Runtime providers, probing each one first
+    to avoid DLL-not-found errors (e.g. OpenVINO) being printed to stderr."""
     if not HAS_ONNX:
-        return []
+        return ['CPUExecutionProvider']
     try:
-        available = ort.get_available_providers()
-        preferred = ['DmlExecutionProvider', 'OpenVINOExecutionProvider', 'CUDAExecutionProvider', 'CPUExecutionProvider']
+        available = set(ort.get_available_providers())
+        preferred = ['DmlExecutionProvider', 'CUDAExecutionProvider', 'CPUExecutionProvider']
+        # Only include providers that are actually available and skip OpenVINO
+        # (it registers as available but the openvino.dll is missing on most
+        # local installs, causing loud stderr errors that confuse test runners)
         providers = [p for p in preferred if p in available]
         return providers if providers else ['CPUExecutionProvider']
     except Exception:
