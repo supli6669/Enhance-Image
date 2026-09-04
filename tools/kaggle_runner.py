@@ -49,7 +49,7 @@ def push_training_kernel(kernel_slug=KERNEL_SLUG, model="codeformer"):
         "enableInternet": True,
         "datasetDataSources": [],
         "competitionDataSources": [],
-        "kernelDataSources": [],
+        "kernelDataSources": [f"{KAGGLE_USERNAME}/{kernel_slug}"],
         "modelDataSources": []
     }
 

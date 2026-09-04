@@ -536,7 +536,7 @@ class LocalAIEnhancerPipeline:
                 bg_img = self.bg_upsampler_instance.enhance(img, outscale=upscale)[0]
                 self._report_progress("background", 0.5, "Background upscaled")
 
-        if not face_restore:
+        if not face_restore or preset_mode == 'Pure Quality':
             self._report_progress("enhancement", 0.3, "Upscaling image (Zero Face Distortion Mode)...")
             if bg_img is not None:
                 enhanced_img = bg_img

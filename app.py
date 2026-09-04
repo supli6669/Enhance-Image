@@ -665,11 +665,19 @@ with st.sidebar:
         "🛡️ Wink Ultra-HD (Zero Distortion - 100% Giữ nét thật)",
         "✨ CodeFormer AI Reconstruct (Vẽ lại nét khuôn mặt bằng AI)"
     ]
-    face_mode_idx = 0 if not default_face_restore else 1
+    target_face_mode = face_mode_options[0 if not default_face_restore else 1]
+    if 'preset_choice_tracker' not in st.session_state or st.session_state['preset_choice_tracker'] != preset_choice:
+        st.session_state['preset_choice_tracker'] = preset_choice
+        st.session_state['face_engine_mode'] = target_face_mode
+        st.session_state.processing_error = None
+
+    if 'face_engine_mode' not in st.session_state:
+        st.session_state['face_engine_mode'] = target_face_mode
+
     selected_face_mode = st.radio(
         "Face Engine Mode",
         face_mode_options,
-        index=face_mode_idx,
+        key="face_engine_mode",
         help="🛡️ Wink Ultra-HD: Chỉ làm nét, khử mờ, giữ nguyên 100% đường nét và biểu cảm gốc, KHÔNG biến dạng mặt.\n✨ CodeFormer AI: Dùng trí tuệ nhân tạo để vẽ lại mặt nếu ảnh quá nát hoặc mờ tịt."
     )
     face_restore_val = ("AI Reconstruct" in selected_face_mode)
