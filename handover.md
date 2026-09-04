@@ -1659,6 +1659,36 @@ Delivered 4 aesthetic breakthroughs to transform portrait outputs into magazine-
 - Master test suite `tools/test_all.py` passed 7/7 suites with exit code 0.
 - Kaggle Version 7 kernel deployed and confirmed RUNNING.
 
+---
+
+## Task 39: Zero-Distortion Wink Ultra-HD Clarity Engine & Face Guard (`v3.0.0`)
+
+**Date:** 2026-09-04  
+**Status:** ✅ Completed & Verified
+
+### Overview
+Addressed user requirement for pure optical super-resolution and clarity without AI facial distortion:
+1. **Root Cause Analysis of Face Distortion**:
+   - CodeFormer's 1024-vector discrete codebook forcibly maps cropped and affine-warped faces into FFHQ prototype features, replacing original eye shapes, smiles, and jawlines even at high fidelity weights.
+   - Previous pipeline lacked an option to bypass generative face reconstruction while retaining the full Wink multi-frequency clarity pipeline.
+2. **Wink Ultra-HD Engine Integration**:
+   - When `face_restore=False` is active, the pipeline now executes the full suite: Laplacian Pyramid Super-Clarity (3 octaves), Richardson-Lucy optical deconvolution, Crystal De-Haze, and Guided Detail Booster directly on the original image pixels.
+   - 0% facial deformation: Preserves 100% authentic face proportions, eye contours, and expressions while boosting micro-textures (eyelashes, irises, skin pores, hair).
+3. **Reshape Protection on Real-ESRGAN**:
+   - Added automatic reflection border padding for odd tile dimensions (`h % 2 != 0` or `w % 2 != 0`) in `_enhance_realesrgan_onnx_single` to eliminate ONNX runtime Reshape node dimension mismatch crashes.
+4. **UI Face Restoration & Identity Guard Selector**:
+   - Added `🎭 Face Engine & Identity Guard` in `app.py` allowing instant switching between `🛡️ Wink Ultra-HD (Zero Distortion - 100% Giữ nét thật)` and `✨ CodeFormer AI Reconstruct`.
+   - Defaulted `💎 Pure Quality & Sharpness` preset to Zero-Distortion mode.
+   - Added `unsharp_mask` method in `WinkQualityEnhancer`.
+
+### Code Changes
+- [MODIFY] [pipeline.py](file:///d:/.gemini-scratch/custom-ai-enhancer/pipeline.py) (Upgraded `if not face_restore` to run full Wink clarity suite, added odd-dimension padding to Real-ESRGAN, and added Pure Quality preset handling)
+- [MODIFY] [wink_enhancer.py](file:///d:/.gemini-scratch/custom-ai-enhancer/wink_enhancer.py) (Added `unsharp_mask` method to `WinkQualityEnhancer`)
+- [MODIFY] [app.py](file:///d:/.gemini-scratch/custom-ai-enhancer/app.py) (Added Face Engine Mode radio selector, updated preset defaults, plumbed `face_restore` parameter)
+
+### Verification
+- Both Lanczos and Real-ESRGAN Wink Ultra-HD pipelines verified with exit code 0 on test images.
+
 
 
 

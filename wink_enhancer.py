@@ -44,6 +44,16 @@ class WinkQualityEnhancer:
             print(f"[WinkEnhancer] Chromatic aberration correction warning: {e}")
             return img
 
+    def unsharp_mask(self, img: np.ndarray, amount: float = 0.25) -> np.ndarray:
+        """
+        High-speed OpenCV unsharp masking to boost micro-contrast and crisp edges.
+        """
+        if amount <= 0.0 or img is None:
+            return img
+        blurred = cv2.GaussianBlur(img, (0, 0), 3.0)
+        sharpened = cv2.addWeighted(img, 1.0 + amount, blurred, -amount, 0)
+        return np.clip(sharpened, 0, 255).astype(np.uint8)
+
     def apply_skin_grain(self, restored_face: np.ndarray, cropped_original: np.ndarray, skin_mask: np.ndarray = None, grain_amount: float = 0.15, skin_soften: float = 0.3) -> np.ndarray:
         """
         Pro Studio Skin Texture Synthesis 2.0:

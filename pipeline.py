@@ -229,7 +229,15 @@ class LocalAIEnhancerPipeline:
         return self._onnx_session_cache[path]
     def _enhance_realesrgan_onnx_single(self, img, upscale, model_path=None):
         h, w, c = img.shape
-        img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+        # Pad to even dimensions if odd to prevent ONNX Reshape kernel failure
+        pad_h = 1 if (h % 2 != 0) else 0
+        pad_w = 1 if (w % 2 != 0) else 0
+        if pad_h > 0 or pad_w > 0:
+            img_padded = cv2.copyMakeBorder(img, 0, pad_h, 0, pad_w, cv2.BORDER_REFLECT)
+        else:
+            img_padded = img
+
+        img_rgb = cv2.cvtColor(img_padded, cv2.COLOR_BGR2RGB)
         img_rgb = img_rgb.astype(np.float32) / 255.0
         img_input = np.transpose(img_rgb, (2, 0, 1))
         img_input = np.expand_dims(img_input, axis=0)
@@ -247,6 +255,10 @@ class LocalAIEnhancerPipeline:
         output = np.transpose(output, (1, 2, 0))
         output_bgr = cv2.cvtColor(output, cv2.COLOR_RGB2BGR)
         output_bgr = (output_bgr * 255.0).round().astype(np.uint8)
+
+        # Unpad back to exact 2x original dimensions
+        if pad_h > 0 or pad_w > 0:
+            output_bgr = output_bgr[:h * 2, :w * 2]
         
         if upscale != 2:
             output_bgr = cv2.resize(output_bgr, (w * upscale, h * upscale), interpolation=cv2.INTER_LANCZOS4)
@@ -446,6 +458,31 @@ class LocalAIEnhancerPipeline:
             enable_eyes = False
             enable_lips = False
             enable_skin = False
+        elif preset_mode == 'Pure Quality':
+            # Pure Quality: 0% deformation, pure super-resolution clarity & deblur
+            w = 0.95
+            wink_mode = False
+            eye_enhancement = False
+            skin_grain = 0.0
+            color_match = True
+            enable_eyes = False
+            enable_lips = False
+            enable_skin = False
+            enable_teeth = False
+            enable_tone_glow = False
+            enable_dark_circles = False
+            enable_catchlight = False
+            enable_hair = False
+            enable_relighting = False
+            enable_anti_glare = False
+            enable_makeup = False
+            enable_crystal_skin = False
+            enable_glossy_lips = False
+            enable_doll_eye = False
+            enable_golden_hour = False
+            enable_super_clarity = True
+            enable_deblur = True
+            enable_dehaze = True
 
         # 1. Handle background upsampling first
         bg_img = None
@@ -500,21 +537,28 @@ class LocalAIEnhancerPipeline:
                 self._report_progress("background", 0.5, "Background upscaled")
 
         if not face_restore:
-            self._report_progress("complete", 1.0, "Enhancement complete!")
+            self._report_progress("enhancement", 0.3, "Upscaling image (Zero Face Distortion Mode)...")
             if bg_img is not None:
-                # Apply sharpening if requested
+                enhanced_img = bg_img
+            elif self.use_re_onnx and bg_upsampler == 'realesrgan':
+                enhanced_img = self.enhance_realesrgan_onnx(img, upscale, model_path=bg_upsampler_model)
+            else:
+                h, w_img, _ = img.shape
+                enhanced_img = cv2.resize(img, (w_img * upscale, h * upscale), interpolation=cv2.INTER_LANCZOS4)
+
+            self._report_progress("enhancement", 0.7, "Applying Wink Ultra-HD Clarity & De-blurring...")
+            if hasattr(self, 'wink_enhancer'):
+                if enable_dehaze and dehaze_strength > 0.0:
+                    enhanced_img = self.wink_enhancer.apply_dehaze_and_dynamic_contrast(enhanced_img, strength=dehaze_strength)
+                if enable_deblur and deblur_strength > 0.0:
+                    enhanced_img = self.wink_enhancer.apply_deblur_deconvolution(enhanced_img, strength=deblur_strength)
+                if enable_super_clarity and clarity_strength > 0.0:
+                    enhanced_img = self.wink_enhancer.apply_laplacian_pyramid_clarity(enhanced_img, strength=clarity_strength)
                 if sharpen_amount > 0.0:
-                    blurred = cv2.GaussianBlur(bg_img, (0, 0), 3.0)
-                    bg_img = cv2.addWeighted(bg_img, 1.0 + sharpen_amount, blurred, -sharpen_amount, 0)
-                    bg_img = np.clip(bg_img, 0, 255).astype(np.uint8)
-                return bg_img
-            h, w_img, _ = img.shape
-            resized = cv2.resize(img, (w_img * upscale, h * upscale), interpolation=cv2.INTER_LANCZOS4)
-            if sharpen_amount > 0.0:
-                blurred = cv2.GaussianBlur(resized, (0, 0), 3.0)
-                resized = cv2.addWeighted(resized, 1.0 + sharpen_amount, blurred, -sharpen_amount, 0)
-                resized = np.clip(resized, 0, 255).astype(np.uint8)
-            return resized
+                    enhanced_img = self.wink_enhancer.unsharp_mask(enhanced_img, amount=sharpen_amount)
+
+            self._report_progress("complete", 1.0, "Wink Ultra-HD enhancement complete!")
+            return enhanced_img
 
         # Set up FaceRestoreHelper for face processing
         os.environ['FACE_DETECTOR_PATH'] = os.path.join(project_dir, "weights", "facelib")

@@ -379,12 +379,14 @@ with st.sidebar:
         default_lut = cp.get('lut', 'None')
         default_chromatic = cp.get('chromatic', False)
         default_detector = cp.get('detector', 'retinaface_mobile0.25')
+        default_face_restore = cp.get('face_restore', True)
         pipeline_preset_mode = 'Custom'
     elif "Pure Quality & Sharpness" in preset_choice:
-        default_w = 0.85
+        default_w = 0.95
         default_upscale = 2
+        default_face_restore = False
         default_wink = False
-        default_grain = 0.20
+        default_grain = 0.0
         default_sharpen = 0.25
         default_color = True
         default_eye = False
@@ -459,6 +461,7 @@ with st.sidebar:
         default_lut = "None"
         default_chromatic = False
         default_detector = "retinaface_mobile0.25"
+        default_face_restore = True
         pipeline_preset_mode = 'Modern Portrait'
     elif "Ultra Fast" in preset_choice:
         default_w = 0.5
@@ -499,6 +502,7 @@ with st.sidebar:
         default_lut = "None"
         default_chromatic = False
         default_detector = "retinaface_mobile0.25"
+        default_face_restore = False
         pipeline_preset_mode = 'Custom'
     elif "Old Photo" in preset_choice:
         default_w = 0.85
@@ -539,6 +543,7 @@ with st.sidebar:
         default_lut = "Kodak Portra 400 (Warm Gold)"
         default_chromatic = True
         default_detector = "retinaface_mobile0.25"
+        default_face_restore = True
         pipeline_preset_mode = 'Old Photo Restoration'
     elif "Game / Anime" in preset_choice:
         default_w = 0.3
@@ -579,6 +584,7 @@ with st.sidebar:
         default_lut = "Teal & Orange / Cyberpunk"
         default_chromatic = False
         default_detector = "retinaface_mobile0.25"
+        default_face_restore = True
         pipeline_preset_mode = 'Game / Anime Character'
     else: # Natural Likeness
         default_w = 0.65
@@ -619,6 +625,7 @@ with st.sidebar:
         default_lut = "None"
         default_chromatic = False
         default_detector = "retinaface_mobile0.25"
+        default_face_restore = True
         pipeline_preset_mode = 'Custom'
 
     # Model Version Switcher
@@ -653,14 +660,32 @@ with st.sidebar:
         help="Select neural network for full-image super-resolution (landscapes, anime, products, textures, background)."
     )
 
-    w_val = st.slider(
-        "AI Detail vs Likeness (w)",
-        min_value=0.0,
-        max_value=1.0,
-        value=default_w,
-        step=0.05,
-        help="0.0 = Max AI Detail restoration. 1.0 = Keep exact original face likeness."
+    st.markdown("**🎭 Face Engine & Identity Guard**")
+    face_mode_options = [
+        "🛡️ Wink Ultra-HD (Zero Distortion - 100% Giữ nét thật)",
+        "✨ CodeFormer AI Reconstruct (Vẽ lại nét khuôn mặt bằng AI)"
+    ]
+    face_mode_idx = 0 if not default_face_restore else 1
+    selected_face_mode = st.radio(
+        "Face Engine Mode",
+        face_mode_options,
+        index=face_mode_idx,
+        help="🛡️ Wink Ultra-HD: Chỉ làm nét, khử mờ, giữ nguyên 100% đường nét và biểu cảm gốc, KHÔNG biến dạng mặt.\n✨ CodeFormer AI: Dùng trí tuệ nhân tạo để vẽ lại mặt nếu ảnh quá nát hoặc mờ tịt."
     )
+    face_restore_val = ("AI Reconstruct" in selected_face_mode)
+
+    if face_restore_val:
+        w_val = st.slider(
+            "AI Detail vs Likeness (w)",
+            min_value=0.0,
+            max_value=1.0,
+            value=default_w,
+            step=0.05,
+            help="0.0 = Max AI Detail restoration. 1.0 = Keep exact original face likeness."
+        )
+    else:
+        w_val = 1.0
+        st.caption("🔒 **Zero-Distortion Active**: Bảo toàn 100% đường nét & biểu cảm gốc, làm nét chuẩn Wink không biến dạng mặt.")
 
     upscale_val = st.select_slider(
         "Output Resolution Scale",
@@ -737,6 +762,7 @@ with st.sidebar:
         if st.button("Save Current as Preset") and new_preset_name.strip():
             p_name = new_preset_name.strip()
             st.session_state.custom_presets[p_name] = {
+                'face_restore': face_restore_val,
                 'w': w_val,
                 'upscale': upscale_val,
                 'detector': face_detector,
@@ -833,6 +859,7 @@ with tab_photo:
 
         current_params = {
             'img_name': getattr(uploaded_file, 'name', 'webcam_capture.png'),
+            'face_restore': face_restore_val,
             'w': w_val,
             'upscale': upscale_val,
             'detector': face_detector,
@@ -905,6 +932,7 @@ with tab_photo:
                 chosen_upscaler_path = avail_upscalers.get(selected_upscaler)
                 is_lanczos = chosen_upscaler_path == "lanczos"
                 process_args = {
+                    'face_restore': face_restore_val,
                     'w': w_val,
                     'detection_model': face_detector,
                     'upscale': upscale_val,
@@ -1230,6 +1258,7 @@ with tab_batch:
 
                 batch_res = pipeline.process_batch_images(
                     batch_dict,
+                    face_restore=face_restore_val,
                     w=w_val,
                     detection_model=face_detector,
                     upscale=upscale_val,
