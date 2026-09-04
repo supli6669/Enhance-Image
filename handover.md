@@ -1689,6 +1689,42 @@ Addressed user requirement for pure optical super-resolution and clarity without
 ### Verification
 - Both Lanczos and Real-ESRGAN Wink Ultra-HD pipelines verified with exit code 0 on test images.
 
+---
+
+## Task 40: Kaggle Cloud GPU Training Completion (v3.0), ArcFace Weights Deployment & Pipeline Verification
+
+**Date:** 2026-09-04  
+**Status:** ✅ Completed & Verified
+
+### Overview
+1. **Kaggle GPU Training Run Complete (Version 17)**:
+   - Successfully completed 2,000 fine-tuning iterations on Kaggle Cloud GPU (Tesla T4) in 30 minutes 21 seconds.
+   - Smooth convergence across all loss components:
+     - `l_feat_encoder`: dropped to `0.286`
+     - `cross_entropy_loss`: dropped to `0.120`
+     - `l_g_pix`: `0.078`
+     - `l_g_percep`: `0.282`
+     - `l_g_identity`: `0.046` (ArcFace cosine distance identity loss smoothly minimized)
+     - `l_g_gan`: `0.002`
+2. **Model Weights Deployment**:
+   - Pulled output assets via `tools/kaggle_runner.py` and placed them into `weights/CodeFormer/`:
+     - `codeformer_v3.onnx` (FP32 ArcFace model, 376.8 MB)
+     - `codeformer_int8_v3.onnx` + `.data` (Static INT8 Quantized model, 1.78 MB + 94.5 MB data)
+     - `codeformer_finetuned_v3.pth` (Full PyTorch weights, 753.2 MB)
+     - Training checkpoints and states stored in `models/CodeFormer/experiments/`.
+3. **Pipeline Verification**:
+   - `python tools/test_pipeline.py` passed with **Exit Code 0** (verified face restoration, non-face universal enhancement, and multi-model engine discovery).
+   - `python tools/test_ab_ui_pipeline.py` passed with **Exit Code 0** (verified 4 presets and dynamic model engine switching).
+4. **User Guidance on UI Error Resolution**:
+   - Clarified that if an error occurred during active editing, restarting `Run_AI_Enhancer.bat` reloads the updated Python modules in memory and resets any persistent browser session state.
+
+### Code Changes
+- [MODIFY] [weights/CodeFormer/codeformer_v3.onnx](file:///d:/.gemini-scratch/custom-ai-enhancer/weights/CodeFormer/codeformer_v3.onnx) (Updated with newly trained v3 FP32 weights)
+- [MODIFY] [weights/CodeFormer/codeformer_int8_v3.onnx](file:///d:/.gemini-scratch/custom-ai-enhancer/weights/CodeFormer/codeformer_int8_v3.onnx) (Updated with newly trained v3 static INT8 weights)
+- [MODIFY] [weights/CodeFormer/codeformer_finetuned_v3.pth](file:///d:/.gemini-scratch/custom-ai-enhancer/weights/CodeFormer/codeformer_finetuned_v3.pth) (Saved fine-tuned checkpoint)
+- [MODIFY] [handover.md](file:///d:/.gemini-scratch/custom-ai-enhancer/handover.md) (Documented Task 40)
+
+
 
 
 
