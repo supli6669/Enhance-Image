@@ -1724,6 +1724,36 @@ Addressed user requirement for pure optical super-resolution and clarity without
 - [MODIFY] [weights/CodeFormer/codeformer_finetuned_v3.pth](file:///d:/.gemini-scratch/custom-ai-enhancer/weights/CodeFormer/codeformer_finetuned_v3.pth) (Saved fine-tuned checkpoint)
 - [MODIFY] [handover.md](file:///d:/.gemini-scratch/custom-ai-enhancer/handover.md) (Documented Task 40)
 
+---
+
+## Task 41: Fix BasicSR CosineAnnealingRestartLR Resume Crash & Deploy Kaggle Version 19
+
+**Date:** 2026-09-04  
+**Status:** ✅ Completed & Verified
+
+### Overview
+1. **Root Cause Analysis of Kaggle Training Crash (`TypeError: list indices must be integers or slices, not NoneType`)**:
+   - In Version 18, `train_custom.py` successfully resumed from iteration 2000.
+   - At iteration 2001, `model.update_learning_rate(current_iter)` invoked `CosineAnnealingRestartLR.step()`.
+   - `get_position_from_periods(iteration, cumulative_period)` iterated through `cumulative_period = [2000]` (loaded from `2000.state`).
+   - When `iteration = 2001 > 2000`, the loop returned `None`.
+   - `self.restart_weights[None]` threw `TypeError: list indices must be integers or slices, not NoneType`.
+2. **Resolution & Two-Tiered Fix**:
+   - **Runtime Patch (`tools/compat_shim.py`)**: Intercepts `basicsr.models.lr_scheduler.get_position_from_periods` and `CosineAnnealingRestartLR.get_lr` so that iterations exceeding original cycles return the final period index and smoothly clamp to `eta_min` rather than crashing.
+   - **State Synchronization (`models/CodeFormer/basicsr/models/base_model.py`)**: When resuming from checkpoint, re-synchronizes `self.schedulers[i].periods` and `cumulative_period` from the active config (e.g. `[6000]`).
+   - **Config Extension (`models/CodeFormer/options/CodeFormer_stage3_custom.yml`)**: Set `total_iter: 6000` and `periods: [6000]`.
+3. **Deployment**:
+   - Deployed Version 19 on Kaggle GPU (`custom-ai-enhancer-stage3-training`).
+   - Status confirmed: **`RUNNING`**.
+
+### Code Changes
+- [MODIFY] [tools/compat_shim.py](file:///d:/.gemini-scratch/custom-ai-enhancer/tools/compat_shim.py) (Runtime monkey-patch for CosineAnnealingRestartLR out-of-bounds index)
+- [MODIFY] [models/CodeFormer/basicsr/models/base_model.py](file:///d:/.gemini-scratch/custom-ai-enhancer/models/CodeFormer/basicsr/models/base_model.py) (Re-synchronize scheduler periods upon resuming state)
+- [MODIFY] [models/CodeFormer/basicsr/models/lr_scheduler.py](file:///d:/.gemini-scratch/custom-ai-enhancer/models/CodeFormer/basicsr/models/lr_scheduler.py) (Clamped out-of-bounds iteration indexing)
+- [MODIFY] [models/CodeFormer/options/CodeFormer_stage3_custom.yml](file:///d:/.gemini-scratch/custom-ai-enhancer/models/CodeFormer/options/CodeFormer_stage3_custom.yml) (total_iter: 6000, periods: [6000])
+- [MODIFY] [handover.md](file:///d:/.gemini-scratch/custom-ai-enhancer/handover.md) (Documented Task 41)
+
+
 
 
 
