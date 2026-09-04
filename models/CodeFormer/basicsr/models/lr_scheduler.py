@@ -52,6 +52,7 @@ def get_position_from_periods(iteration, cumulative_period):
     for i, period in enumerate(cumulative_period):
         if iteration <= period:
             return i
+    return len(cumulative_period) - 1
 
 
 class CosineAnnealingRestartLR(_LRScheduler):
@@ -85,9 +86,15 @@ class CosineAnnealingRestartLR(_LRScheduler):
 
     def get_lr(self):
         idx = get_position_from_periods(self.last_epoch, self.cumulative_period)
+        if idx is None or idx >= len(self.restart_weights):
+            idx = len(self.restart_weights) - 1
         current_weight = self.restart_weights[idx]
         nearest_restart = 0 if idx == 0 else self.cumulative_period[idx - 1]
-        current_period = self.periods[idx]
+        current_period = self.periods[idx] if idx < len(self.periods) else self.periods[-1]
+
+        # When training is extended past the scheduled cycle, smoothly maintain eta_min
+        if self.last_epoch >= self.cumulative_period[-1]:
+            return [self.eta_min for _ in self.base_lrs]
 
         return [
             self.eta_min + current_weight * 0.5 * (base_lr - self.eta_min) *

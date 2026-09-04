@@ -293,6 +293,11 @@ class BaseModel():
             self.optimizers[i].load_state_dict(o)
         for i, s in enumerate(resume_schedulers):
             self.schedulers[i].load_state_dict(s)
+            if hasattr(self.schedulers[i], 'periods') and 'scheduler' in self.opt.get('train', {}):
+                cfg_periods = self.opt['train']['scheduler'].get('periods')
+                if cfg_periods:
+                    self.schedulers[i].periods = cfg_periods
+                    self.schedulers[i].cumulative_period = [sum(cfg_periods[0:k + 1]) for k in range(len(cfg_periods))]
 
     def reduce_loss_dict(self, loss_dict):
         """reduce loss dict.
