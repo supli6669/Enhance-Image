@@ -937,7 +937,7 @@ with tab_photo:
                     'detection_model': face_detector,
                     'upscale': upscale_val,
                     'blend_softness': 0.5,
-                    'bg_upsampler': None if is_lanczos else ('realesrgan' if bg_upscale else None),
+                    'bg_upsampler': None if is_lanczos else ('realesrgan' if (bg_upscale or not face_restore_val) else None),
                     'bg_upsampler_model': None if is_lanczos else chosen_upscaler_path,
                     'det_threshold': det_thresh,
                     'sharpen_amount': sharpen_val,
