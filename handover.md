@@ -1802,3 +1802,15 @@ Removed literal Kaggle credentials, added isolated staged downloads and artifact
 hashes, and gated automated HF sync on CPU CI. The exposed key still needs account
 revocation; historical commits were not rewritten. Existing checkpoints, partial
 downloads and unrelated Real-ESRGAN submodule edits were preserved.
+
+## Task 43 — Proposed improvement roadmap (2026-09-08)
+
+User requested a plan before further implementation. Added
+PROJECT_IMPROVEMENT_PLAN.md: credentials/deployment recovery, identity-aware data
+review, full frozen baseline, Kaggle GPU verification, fresh Stage III pilot,
+candidate evaluation, then CPU export/quantization and release. Thresholds are
+proposed targets to freeze before candidate evaluation, not achieved results.
+Immediate priority is data review plus baseline, not indiscriminate data expansion.
+No new training, full evaluation, dataset upload or model promotion was started.
+GitHub CPU CI for f7c0974 passed; HF sync failed and local push reported invalid
+authentication. HF credentials still require repair before deployment.
