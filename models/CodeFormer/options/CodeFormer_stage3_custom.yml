@@ -7,6 +7,7 @@ datasets:
     name: CustomDataset
     type: FFHQBlindJointDataset
     dataroot_gt: datasets/ffhq/ffhq_512
+    include_folders: [faces, pinterest]
     filename_tmpl: '{}'
     io_backend:
       type: disk
@@ -76,6 +77,7 @@ network_g:
   - quantize
   - generator
 network_vqgan:
+  model_path: ../../weights/facelib/vqgan_code1024.pth
   type: VQAutoEncoder
   img_size: 512
   nf: 64

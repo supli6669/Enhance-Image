@@ -1525,17 +1525,14 @@ class WinkQualityEnhancer:
         enh_sharpness = self.calculate_sharpness(enhanced_img)
         
         sharpness_gain_pct = ((enh_sharpness - orig_sharpness) / max(orig_sharpness, 1e-5)) * 100.0
-        sharpness_gain_pct = float(np.clip(sharpness_gain_pct, 0.0, 1000.0))
+        sharpness_gain_pct = float(np.clip(sharpness_gain_pct, -100.0, 1000.0))
 
-        # Skin tone fidelity score (using LAB luminance correlation)
-        try:
-            o_res = cv2.resize(orig_img, (enhanced_img.shape[1], enhanced_img.shape[0]))
-            o_lab = cv2.cvtColor(o_res, cv2.COLOR_BGR2LAB).astype(np.float32)
-            e_lab = cv2.cvtColor(enhanced_img, cv2.COLOR_BGR2LAB).astype(np.float32)
-            diff = np.mean(np.abs(o_lab[:, :, 1:] - e_lab[:, :, 1:]))
-            tone_fidelity_pct = float(np.clip(100.0 - (diff * 1.5), 70.0, 99.9))
-        except Exception:
-            tone_fidelity_pct = 95.0
+        # Whole-image chroma similarity heuristic, not facial identity accuracy.
+        o_res = cv2.resize(orig_img, (enhanced_img.shape[1], enhanced_img.shape[0]))
+        o_lab = cv2.cvtColor(o_res, cv2.COLOR_BGR2LAB).astype(np.float32)
+        e_lab = cv2.cvtColor(enhanced_img, cv2.COLOR_BGR2LAB).astype(np.float32)
+        diff = np.mean(np.abs(o_lab[:, :, 1:] - e_lab[:, :, 1:]))
+        tone_fidelity_pct = float(np.clip(100.0 - diff * 1.5, 0.0, 100.0))
 
         return {
             'orig_sharpness': round(orig_sharpness, 1),

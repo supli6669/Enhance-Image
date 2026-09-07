@@ -15,7 +15,7 @@ import torch
 from basicsr.data import build_dataset
 
 def main():
-    print("=== Phase 4: Dataset Loader & Game Character Mixing Verification ===")
+    print("=== Phase 4: Recursive Dataset Loader & Domain Selection Verification ===")
     
     config_path = os.path.join(codeformer_dir, "options", "CodeFormer_stage3_custom.yml")
     print(f"Reading configuration from: {config_path}")
@@ -41,10 +41,14 @@ def main():
                 
     print(f"Total image files found on disk: {len(all_files)}")
     
+    allowed = set(dataset_opt.get('include_folders', []))
+    expected = {os.path.normpath(path) for path in all_files
+                if not allowed or os.path.relpath(path, gt_dir).replace('\\', '/').split('/')[0] in allowed}
     # Build BasicSR Dataset
     dataset = build_dataset(dataset_opt)
     print(f"Dataset object instantiated. Total items reported by dataset loader: {len(dataset)}")
     
+    assert {os.path.normpath(p) for p in dataset.paths} == expected, 'Loader silently omitted selected files'
     # Fetch first 5 items to verify shapes and pipeline execution
     print("\nFetching sample items from dataset loader:")
     for i in range(min(5, len(dataset))):
@@ -55,7 +59,7 @@ def main():
         assert gt_tensor.shape == (3, 512, 512), f"Invalid GT shape: {gt_tensor.shape}"
         assert in_tensor.shape == (3, 512, 512), f"Invalid Input shape: {in_tensor.shape}"
         
-    print("\nSUCCESS: Phase 4 Dataset Expansion & Game Character Mixing verified with exit code 0!")
+    print("\nSUCCESS: Phase 4 Recursive Dataset Loader & Domain Selection verified with exit code 0!")
 
 if __name__ == "__main__":
     main()

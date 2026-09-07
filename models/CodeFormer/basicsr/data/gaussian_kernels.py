@@ -5,6 +5,20 @@ from scipy.ndimage.interpolation import shift
 from scipy.stats import multivariate_normal
 
 
+def motion_kernels_32(size=15):
+    """Normalized linear exposure kernels over 32 distinct motion directions."""
+    import cv2
+    center = (size - 1) / 2
+    base = np.zeros((size, size), dtype=np.float32)
+    base[size // 2, :] = 1
+    kernels = {}
+    for index in range(32):
+        transform = cv2.getRotationMatrix2D((center, center), index * 180 / 32, 1)
+        kernel = cv2.warpAffine(base, transform, (size, size))
+        kernels[f'{index:02d}'] = kernel / kernel.sum()
+    return kernels
+
+
 def sigma_matrix2(sig_x, sig_y, theta):
     """Calculate the rotated sigma matrix (two dimensional matrix).
     Args:

@@ -10,6 +10,7 @@ datasets:
     name: CustomFFHQBlind
     type: FFHQBlindDataset
     dataroot_gt: datasets/ffhq/ffhq_512
+    include_folders: [faces, pinterest]
     filename_tmpl: '{}'
     io_backend:
       type: disk
@@ -42,11 +43,11 @@ network_g:
   codebook_size: 1024
   connect_list: ['32', '64', '128', '256']
   fix_modules: ['quantize', 'generator']
-  vqgan_path: weights/facelib/vqgan_code1024.pth
 
 
 
 network_vqgan:
+  model_path: ../../weights/facelib/vqgan_code1024.pth
   type: VQAutoEncoder
   img_size: 512
   nf: 64

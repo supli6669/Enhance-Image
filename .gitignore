@@ -35,6 +35,9 @@ benchmarks/inputs/
 benchmarks/references/
 benchmarks/manifest.csv
 benchmarks/holdout_paths.txt
+benchmarks/splits/
+benchmarks/reports/
+artifacts/
 results/
 output/
 input/

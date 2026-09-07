@@ -10,6 +10,8 @@ import subprocess
 import glob
 
 import argparse
+from pathlib import Path
+import json
 
 
 def find_latest_complete_checkpoint(experiments_dir: str):
@@ -51,6 +53,11 @@ def main():
     parser = argparse.ArgumentParser(description="Train CodeFormer with custom parameters.")
     parser.add_argument("--verify", action="store_true", help="Run 2 iterations for verification purposes.")
     parser.add_argument("--fresh", action="store_true", help="Start training fresh from pretrained weights, ignoring existing checkpoints.")
+    parser.add_argument('--dataset-dir', type=Path, default=None)
+    parser.add_argument('--split-dir', type=Path, default=Path('benchmarks/splits/real_portraits_v1'))
+    parser.add_argument('--baseline-report', type=Path, help='Full baseline evaluation JSON required before production training')
+    parser.add_argument('--holdout-manifest', type=Path, help='Portable holdout list; defaults to split directory')
+    parser.add_argument('--preflight', action='store_true', help='Validate inputs without training')
     args = parser.parse_args()
 
     project_dir = os.path.dirname(os.path.abspath(__file__))
@@ -74,21 +81,11 @@ def main():
     print(f"Device detected: {device.upper()}")
     print(f"Number of GPUs available: {num_gpus}")
     
-    # 2. Check and prepare dataset
-    dataset_dir = os.path.join(codeformer_dir, "datasets", "ffhq", "ffhq_512")
-    if not os.path.exists(dataset_dir) or len(os.listdir(dataset_dir)) == 0:
-        print("Dataset directory is empty. Preparing dataset images...")
-        try:
-            sys.path.insert(0, os.path.join(project_dir, "tools"))
-            import prepare_toy_training
-            prepare_toy_training.main()
-            print("Dataset preparation completed.")
-        except Exception as e:
-            print(f"Error preparing dataset: {e}")
-            sys.exit(1)
-    else:
-        print(f"Dataset found at {dataset_dir} ({len(os.listdir(dataset_dir))} images).")
-        
+    # Production runs never bootstrap toy data or launch long CPU training.
+    dataset_dir = str((args.dataset_dir or Path(codeformer_dir) / 'datasets/ffhq/ffhq_512').resolve())
+    if not Path(dataset_dir).is_dir():
+        raise FileNotFoundError(f'Provide a real portrait dataset: {dataset_dir}')
+
     # 3. Update configuration file
     config_path = os.path.join(codeformer_dir, "options", "CodeFormer_stage3_custom.yml")
     if not os.path.exists(config_path):
@@ -99,17 +96,21 @@ def main():
     with open(config_path, "r", encoding="utf-8") as f:
         config = yaml.safe_load(f)
 
-    # Keep the deterministic benchmark holdout out of all training phases.
-    # It is intentionally ignored by Git because it may identify private data;
-    # create it with tools/prepare_benchmark.py before training.
-    holdout_manifest = os.path.join(project_dir, "benchmarks", "holdout_paths.txt")
-    if os.path.isfile(holdout_manifest):
-        for dataset in config.get("datasets", {}).values():
-            dataset["exclude_manifest"] = holdout_manifest
-        print(f"Excluding benchmark holdout from training: {holdout_manifest}")
-    else:
-        print("WARNING: benchmark holdout manifest not found; refusing quality claims for this run.")
-    
+    split_dir = args.split_dir.resolve()
+    holdout_manifest = args.holdout_manifest or split_dir / 'holdout_paths.txt'
+    from tools.training_preflight import configure_training
+    config, report = configure_training(config, Path(dataset_dir), split_dir, holdout_manifest)
+    print(json.dumps(report, indent=2))
+    if args.preflight:
+        return
+    if device == 'cpu' and not args.verify:
+        raise RuntimeError('Full training requires a working GPU. Use --preflight on CPU.')
+    if not args.fresh:
+        raise RuntimeError('Audited legacy runs used toy data/random teachers. Start with --fresh after baseline review.')
+    if not args.verify:
+        from tools.training_preflight import validate_quality_gate
+        validate_quality_gate(report, args.baseline_report)
+
     # Save original total_iter BEFORE any runtime overrides — we must restore
     # this after writing so --verify mode never permanently corrupts the file.
     original_total_iter = config.get("train", {}).get("total_iter", 20000)

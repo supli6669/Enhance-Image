@@ -1,6 +1,8 @@
 import os
 import sys
 import cv2
+import torch
+torch.set_num_threads(8)
 
 # Add project root to sys.path
 tools_dir = os.path.dirname(os.path.abspath(__file__))

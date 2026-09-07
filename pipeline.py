@@ -11,11 +11,6 @@ from concurrent.futures import ThreadPoolExecutor
 from torchvision.transforms.functional import normalize
 
 try:
-    import tools.compat_shim
-except Exception:
-    pass
-
-try:
     import onnxruntime as ort
     HAS_ONNX = True
 except ImportError:
@@ -47,6 +42,9 @@ for p in (codeformer_dir, tools_dir):
     if p not in sys.path:
         sys.path.insert(0, p)
 
+import tools.compat_shim
+from tools.model_artifacts import model_files, preferred_baseline
+
 from basicsr.utils import img2tensor, tensor2img
 from basicsr.utils.registry import ARCH_REGISTRY
 from facelib.utils.face_restoration_helper import FaceRestoreHelper
@@ -61,16 +59,22 @@ def get_available_models(weights_dir=None):
         return models
     
     candidates = [
-        ("codeformer_int8_v3.onnx", "CodeFormer v3.0 (Fast INT8 ArcFace) [⚡ Recommended]"),
-        ("codeformer_v3.onnx", "CodeFormer v3.0 (FP32 ArcFace High-Identity)"),
-        ("codeformer_int8_v2.onnx", "CodeFormer v2.0 (Fast INT8 Quantized)"),
-        ("codeformer_int8.onnx", "CodeFormer v1.0 (Fast INT8 Baseline)"),
-        ("codeformer.onnx", "CodeFormer Standard ONNX (FP32)"),
-        ("codeformer.pth", "CodeFormer PyTorch Native (FP32 Weights)"),
+        ("codeformer.pth", "CodeFormer Baseline (PyTorch .pth)"),
+        ("codeformer_int8_v3.onnx", "CodeFormer v3 INT8 (local, unvalidated)"),
+        ("codeformer_v3.onnx", "CodeFormer v3 FP32 (local, unvalidated)"),
+        ("codeformer_int8_v2.onnx", "CodeFormer v2 INT8 (local, unvalidated)"),
+        ("codeformer_int8.onnx", "CodeFormer INT8 (local, unvalidated)"),
+        ("codeformer.onnx", "CodeFormer ONNX FP32 (local, unvalidated)"),
     ]
+    if preferred_baseline(weights_dir).endswith('codeformer_baseline.onnx'):
+        candidates.insert(0, ('codeformer_baseline.onnx', 'CodeFormer Baseline ONNX (verified export)'))
     for filename, label in candidates:
         full_path = os.path.join(weights_dir, filename)
         if os.path.isfile(full_path):
+            try:
+                model_files(full_path)
+            except ValueError:
+                continue
             models[label] = full_path
     return models
 
@@ -101,37 +105,22 @@ class LocalAIEnhancerPipeline:
         print(f"[Pipeline] Initializing pipeline on device: {self.device}")
         self._report_progress("initialization", 0.1, "Loading CodeFormer model...")
         
-        base_cf = os.path.join(project_dir, "weights", "CodeFormer", "codeformer")
-        onnx_candidates = [
-            base_cf + "_int8_v3.onnx",
-            base_cf + "_v3.onnx",
-            base_cf + "_int8_v2.onnx",
-            base_cf + "_int8.onnx",
-            base_cf + ".onnx"
-        ]
-        if model_path_override and os.path.exists(model_path_override):
-            onnx_candidates.insert(0, model_path_override)
-        
-        self.use_onnx = False
+        # Auto uses the known pretrained baseline; local candidates are explicit.
+        selected_path = model_path_override or preferred_baseline(os.path.join(project_dir, 'weights', 'CodeFormer'))
+        model_files(selected_path)
+        self._onnx_session_cache = {}
+        self._torch_model_cache = {}
+        self.use_onnx = str(selected_path).endswith('.onnx')
         self.ort_session_cf = None
         self.codeformer_onnx_path = None
-
-        if HAS_ONNX:
-            opts = ort.SessionOptions()
-            opts.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
-            for candidate in onnx_candidates:
-                if os.path.exists(candidate):
-                    try:
-                        print(f"[Pipeline] Attempting to load ONNX model: {candidate}")
-                        session = ort.InferenceSession(candidate, sess_options=opts, providers=_get_ort_providers())
-                        self.ort_session_cf = session
-                        self.codeformer_onnx_path = candidate
-                        self.use_onnx = True
-                        print(f"[Pipeline] Successfully loaded ONNX model: {candidate}")
-                        break
-                    except Exception as e:
-                        print(f"[Pipeline] Warning: Failed to load ONNX model {candidate}: {e}")
-                        # If a candidate fails, continue trying the next candidate
+        self.default_model_path = os.path.abspath(selected_path)
+        self.active_model_path = self.default_model_path
+        if self.use_onnx:
+            if not HAS_ONNX:
+                raise RuntimeError('ONNX Runtime is required for the selected model')
+            self.ort_session_cf = self._get_onnx_session(selected_path)
+            self.codeformer_onnx_path = selected_path
+        self.net = None if self.use_onnx else self._get_torch_model(selected_path)
 
         re_dir = os.path.join(project_dir, "weights", "realesrgan")
         re_candidates = [
@@ -148,42 +137,6 @@ class LocalAIEnhancerPipeline:
                 break
         self.use_re_onnx = HAS_ONNX and (self.realesrgan_onnx_path is not None)
         
-        # Cache for ONNX sessions
-        self._onnx_session_cache = {}
-        
-        if self.use_onnx:
-            self.net = None
-        else:
-            print("[Pipeline] ONNX disabled or unavailable. Falling back to PyTorch model.")
-            # Load CodeFormer network architecture
-            self.net = ARCH_REGISTRY.get('CodeFormer')(
-                dim_embd=512, 
-                codebook_size=1024, 
-                n_head=8, 
-                n_layers=9, 
-                connect_list=['32', '64', '128', '256']
-            ).to(self.device)
-            
-            # Load weights
-            weights_path = os.path.join(project_dir, "weights", "CodeFormer", "codeformer.pth")
-            if not os.path.exists(weights_path):
-                print("[Pipeline] Pretrained weights not found. Automatically downloading models...")
-                try:
-                    import download_weights
-                    download_weights.main()
-                except Exception as e:
-                    print(f"[Pipeline] Error during automatic weight download: {e}")
-                    raise FileNotFoundError(f"CodeFormer weights not found at {weights_path} and auto-download failed. Please run download_weights.py manually.")
-                
-            print(f"[Pipeline] Loading weights from {weights_path}...")
-            checkpoint = torch.load(weights_path, map_location=self.device)
-            if 'params_ema' in checkpoint:
-                self.net.load_state_dict(checkpoint['params_ema'])
-            else:
-                self.net.load_state_dict(checkpoint['params'])
-            self.net.eval()
-            print("[Pipeline] CodeFormer model loaded successfully.")
-            
         # Cache for FaceRestoreHelper instances
         self._face_helper_cache = {}
         
@@ -217,12 +170,53 @@ class LocalAIEnhancerPipeline:
     def _check_cancelled(self):
         """Check if processing was cancelled by user."""
         return self.cancel_flag
+
+    @staticmethod
+    def _parse_labels(logits):
+        if logits.ndim == 4 and logits.shape[0] == 1:
+            logits = logits.squeeze(0)
+        if logits.ndim != 3 or logits.shape[0] != 19:
+            raise ValueError(f'Expected 19 face classes, got {tuple(logits.shape)}')
+        return logits.argmax(dim=0).cpu().numpy().astype(np.uint8)
+
+    def _get_torch_model(self, path):
+        path = os.path.abspath(path)
+        if path not in self._torch_model_cache:
+            model_files(path)
+            net = ARCH_REGISTRY.get('CodeFormer')(
+                dim_embd=512, codebook_size=1024, n_head=8, n_layers=9,
+                connect_list=['32', '64', '128', '256']).to(self.device)
+            checkpoint = torch.load(path, map_location=self.device)
+            state = checkpoint.get('params_ema', checkpoint.get('params'))
+            if state is None:
+                raise ValueError(f'No generator parameters in {path}')
+            net.load_state_dict(state, strict=True)
+            self._torch_model_cache[path] = net.eval()
+        return self._torch_model_cache[path]
+
+    def _resolve_model(self, selection):
+        if selection in ('Auto', 'Auto (Recommended)', None):
+            path = self.default_model_path
+        else:
+            path = self.get_available_models().get(selection, selection)
+        path = os.path.abspath(path)
+        if not os.path.isfile(path):
+            raise ValueError(f'Unknown model selection: {selection}')
+        self.active_model_path = path
+        if path.endswith('.onnx'):
+            return self._get_onnx_session(path), None
+        if path.endswith('.pth'):
+            return None, self._get_torch_model(path)
+        raise ValueError(f'Unsupported model format: {path}')
     
     def _get_onnx_session(self, path, providers=None):
         """Get or create cached ONNX session."""
         if path not in self._onnx_session_cache:
+            model_files(path)
             opts = ort.SessionOptions()
             opts.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
+            opts.intra_op_num_threads = min(8, os.cpu_count() or 1)
+            opts.inter_op_num_threads = 1
             if providers is None:
                 providers = _get_ort_providers()
             self._onnx_session_cache[path] = ort.InferenceSession(path, sess_options=opts, providers=providers)
@@ -317,29 +311,7 @@ class LocalAIEnhancerPipeline:
             
         return output_img
     def get_available_models(self):
-        """Scan and return list of available CodeFormer models with user-friendly labels."""
-        weights_dir = os.path.join(self.project_dir, "weights", "CodeFormer")
-        models = {}
-        
-        # Candidate map
-        v3_int8 = os.path.join(weights_dir, "codeformer_int8_v3.onnx")
-        v3_fp32 = os.path.join(weights_dir, "codeformer_v3.onnx")
-        v2_int8 = os.path.join(weights_dir, "codeformer_int8_v2.onnx")
-        v1_fp32 = os.path.join(weights_dir, "codeformer.onnx")
-        v1_pth = os.path.join(weights_dir, "codeformer.pth")
-        
-        if os.path.exists(v3_int8):
-            models["🔥 CodeFormer v3.0 INT8 (ArcFace Cloud Trained)"] = v3_int8
-        if os.path.exists(v3_fp32):
-            models["🔥 CodeFormer v3.0 FP32 (ArcFace Cloud Trained)"] = v3_fp32
-        if os.path.exists(v2_int8):
-            models["⚡ CodeFormer v2.0 INT8 (Fast CPU Quantized)"] = v2_int8
-        if os.path.exists(v1_fp32):
-            models["💎 CodeFormer v1.0 FP32 (ONNX Baseline)"] = v1_fp32
-        if os.path.exists(v1_pth):
-            models["📦 CodeFormer Baseline (PyTorch .pth)"] = v1_pth
-            
-        return models
+        return get_available_models(os.path.join(self.project_dir, 'weights', 'CodeFormer'))
 
     def get_available_upscalers(self):
         """Scan and return dictionary of available Real-ESRGAN upscaler models."""
@@ -380,6 +352,7 @@ class LocalAIEnhancerPipeline:
         """
         callback = self._default_progress_callback if progress_callback is None else progress_callback
         with self._processing_lock:
+            self.last_face_count = 0
             callback_token = _active_progress_callback.set(callback)
             try:
                 return self._process_image(
@@ -459,7 +432,7 @@ class LocalAIEnhancerPipeline:
             enable_lips = False
             enable_skin = False
         elif preset_mode == 'Pure Quality':
-            # Pure Quality: 0% deformation, pure super-resolution clarity & deblur
+            # Legacy Pure Quality preset: skip face reconstruction and enhance clarity.
             w = 0.95
             wink_mode = False
             eye_enhancement = False
@@ -537,7 +510,7 @@ class LocalAIEnhancerPipeline:
                 self._report_progress("background", 0.5, "Background upscaled")
 
         if not face_restore or preset_mode == 'Pure Quality':
-            self._report_progress("enhancement", 0.3, "Upscaling image (Zero Face Distortion Mode)...")
+            self._report_progress("enhancement", 0.3, "Enhancing image without face reconstruction...")
             if bg_img is not None:
                 enhanced_img = bg_img
             elif self.use_re_onnx and bg_upsampler == 'realesrgan':
@@ -558,7 +531,7 @@ class LocalAIEnhancerPipeline:
                     enhanced_img = self.wink_enhancer.unsharp_mask(enhanced_img, amount=sharpen_amount)
 
             self._report_progress("complete", 1.0, "Wink Ultra-HD enhancement complete!")
-            return enhanced_img
+            return self._finish_image(enhanced_img, color_lut, lut_intensity, bokeh_strength)
 
         # Set up FaceRestoreHelper for face processing
         os.environ['FACE_DETECTOR_PATH'] = os.path.join(project_dir, "weights", "facelib")
@@ -592,13 +565,17 @@ class LocalAIEnhancerPipeline:
         else:
             face_helper = self._face_helper_cache[cache_key]
 
+        face_helper.upscale_factor = upscale
+
         # Update threshold dynamically
         if hasattr(face_helper, 'face_detector'):
             face_helper.face_detector.custom_det_threshold = det_threshold
         
         # Reset per-image helper state
         face_helper.clean_all()
-        face_helper.read_image(img)
+        # Detection can resize internally; its coordinates and final output
+        # must stay in the original image coordinate system.
+        face_helper.read_image(img, preserve_size=True)
         
         # 2. Detect and align faces
         self._report_progress("detection", 0.1, f"Detecting faces with {detection_model}...")
@@ -616,8 +593,8 @@ class LocalAIEnhancerPipeline:
             self._report_progress("enhancement", 0.5, "Enhancing full image (Real-ESRGAN / Clarity)...")
             if bg_img is not None:
                 enhanced_img = bg_img
-            elif self.use_re_onnx:
-                enhanced_img = self.enhance_realesrgan_onnx(img, upscale)
+            elif self.use_re_onnx and bg_upsampler == 'realesrgan':
+                enhanced_img = self.enhance_realesrgan_onnx(img, upscale, model_path=bg_upsampler_model)
             else:
                 h, w_img, _ = img.shape
                 enhanced_img = cv2.resize(img, (w_img * upscale, h * upscale), interpolation=cv2.INTER_LANCZOS4)
@@ -632,7 +609,7 @@ class LocalAIEnhancerPipeline:
                     enhanced_img = self.wink_enhancer.unsharp_mask(enhanced_img, amount=sharpen_amount)
 
             self._report_progress("complete", 1.0, "Universal enhancement complete!")
-            return enhanced_img
+            return self._finish_image(enhanced_img, color_lut, lut_intensity, bokeh_strength)
             
         face_helper.align_warp_face()
         if len(face_helper.cropped_faces) == 0:
@@ -640,8 +617,8 @@ class LocalAIEnhancerPipeline:
             self._report_progress("enhancement", 0.5, "Enhancing full image (Real-ESRGAN / Clarity)...")
             if bg_img is not None:
                 enhanced_img = bg_img
-            elif self.use_re_onnx:
-                enhanced_img = self.enhance_realesrgan_onnx(img, upscale)
+            elif self.use_re_onnx and bg_upsampler == 'realesrgan':
+                enhanced_img = self.enhance_realesrgan_onnx(img, upscale, model_path=bg_upsampler_model)
             else:
                 h, w_img, _ = img.shape
                 enhanced_img = cv2.resize(img, (w_img * upscale, h * upscale), interpolation=cv2.INTER_LANCZOS4)
@@ -655,27 +632,22 @@ class LocalAIEnhancerPipeline:
                     enhanced_img = self.wink_enhancer.unsharp_mask(enhanced_img, amount=sharpen_amount)
 
             self._report_progress("complete", 1.0, "Universal enhancement complete!")
-            return enhanced_img
+            return self._finish_image(enhanced_img, color_lut, lut_intensity, bokeh_strength)
 
         print(f"[Pipeline] Cropped {len(face_helper.cropped_faces)} face(s).")
+        self.last_face_count = len(face_helper.cropped_faces)
         
         # Restore faces using CodeFormer model
         self._report_progress("restoration", 0.1, f"Restoring {len(face_helper.cropped_faces)} face(s) (w={w})...")
         
-        # Resolve active model session override if specified
-        active_session = None
-        if model_version != 'Auto':
-            avail_models = self.get_available_models()
-            if model_version in avail_models:
-                m_path = avail_models[model_version]
-                if m_path.endswith('.onnx'):
-                    active_session = self._get_onnx_session(m_path)
+        active_session, active_net = self._resolve_model(model_version)
+        use_active_onnx = active_session is not None
 
         # Process faces
         if parallel and len(face_helper.cropped_faces) > 1:
             print(f"[Pipeline] Processing {len(face_helper.cropped_faces)} faces in parallel...")
             def _process_face(idx, cropped_face):
-                if self.use_onnx or active_session is not None:
+                if use_active_onnx:
                     try:
                         cropped_face_t = img2tensor(cropped_face / 255.0, bgr2rgb=True, float32=True)
                         normalize(cropped_face_t, (0.5, 0.5, 0.5), (0.5, 0.5, 0.5), inplace=True)
@@ -688,18 +660,18 @@ class LocalAIEnhancerPipeline:
                         restored = cv2.cvtColor(output.astype(np.uint8), cv2.COLOR_RGB2BGR)
                     except Exception as error:
                         print(f"[Pipeline] Failed CodeFormer ONNX inference for face index {idx}: {error}")
-                        restored = cropped_face.copy()
+                        raise RuntimeError(f'ONNX restoration failed for face {idx}') from error
                 else:
                     cropped_face_t = img2tensor(cropped_face / 255.0, bgr2rgb=True, float32=True)
                     normalize(cropped_face_t, (0.5, 0.5, 0.5), (0.5, 0.5, 0.5), inplace=True)
                     cropped_face_t = cropped_face_t.unsqueeze(0).to(self.device)
                     try:
                         with torch.no_grad():
-                            output = self.net(cropped_face_t, w=w, adain=True)[0]
+                            output = active_net(cropped_face_t, w=w, adain=True)[0]
                             restored = tensor2img(output, rgb2bgr=True, min_max=(-1, 1))
                     except Exception as error:
                         print(f"[Pipeline] Failed CodeFormer inference for face index {idx}: {error}")
-                        restored = tensor2img(cropped_face_t, rgb2bgr=True, min_max=(-1, 1))
+                        raise RuntimeError(f'PyTorch restoration failed for face {idx}') from error
                 restored = restored.astype('uint8')
                 return idx, restored
 
@@ -710,7 +682,7 @@ class LocalAIEnhancerPipeline:
                 face_helper.add_restored_face(restored_face, face_helper.cropped_faces[idx])
         else:
             for idx, cropped_face in enumerate(face_helper.cropped_faces):
-                if self.use_onnx or active_session is not None:
+                if use_active_onnx:
                     try:
                         cropped_face_t = img2tensor(cropped_face / 255.0, bgr2rgb=True, float32=True)
                         normalize(cropped_face_t, (0.5, 0.5, 0.5), (0.5, 0.5, 0.5), inplace=True)
@@ -723,18 +695,18 @@ class LocalAIEnhancerPipeline:
                         restored = cv2.cvtColor(output.astype(np.uint8), cv2.COLOR_RGB2BGR)
                     except Exception as error:
                         print(f"[Pipeline] Failed CodeFormer ONNX inference for face index {idx}: {error}")
-                        restored = cropped_face.copy()
+                        raise RuntimeError(f'ONNX restoration failed for face {idx}') from error
                 else:
                     cropped_face_t = img2tensor(cropped_face / 255.0, bgr2rgb=True, float32=True)
                     normalize(cropped_face_t, (0.5, 0.5, 0.5), (0.5, 0.5, 0.5), inplace=True)
                     cropped_face_t = cropped_face_t.unsqueeze(0).to(self.device)
                     try:
                         with torch.no_grad():
-                            output = self.net(cropped_face_t, w=w, adain=True)[0]
+                            output = active_net(cropped_face_t, w=w, adain=True)[0]
                             restored = tensor2img(output, rgb2bgr=True, min_max=(-1, 1))
                     except Exception as error:
                         print(f"[Pipeline] Failed CodeFormer inference for face index {idx}: {error}")
-                        restored = tensor2img(cropped_face_t, rgb2bgr=True, min_max=(-1, 1))
+                        raise RuntimeError(f'PyTorch restoration failed for face {idx}') from error
                 restored = restored.astype('uint8')
                 face_helper.add_restored_face(restored, cropped_face)
         
@@ -803,6 +775,12 @@ class LocalAIEnhancerPipeline:
             if enable_golden_hour and (golden_warmth > 0.0 or golden_bloom > 0.0):
                 enhanced_img = self.wink_enhancer.apply_golden_hour_glow(enhanced_img, warm_strength=golden_warmth * 0.6, bloom_strength=golden_bloom * 0.5)
 
+        self._report_progress("blending", 1.0, "Blending complete!")
+        self._report_progress("complete", 1.0, "Enhancement complete!")
+
+        return self._finish_image(enhanced_img, color_lut, lut_intensity, bokeh_strength)
+
+    def _finish_image(self, enhanced_img, color_lut, lut_intensity, bokeh_strength):
         # 5. Apply Studio Optical Bokeh Blur if enabled
         if bokeh_strength > 0.0 and hasattr(self, 'wink_enhancer'):
             self._report_progress("postprocess", 0.8, f"Applying optical portrait bokeh (f/1.4 blur)...")
@@ -812,9 +790,6 @@ class LocalAIEnhancerPipeline:
         if color_lut not in (None, "None", "Off", "") and hasattr(self, 'wink_enhancer'):
             self._report_progress("postprocess", 0.9, f"Applying cinematic {color_lut} LUT...")
             enhanced_img = self.wink_enhancer.apply_cinematic_lut(enhanced_img, lut_name=color_lut, intensity=lut_intensity)
-        
-        self._report_progress("blending", 1.0, "Blending complete!")
-        self._report_progress("complete", 1.0, "Enhancement complete!")
         
         return enhanced_img
 
@@ -846,9 +821,9 @@ class LocalAIEnhancerPipeline:
                             face_t = img2tensor(restored_face / 255.0, bgr2rgb=True, float32=True).unsqueeze(0).to(self.device)
                             normalize(face_t, (0.5, 0.5, 0.5), (0.5, 0.5, 0.5), inplace=True)
                             out_parse = face_helper.face_parse(face_t)[0]
-                            parse_mask = out_parse.argmax(dim=0).cpu().numpy()
-                    except Exception:
-                        parse_mask = None
+                            parse_mask = self._parse_labels(out_parse)
+                    except Exception as error:
+                        raise RuntimeError('Face parsing failed during Wink enhancement') from error
 
                 restored_face = self.wink_enhancer.enhance_face(
                     restored_face,

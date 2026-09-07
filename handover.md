@@ -1773,3 +1773,32 @@ Addressed user requirement for pure optical super-resolution and clarity without
 
 
 
+
+## Task 42 — Reliability and model-quality recovery (2026-09-07)
+
+Implemented the audited recovery plan; see IMPLEMENTATION_PLAN.md, README.md and
+VERIFICATION_REPORT.md for commands and empirical evidence. Final CPU master
+checks passed 9/9 suites; real pipeline, four presets/model switching and Streamlit
+AppTest passed. Small-image upscale, parsing masks, cached helper state, explicit
+model selection, photo content caching and shared UI parameters are repaired.
+
+Training now requires pretrained teachers and a verified real-data split. Prepared
+2,479 train / 130 validation images with zero exact-pixel holdout overlap; human
+identity/near-duplicate review remains pending. Evaluation deduplicates the 500-row
+benchmark to 391 unique references and records explicit model/sample provenance.
+
+Correction to Task 41: latest Kaggle run completed 6,000 iterations, using 30 toy
+images and an uninitialized VQGAN teacher. It must not be resumed as a production
+quality run. No new GPU training or INT8 candidate was launched in Task 42.
+
+Exported the original baseline locally to ONNX with numerical parity verified at
+three fidelity values. Only a manifest/hash-verified baseline export may become
+the local default; Docker still ships the original PyTorch baseline. Three-image
+smoke evaluation completed with PSNR/SSIM/LPIPS/ArcFace; v3 comparison was
+not_eligible and does not justify replacing baseline. Full evaluation and human
+identity review remain required before training/promotion.
+
+Removed literal Kaggle credentials, added isolated staged downloads and artifact
+hashes, and gated automated HF sync on CPU CI. The exposed key still needs account
+revocation; historical commits were not rewritten. Existing checkpoints, partial
+downloads and unrelated Real-ESRGAN submodule edits were preserved.

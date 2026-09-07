@@ -11,7 +11,7 @@ from torchvision.transforms.functional import (adjust_brightness, adjust_contras
                                         adjust_hue, adjust_saturation, normalize)
 from basicsr.data import gaussian_kernels as gaussian_kernels
 from basicsr.data.transforms import augment
-from basicsr.data.data_util import paths_from_folder, brush_stroke_mask, random_ff_mask
+from basicsr.data.data_util import training_paths, paths_from_folder, brush_stroke_mask, random_ff_mask
 from basicsr.utils import FileClient, get_root_logger, imfrombytes, img2tensor
 from basicsr.utils.registry import DATASET_REGISTRY
 
@@ -59,7 +59,7 @@ class FFHQBlindDataset(data.Dataset):
             with open(osp.join(self.gt_folder, 'meta_info.txt')) as fin:
                 self.paths = [line.split('.')[0] for line in fin]
         else:
-            self.paths = paths_from_folder(self.gt_folder)
+            self.paths = training_paths(self.gt_folder, opt)
 
         # inpainting mask
         self.gen_inpaint_mask = opt.get('gen_inpaint_mask', False)
@@ -77,13 +77,15 @@ class FFHQBlindDataset(data.Dataset):
 
         # perform corrupt
         self.use_corrupt = opt.get('use_corrupt', True)
-        self.use_motion_kernel = False
-        # self.use_motion_kernel = opt.get('use_motion_kernel', True)
+        self.use_motion_kernel = opt.get('use_motion_kernel', False)
 
         if self.use_motion_kernel:
             self.motion_kernel_prob = opt.get('motion_kernel_prob', 0.001)
-            motion_kernel_path = opt.get('motion_kernel_path', 'basicsr/data/motion-blur-kernels-32.pth')
-            self.motion_kernels = torch.load(motion_kernel_path)
+            if not 0 <= self.motion_kernel_prob <= 1:
+                raise ValueError('motion_kernel_prob must be between 0 and 1')
+            motion_kernel_path = opt.get('motion_kernel_path')
+            self.motion_kernels = (torch.load(motion_kernel_path) if motion_kernel_path
+                                   else gaussian_kernels.motion_kernels_32())
 
         if self.use_corrupt and not self.gen_inpaint_mask:
             # degradation configurations

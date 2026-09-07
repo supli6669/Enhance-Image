@@ -6,11 +6,12 @@ import time
 import threading
 import queue
 import re
+import hashlib
 import glob
 from datetime import datetime, timezone
 from io import BytesIO
 from PIL import Image, UnidentifiedImageError
-from pipeline import LocalAIEnhancerPipeline
+from pipeline import LocalAIEnhancerPipeline, get_available_models
 
 project_dir = os.path.dirname(os.path.abspath(__file__))
 MAX_UPLOAD_BYTES = 15 * 1024 * 1024
@@ -63,7 +64,7 @@ TRAIN_LOG_GLOB = os.path.join(project_dir, "models", "CodeFormer", "experiments"
 TRAIN_STATE_GLOB = os.path.join(
     project_dir, "models", "CodeFormer", "experiments", "*_CodeFormer_stage3_custom", "training_states", "*.state"
 )
-TRAIN_TOTAL_ITERATIONS = 20_000
+TRAIN_TOTAL_ITERATIONS = 6_000
 
 
 @st.cache_data(ttl=10, show_spinner=False)
@@ -303,7 +304,7 @@ def get_pipeline():
 # The dashboard must not initialise the heavy model while CPU training is live.
 pipeline = None
 
-APP_VERSION = "v2.9.0 (Build 2026.09.02)"
+APP_VERSION = "v3.0.1 (Build 2026.09.07)"
 
 # ── Sidebar Controls (Minimalist & Clean) ───────────────────────────────────────
 with st.sidebar:
@@ -319,7 +320,7 @@ with st.sidebar:
 
     # Base preset options + any user created presets
     base_presets = [
-        "💎 Pure Quality & Sharpness (Mọi Loại Ảnh - 100% Trung Thực)",
+        "💎 Pure Quality & Sharpness (Mọi Loại Ảnh)",
         "🌿 Natural Likeness (Chân Dung Tự Nhiên)",
         "✨ Wink Studio (Chân Dung Nghệ Thuật)",
         "⚡ Ultra Fast CPU",
@@ -628,13 +629,8 @@ with st.sidebar:
         default_face_restore = True
         pipeline_preset_mode = 'Custom'
 
-    # Model Version Switcher
-    avail_models = {}
-    try:
-        if pipeline is not None:
-            avail_models = pipeline.get_available_models()
-    except Exception:
-        pass
+    # Discovery must work before the heavy pipeline is initialized.
+    avail_models = get_available_models()
 
     model_options = ["Auto (Recommended)"] + list(avail_models.keys())
     selected_model_ver = st.selectbox(
@@ -644,15 +640,13 @@ with st.sidebar:
         help="Select neural network weights (INT8 Fast CPU, ArcFace Cloud Fine-Tuned, or Baseline)."
     )
 
-    # Universal / Background Upscaler Switcher
-    avail_upscalers = {}
-    try:
-        if pipeline is not None:
-            avail_upscalers = pipeline.get_available_upscalers()
-    except Exception:
-        pass
-
-    upscaler_options = list(avail_upscalers.keys()) if avail_upscalers else ["Auto (Real-ESRGAN / Lanczos)"]
+    # Discover upscalers without allocating neural networks.
+    avail_upscalers = {"Lanczos Fast CPU": "lanczos"}
+    for filename in ('realesrgan_custom.onnx', 'realesrgan_int8.onnx', 'realesrgan.onnx'):
+        candidate = os.path.join(project_dir, 'weights', 'realesrgan', filename)
+        if os.path.isfile(candidate):
+            avail_upscalers[filename] = candidate
+    upscaler_options = list(avail_upscalers)
     selected_upscaler = st.selectbox(
         "🌐 Universal Super-Resolution Engine",
         upscaler_options,
@@ -662,7 +656,7 @@ with st.sidebar:
 
     st.markdown("**🎭 Face Engine & Identity Guard**")
     face_mode_options = [
-        "🛡️ Wink Ultra-HD (Zero Distortion - 100% Giữ nét thật)",
+        "🛡️ Wink Ultra-HD (Không tái tạo khuôn mặt)",
         "✨ CodeFormer AI Reconstruct (Vẽ lại nét khuôn mặt bằng AI)"
     ]
     target_face_mode = face_mode_options[0 if not default_face_restore else 1]
@@ -678,7 +672,7 @@ with st.sidebar:
         "Face Engine Mode",
         face_mode_options,
         key="face_engine_mode",
-        help="🛡️ Wink Ultra-HD: Chỉ làm nét, khử mờ, giữ nguyên 100% đường nét và biểu cảm gốc, KHÔNG biến dạng mặt.\n✨ CodeFormer AI: Dùng trí tuệ nhân tạo để vẽ lại mặt nếu ảnh quá nát hoặc mờ tịt."
+        help="🛡️ Wink Ultra-HD: Chỉ làm nét, khử mờ, giữ nguyên đường nét gốc bằng cách bỏ qua CodeFormer.\n✨ CodeFormer AI: Dùng trí tuệ nhân tạo để vẽ lại mặt nếu ảnh quá nát hoặc mờ tịt."
     )
     face_restore_val = ("AI Reconstruct" in selected_face_mode)
 
@@ -689,11 +683,11 @@ with st.sidebar:
             max_value=1.0,
             value=default_w,
             step=0.05,
-            help="0.0 = Max AI Detail restoration. 1.0 = Keep exact original face likeness."
+            help="0.0 = Max AI Detail restoration. 1.0 = Favor original features; reconstruction can still change details."
         )
     else:
         w_val = 1.0
-        st.caption("🔒 **Zero-Distortion Active**: Bảo toàn 100% đường nét & biểu cảm gốc, làm nét chuẩn Wink không biến dạng mặt.")
+        st.caption("Bỏ qua CodeFormer. Mức thay đổi chi tiết phụ thuộc bộ upscale và các hiệu ứng đã chọn.")
 
     upscale_val = st.select_slider(
         "Output Resolution Scale",
@@ -834,6 +828,68 @@ st.markdown('<div class="hero-sub">Restore blurry portraits, skin texture & eye 
 with st.expander("📈 Training Dashboard", expanded=False):
     render_training_dashboard()
 
+chosen_upscaler_path = avail_upscalers.get(selected_upscaler)
+is_lanczos = chosen_upscaler_path == "lanczos"
+shared_process_args = {
+    'face_restore': face_restore_val,
+    'w': w_val,
+    'detection_model': face_detector,
+    'upscale': upscale_val,
+    'blend_softness': 0.5,
+    'bg_upsampler': None if is_lanczos else ('realesrgan' if bg_upscale else None),
+    'bg_upsampler_model': None if is_lanczos else chosen_upscaler_path,
+    'det_threshold': det_thresh,
+    'sharpen_amount': sharpen_val,
+    'face_upsample': face_upscale,
+    'parallel': True,
+    'preset_mode': 'Custom',
+    'model_version': selected_model_ver,
+    'wink_mode': wink_mode,
+    'eye_enhancement': enable_eyes,
+    'skin_grain': skin_grain,
+    'color_match': color_match,
+    'enable_super_clarity': enable_super_clarity,
+    'clarity_strength': clarity_val,
+    'enable_deblur': enable_deblur,
+    'deblur_strength': deblur_val,
+    'enable_dehaze': enable_dehaze,
+    'dehaze_strength': dehaze_val,
+    'enable_crystal_skin': enable_crystal_skin,
+    'crystal_skin_strength': crystal_skin_val,
+    'enable_glossy_lips': enable_glossy_lips,
+    'lip_gloss': lip_gloss_val,
+    'lip_vibrance': lip_vibrance_val,
+    'enable_doll_eye': enable_doll_eye,
+    'doll_eye_depth': doll_eye_val,
+    'enable_golden_hour': enable_golden_hour,
+    'golden_warmth': golden_warmth_val,
+    'golden_bloom': 0.20 if enable_golden_hour else 0.0,
+    'enable_eyes': enable_eyes,
+    'enable_lips': enable_lips,
+    'enable_skin': enable_skin,
+    'enable_teeth': enable_teeth,
+    'enable_tone_glow': enable_tone_glow,
+    'enable_dark_circles': enable_dark_circles,
+    'enable_catchlight': enable_catchlight,
+    'catchlight_strength': 0.55,
+    'enable_hair': enable_hair,
+    'hair_clarity': 0.35,
+    'hair_sheen': 0.25,
+    'enable_relighting': enable_relighting,
+    'relighting_rim': 0.25,
+    'relighting_tzone': 0.20,
+    'enable_anti_glare': enable_anti_glare,
+    'anti_glare_strength': 0.50,
+    'enable_makeup': enable_makeup,
+    'blush_strength': blush_val,
+    'eyebrow_boost': eyebrow_val,
+    'color_lut': color_lut_val,
+    'lut_intensity': lut_intensity,
+    'bokeh_strength': bokeh_val,
+    'chromatic_aberration': chromatic_fix,
+
+}
+
 tab_photo, tab_video, tab_batch, tab_benchmark = st.tabs([
     "📸 Portrait Enhancement",
     "🎥 Video AI Restoration",
@@ -867,6 +923,7 @@ with tab_photo:
 
         current_params = {
             'img_name': getattr(uploaded_file, 'name', 'webcam_capture.png'),
+            'image_sha256': hashlib.sha256(uploaded_file.getvalue()).hexdigest(),
             'face_restore': face_restore_val,
             'w': w_val,
             'upscale': upscale_val,
@@ -937,67 +994,7 @@ with tab_photo:
                 def local_progress_callback(stage, progress, message):
                     res_queue.put({'type': 'progress', 'stage': stage, 'progress': progress, 'message': message})
 
-                chosen_upscaler_path = avail_upscalers.get(selected_upscaler)
-                is_lanczos = chosen_upscaler_path == "lanczos"
-                process_args = {
-                    'face_restore': face_restore_val,
-                    'w': w_val,
-                    'detection_model': face_detector,
-                    'upscale': upscale_val,
-                    'blend_softness': 0.5,
-                    'bg_upsampler': None if is_lanczos else ('realesrgan' if (bg_upscale or not face_restore_val) else None),
-                    'bg_upsampler_model': None if is_lanczos else chosen_upscaler_path,
-                    'det_threshold': det_thresh,
-                    'sharpen_amount': sharpen_val,
-                    'face_upsample': face_upscale,
-                    'parallel': True,
-                    'preset_mode': pipeline_preset_mode,
-                    'model_version': selected_model_ver,
-                    'wink_mode': wink_mode,
-                    'eye_enhancement': enable_eyes,
-                    'skin_grain': skin_grain,
-                    'color_match': color_match,
-                    'enable_super_clarity': enable_super_clarity,
-                    'clarity_strength': clarity_val,
-                    'enable_deblur': enable_deblur,
-                    'deblur_strength': deblur_val,
-                    'enable_dehaze': enable_dehaze,
-                    'dehaze_strength': dehaze_val,
-                    'enable_crystal_skin': enable_crystal_skin,
-                    'crystal_skin_strength': crystal_skin_val,
-                    'enable_glossy_lips': enable_glossy_lips,
-                    'lip_gloss': lip_gloss_val,
-                    'lip_vibrance': lip_vibrance_val,
-                    'enable_doll_eye': enable_doll_eye,
-                    'doll_eye_depth': doll_eye_val,
-                    'enable_golden_hour': enable_golden_hour,
-                    'golden_warmth': golden_warmth_val,
-                    'golden_bloom': 0.20 if enable_golden_hour else 0.0,
-                    'enable_eyes': enable_eyes,
-                    'enable_lips': enable_lips,
-                    'enable_skin': enable_skin,
-                    'enable_teeth': enable_teeth,
-                    'enable_tone_glow': enable_tone_glow,
-                    'enable_dark_circles': enable_dark_circles,
-                    'enable_catchlight': enable_catchlight,
-                    'catchlight_strength': 0.55,
-                    'enable_hair': enable_hair,
-                    'hair_clarity': 0.35,
-                    'hair_sheen': 0.25,
-                    'enable_relighting': enable_relighting,
-                    'relighting_rim': 0.25,
-                    'relighting_tzone': 0.20,
-                    'enable_anti_glare': enable_anti_glare,
-                    'anti_glare_strength': 0.50,
-                    'enable_makeup': enable_makeup,
-                    'blush_strength': blush_val,
-                    'eyebrow_boost': eyebrow_val,
-                    'color_lut': color_lut_val,
-                    'lut_intensity': lut_intensity,
-                    'bokeh_strength': bokeh_val,
-                    'chromatic_aberration': chromatic_fix,
-                    'progress_callback': local_progress_callback,
-                }
+                process_args = dict(shared_process_args, progress_callback=local_progress_callback)
 
                 def _worker(
                     request_image=input_img.copy(),
@@ -1190,11 +1187,11 @@ with tab_video:
             import tempfile
             with st.spinner("Processing video frames with AI..."):
                 t_dir = tempfile.mkdtemp()
-                in_path = os.path.join(t_dir, v_file.name)
+                in_path = os.path.join(t_dir, "input" + os.path.splitext(v_file.name)[1].lower())
                 with open(in_path, "wb") as f:
                     f.write(v_file.getvalue())
 
-                out_path = os.path.join(t_dir, f"enhanced_{v_file.name}")
+                out_path = os.path.join(t_dir, "enhanced.mp4")
                 if pipeline is None:
                     pipeline = get_pipeline()
 
@@ -1208,12 +1205,10 @@ with tab_video:
                 v_stats = pipeline.process_video(
                     input_video_path=in_path,
                     output_video_path=out_path,
-                    w=w_val,
-                    detection_model=face_detector,
-                    upscale=upscale_val,
                     frame_stride=v_stride,
                     max_frames=max_f if max_f > 0 else None,
-                    progress_callback=v_callback
+                    progress_callback=v_callback,
+                    **shared_process_args
                 )
 
                 st.success(f"Video enhancement complete! Processed {v_stats['total_frames']} frames in {v_stats['duration_sec']:.2f}s ({v_stats['avg_fps']:.1f} FPS).")
@@ -1224,7 +1219,7 @@ with tab_video:
                     st.download_button(
                         label="⬇️ Download Enhanced Video",
                         data=v_bytes,
-                        file_name=f"enhanced_{v_file.name}",
+                        file_name="enhanced_video.mp4",
                         mime="video/mp4"
                     )
 
@@ -1266,28 +1261,8 @@ with tab_batch:
 
                 batch_res = pipeline.process_batch_images(
                     batch_dict,
-                    face_restore=face_restore_val,
-                    w=w_val,
-                    detection_model=face_detector,
-                    upscale=upscale_val,
-                    blend_softness=0.5,
-                    bg_upsampler='realesrgan' if bg_upscale else None,
-                    det_threshold=det_thresh,
-                    sharpen_amount=sharpen_val,
-                    face_upsample=face_upscale,
-                    parallel=True,
-                    preset_mode=pipeline_preset_mode,
-                    wink_mode=wink_mode,
-                    eye_enhancement=enable_eyes,
-                    skin_grain=skin_grain,
-                    color_match=color_match,
-                    enable_eyes=enable_eyes,
-                    enable_lips=enable_lips,
-                    enable_skin=enable_skin,
-                    enable_teeth=enable_teeth,
-                    enable_tone_glow=enable_tone_glow,
-                    chromatic_aberration=chromatic_fix,
-                    progress_callback=b_callback
+                    progress_callback=b_callback,
+                    **shared_process_args
                 )
 
                 st.session_state['last_batch_data'] = batch_res
@@ -1304,7 +1279,7 @@ with tab_batch:
         with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
             for name, item in last_batch["items"].items():
                 _, encoded_img = cv2.imencode('.png', item["enhanced"])
-                zip_file.writestr(f"enhanced_{name}", encoded_img.tobytes())
+                zip_file.writestr(enhanced_filename(name), encoded_img.tobytes())
 
         # Generate HTML report
         html_report_str = pipeline.generate_html_report(last_batch) if pipeline else ""
@@ -1339,37 +1314,42 @@ with tab_benchmark:
         with open(report_path, "r", encoding="utf-8") as rf:
             rep_data = json.load(rf)
 
-        m_psnr = rep_data.get("mean_psnr", 0.0)
-        m_ssim = rep_data.get("mean_ssim", 0.0)
-        m_lpips = rep_data.get("mean_lpips", 0.0)
-        m_arcface = rep_data.get("mean_arcface_similarity", 0.0)
-        n_samples = rep_data.get("total_samples", 0)
+        summary = rep_data.get('summary', {})
+        overall = summary.get('overall', {})
+        m_psnr = overall.get('mean_psnr')
+        m_ssim = overall.get('mean_ssim')
+        m_lpips = overall.get('mean_lpips')
+        m_arcface = overall.get('mean_identity_similarity')
+        n_samples = summary.get('total_samples', 0)
+        def metric_text(value, digits=4):
+            return 'N/A' if value is None else f'{value:.{digits}f}'
+        st.caption(f"Evaluation scope: {summary.get('evaluation', {}).get('scope', 'unknown')}; quality review pending")
 
         b1, b2, b3, b4, b5 = st.columns(5)
         with b1:
             st.markdown(f'<div class="metric-badge"><div class="metric-label">Holdout Samples</div><div class="metric-val">{n_samples}</div></div>', unsafe_allow_html=True)
         with b2:
-            st.markdown(f'<div class="metric-badge"><div class="metric-label">Mean PSNR</div><div class="metric-val" style="color: #34d399;">{m_psnr:.2f} dB</div></div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="metric-badge"><div class="metric-label">Mean PSNR</div><div class="metric-val" style="color: #34d399;">{metric_text(m_psnr, 2)} dB</div></div>', unsafe_allow_html=True)
         with b3:
-            st.markdown(f'<div class="metric-badge"><div class="metric-label">Mean SSIM</div><div class="metric-val" style="color: #60a5fa;">{m_ssim:.4f}</div></div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="metric-badge"><div class="metric-label">Mean SSIM</div><div class="metric-val" style="color: #60a5fa;">{metric_text(m_ssim)}</div></div>', unsafe_allow_html=True)
         with b4:
-            st.markdown(f'<div class="metric-badge"><div class="metric-label">Mean LPIPS</div><div class="metric-val" style="color: #f472b6;">{m_lpips:.4f}</div></div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="metric-badge"><div class="metric-label">Mean LPIPS</div><div class="metric-val" style="color: #f472b6;">{metric_text(m_lpips)}</div></div>', unsafe_allow_html=True)
         with b5:
-            st.markdown(f'<div class="metric-badge"><div class="metric-label">ArcFace Identity</div><div class="metric-val" style="color: #a78bfa;">{m_arcface:.4f}</div></div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="metric-badge"><div class="metric-label">ArcFace Identity</div><div class="metric-val" style="color: #a78bfa;">{metric_text(m_arcface)}</div></div>', unsafe_allow_html=True)
 
         st.markdown("<br>", unsafe_allow_html=True)
 
-        if "category_breakdown" in rep_data:
+        if "categories" in summary:
             st.markdown("#### 📂 Metric Breakdown by Degradation Category")
             cat_list = []
-            for c_name, c_metrics in rep_data["category_breakdown"].items():
+            for c_name, c_metrics in summary["categories"].items():
                 cat_list.append({
                     "Category": c_name,
-                    "Count": c_metrics.get("count", 0),
-                    "PSNR (dB)": round(c_metrics.get("mean_psnr", 0), 2),
-                    "SSIM": round(c_metrics.get("mean_ssim", 0), 4),
-                    "LPIPS": round(c_metrics.get("mean_lpips", 0), 4),
-                    "ArcFace Sim": round(c_metrics.get("mean_arcface_similarity", 0), 4)
+                    "Count": c_metrics.get("sample_count", 0),
+                    "PSNR (dB)": metric_text(c_metrics.get("mean_psnr"), 2),
+                    "SSIM": metric_text(c_metrics.get("mean_ssim")),
+                    "LPIPS": metric_text(c_metrics.get("mean_lpips")),
+                    "ArcFace Sim": metric_text(c_metrics.get("mean_identity_similarity"))
                 })
             st.dataframe(cat_list, use_container_width=True)
     else:

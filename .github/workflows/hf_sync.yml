@@ -1,17 +1,21 @@
 name: Sync to Hugging Face Spaces
 on:
-  push:
+  workflow_run:
+    workflows: [CPU regression checks]
+    types: [completed]
     branches: [main]
   workflow_dispatch:
 
 jobs:
   sync:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
           lfs: true
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
       - name: Push to HF Spaces
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
@@ -24,5 +28,5 @@ jobs:
           git config user.name "GitHub Action"
           git lfs install --local
           git remote add hf "https://suplo6669:${HF_TOKEN}@huggingface.co/spaces/suplo6669/Enhancer"
-          git lfs push --all hf main
-          git push hf main:main
+          git lfs push --all hf HEAD
+          git push hf HEAD:main

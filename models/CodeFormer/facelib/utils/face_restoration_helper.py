@@ -127,7 +127,7 @@ class FaceRestoreHelper(object):
     def set_upscale_factor(self, upscale_factor):
         self.upscale_factor = upscale_factor
 
-    def read_image(self, img):
+    def read_image(self, img, preserve_size=False):
         """img can be image path or cv2 loaded image."""
         # self.input_img is Numpy array, (h, w, c), BGR, uint8, [0, 255]
         if isinstance(img, str):
@@ -145,7 +145,7 @@ class FaceRestoreHelper(object):
         if self.is_gray:
             print('Grayscale input: True')
 
-        if min(self.input_img.shape[:2])<512:
+        if not preserve_size and min(self.input_img.shape[:2])<512:
             f = 512.0/min(self.input_img.shape[:2])
             self.input_img = cv2.resize(self.input_img, (0,0), fx=f, fy=f, interpolation=cv2.INTER_LINEAR)
 

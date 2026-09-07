@@ -2,6 +2,10 @@ import os
 import sys
 import torch
 import glob
+import json
+import inspect
+from pathlib import Path
+import numpy as np
 
 # Ensure project root and CodeFormer directory are in sys.path
 tools_dir = os.path.dirname(os.path.abspath(__file__))
@@ -10,6 +14,9 @@ codeformer_dir = os.path.join(project_dir, "models", "CodeFormer")
 if codeformer_dir not in sys.path:
     sys.path.insert(0, codeformer_dir)
 
+sys.path.insert(0, project_dir)
+import tools.compat_shim
+from tools.model_artifacts import describe_model
 from basicsr.utils.registry import ARCH_REGISTRY
 import basicsr.archs.codeformer_arch
 from basicsr.archs.rrdbnet_arch import RRDBNet
@@ -37,7 +44,7 @@ def get_latest_checkpoint(search_pattern):
     
     return max(checkpoints, key=extract_iter)
 
-def export_codeformer():
+def export_codeformer(checkpoint_path, output_path):
     print("\n--- Exporting CodeFormer to ONNX ---")
     device = torch.device("cpu")
     
@@ -50,20 +57,11 @@ def export_codeformer():
         connect_list=['32', '64', '128', '256']
     )
     
-    # 2. Check for latest custom checkpoint, fallback to pretrained
-    custom_pattern = os.path.join(codeformer_dir, "experiments", "*_CodeFormer_stage3_custom", "models", "net_g_*.pth")
-    checkpoint_path = get_latest_checkpoint(custom_pattern)
-    
-    if checkpoint_path:
-        print(f"Found custom CodeFormer checkpoint: {checkpoint_path}")
-    else:
-        checkpoint_path = os.path.join(project_dir, "weights", "CodeFormer", "codeformer.pth")
-        print(f"No custom checkpoint found. Using pretrained weights: {checkpoint_path}")
-        
-    if not os.path.exists(checkpoint_path):
-        print(f"[ERROR] CodeFormer weights not found at: {checkpoint_path}")
-        return False
-
+    checkpoint_path, output_path = str(checkpoint_path), str(output_path)
+    if os.path.exists(output_path):
+        raise FileExistsError('Choose a new output file; exports never overwrite active models')
+    source = describe_model(Path(checkpoint_path))
+    Path(output_path).parent.mkdir(parents=True, exist_ok=True)
     # 3. Load state dict
     checkpoint = torch.load(checkpoint_path, map_location=device)
     if 'params_ema' in checkpoint:
@@ -78,10 +76,6 @@ def export_codeformer():
     dummy_x = torch.randn(1, 3, 512, 512, dtype=torch.float32)
     dummy_w = torch.tensor([0.5], dtype=torch.float32) # Default w value
     
-    output_dir = os.path.join(project_dir, "weights", "CodeFormer")
-    os.makedirs(output_dir, exist_ok=True)
-    output_path = os.path.join(output_dir, "codeformer.onnx")
-    
     print(f"Exporting to {output_path}...")
     torch.onnx.export(
         wrapper,
@@ -90,19 +84,33 @@ def export_codeformer():
         input_names=['input', 'w'],
         output_names=['output'],
         opset_version=16,
-        do_constant_folding=True
+        do_constant_folding=True,
+        **({'dynamo': False} if 'dynamo' in inspect.signature(torch.onnx.export).parameters else {})
     )
     
-    # Verify model
-    try:
-        import onnx
-        onnx_model = onnx.load(output_path)
-        onnx.checker.check_model(onnx_model)
-        print("[SUCCESS] CodeFormer ONNX model is valid.")
-        return True
-    except Exception as e:
-        print(f"[WARNING] ONNX validation failed: {e}")
-        return True
+    import onnx
+    import onnxruntime as ort
+    onnx.checker.check_model(output_path)
+    options = ort.SessionOptions()
+    options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
+    options.intra_op_num_threads = 8
+    session = ort.InferenceSession(output_path, sess_options=options, providers=['CPUExecutionProvider'])
+    max_error = 0.0
+    for fidelity in (0.0, 0.5, 1.0):
+        weight = torch.tensor([fidelity], dtype=torch.float32)
+        with torch.inference_mode():
+            expected = wrapper(dummy_x, weight).numpy()
+        actual = session.run(None, {'input': dummy_x.numpy(), 'w': weight.numpy()})[0]
+        np.testing.assert_allclose(actual, expected, rtol=1e-3, atol=3e-3)
+        max_error = max(max_error, float(np.max(np.abs(actual - expected))))
+    manifest = {'source': source, 'model': describe_model(Path(output_path)),
+                'inference_parity': {'passed': True, 'max_absolute_error': max_error,
+                                     'fidelities': [0.0, 0.5, 1.0]},
+                'quality_status': 'export_parity_only'}
+    Path(output_path).with_suffix('.manifest.json').write_text(json.dumps(manifest, indent=2), encoding='utf-8')
+    print(f'Export verified against PyTorch at three fidelities; max error={max_error:.6f}')
+    return True
+
 
 def export_realesrgan(num_block=None):
     print("\n--- Exporting Real-ESRGAN to ONNX ---")
@@ -181,16 +189,12 @@ def export_realesrgan(num_block=None):
 
 def main():
     import argparse
-    parser = argparse.ArgumentParser(description="Export CodeFormer and Real-ESRGAN models to ONNX")
-    parser.add_argument('--num-block', type=int, default=None, help="Number of RRDB blocks for Real-ESRGAN (defaults to 6 for custom checkpoint, 23 for pretrained)")
+    parser = argparse.ArgumentParser(description="Export an explicit CodeFormer checkpoint with inference parity verification")
+    parser.add_argument('--checkpoint', type=Path, required=True)
+    parser.add_argument('--output', type=Path, required=True)
     args = parser.parse_args()
-    
-    success_cf = export_codeformer()
-    success_re = export_realesrgan(num_block=args.num_block)
-    if success_cf and success_re:
-        print("\n=== ALL MODELS EXPORTED SUCCESSFULLY ===")
-    else:
-        print("\n=== SOME MODEL EXPORTS FAILED ===")
+    torch.set_num_threads(8)
+    export_codeformer(args.checkpoint, args.output)
 
 if __name__ == "__main__":
     main()

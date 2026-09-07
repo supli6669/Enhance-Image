@@ -36,3 +36,6 @@ models/Real-ESRGAN/results/
 *.bak
 test_*.png
 handover.md
+artifacts/
+benchmarks/splits/
+benchmarks/reports/

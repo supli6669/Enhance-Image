@@ -16,6 +16,8 @@ import json
 import os
 import sys
 import time
+import platform
+import subprocess
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Tuple
@@ -35,6 +37,7 @@ for p in (str(PROJECT_DIR), str(TOOLS_DIR), str(PROJECT_DIR / "models" / "CodeFo
         sys.path.insert(0, p)
 
 from pipeline import LocalAIEnhancerPipeline
+from tools.model_artifacts import describe_model, sha256_file
 
 REQUIRED_COLUMNS = {"id", "input_path", "reference_path", "category", "notes"}
 IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png", ".webp"}
@@ -59,6 +62,7 @@ class SampleMetricResult:
     lpips: Optional[float] = None
     identity_similarity: Optional[float] = None
     notes: str = ""
+    face_count: int = 0
 
 
 def _resolve_path(manifest_path: Path, raw_path: str) -> Optional[Path]:
@@ -133,8 +137,7 @@ class BenchmarkEvaluator:
                 self.lpips_fn = lpips.LPIPS(net="alex", verbose=False).to(self.device)
                 self.lpips_fn.eval()
             except Exception as e:
-                print(f"[BenchmarkEvaluator] Warning: Failed to load LPIPS model: {e}")
-                self.enable_lpips = False
+                raise RuntimeError("LPIPS is required; install its weights or explicitly disable perceptual metrics") from e
 
         # Initialize ArcFace Identity model
         self.arcface_fn = None
@@ -147,11 +150,27 @@ class BenchmarkEvaluator:
                     self.arcface_fn.load_state_dict(torch.load(str(arcface_weights), map_location=self.device), strict=True)
                     self.arcface_fn.eval()
                 else:
-                    print(f"[BenchmarkEvaluator] Warning: ArcFace weights not found at {arcface_weights}")
-                    self.enable_identity = False
+                    raise FileNotFoundError(f"ArcFace weights not found: {arcface_weights}")
             except Exception as e:
-                print(f"[BenchmarkEvaluator] Warning: Failed to load ArcFace model: {e}")
-                self.enable_identity = False
+                raise RuntimeError("ArcFace is required; provide its weights or explicitly disable perceptual metrics") from e
+
+    def aligned_identity_pair(self, restored, reference):
+        from facelib.detection import init_detection_model
+        from facelib.detection.align_trans import warp_and_crop_face, get_reference_facial_points
+        if not hasattr(self, 'identity_detector'):
+            self.identity_detector = init_detection_model('retinaface_mobile0.25', device=self.device)
+        with torch.no_grad():
+            boxes = self.identity_detector.detect_faces(reference, conf_threshold=0.8)
+        if boxes is None or len(boxes) == 0:
+            return None
+        areas = (boxes[:, 2] - boxes[:, 0]) * (boxes[:, 3] - boxes[:, 1])
+        landmarks = boxes[np.argmax(areas), 5:15].reshape(5, 2)
+        points = get_reference_facial_points(default_square=True)
+        # Use the reference transform for both images, preserving geometry errors.
+        crops = [warp_and_crop_face(img, landmarks, reference_pts=points, crop_size=(112, 112))
+                 for img in (restored, reference)]
+        return [torch.from_numpy(cv2.cvtColor(img, cv2.COLOR_BGR2RGB).transpose(2, 0, 1).copy())
+                .float().unsqueeze(0).to(self.device) / 127.5 - 1 for img in crops]
 
     def evaluate_pair(self, restored_bgr: np.ndarray, reference_bgr: np.ndarray) -> Dict[str, float]:
         """Compute PSNR, SSIM, LPIPS, and ArcFace Identity metrics between restored and reference images."""
@@ -184,10 +203,11 @@ class BenchmarkEvaluator:
         # 3. ArcFace Identity Cosine Similarity
         if self.enable_identity and self.arcface_fn is not None:
             with torch.no_grad():
-                # Resize to 112x112 for ArcFace backbone
-                t_res_112 = F.interpolate(t_res, (112, 112), mode="bilinear", align_corners=False)
-                t_ref_112 = F.interpolate(t_ref, (112, 112), mode="bilinear", align_corners=False)
-                
+                aligned = self.aligned_identity_pair(restored_bgr, reference_bgr)
+                if aligned is None:
+                    return metrics  # Missing face is reported as unavailable, never as a score.
+                t_res_112, t_ref_112 = aligned
+
                 feat_res = F.normalize(self.arcface_fn(t_res_112), p=2, dim=1)
                 feat_ref = F.normalize(self.arcface_fn(t_ref_112), p=2, dim=1)
                 
@@ -202,13 +222,26 @@ def run_evaluation(
     device: str = "cpu",
     limit: Optional[int] = None,
     save_images_dir: Optional[Path] = None,
-    preset: str = "portrait",
+    preset: str = "model_only",
     fidelity_w: float = 0.6,
     upscale: int = 1,
+    model_path: Optional[Path] = None,
+    enable_perceptual: bool = True,
+    face_restore: bool = True,
 ) -> Tuple[List[SampleMetricResult], Dict[str, Any]]:
     """Execute full evaluation across benchmark samples using LocalAIEnhancerPipeline."""
     samples = load_manifest(manifest_path)
     validate_files(samples)
+    manifest_count = len(samples)
+    from tools.prepare_training_split import pixel_digest
+    unique, seen = [], set()
+    for sample in samples:
+        digest = pixel_digest(sample.reference_path or sample.input_path)
+        if digest not in seen:
+            unique.append(sample)
+            seen.add(digest)
+    samples = unique
+    unique_count = len(samples)
     
     if limit is not None and limit > 0:
         samples = samples[:limit]
@@ -218,8 +251,12 @@ def run_evaluation(
     print(f"==================================================================")
     print(f"Device: {device} | Preset: {preset} | w: {fidelity_w} | Upscale: {upscale}")
 
-    pipeline = LocalAIEnhancerPipeline(device=device)
-    evaluator = BenchmarkEvaluator(device=device)
+    if model_path is None:
+        raise ValueError('Select an explicit --model checkpoint for reproducible evaluation')
+    provenance = describe_model(model_path)
+    torch.set_num_threads(min(8, os.cpu_count() or 1))
+    pipeline = LocalAIEnhancerPipeline(device=device, model_path_override=str(model_path))
+    evaluator = BenchmarkEvaluator(device=device, enable_lpips=enable_perceptual, enable_identity=enable_perceptual)
 
     if save_images_dir:
         save_images_dir.mkdir(parents=True, exist_ok=True)
@@ -239,11 +276,14 @@ def run_evaluation(
             face_upsample=False,
             blend_softness=0.5,
             detection_model="retinaface_mobile0.25",
-            preset_mode=preset,
-            enable_eyes=True,
-            enable_lips=True,
-            enable_skin=True,
-            sharpen_amount=0.15,
+            preset_mode='Custom',
+            face_restore=face_restore,
+            wink_mode=False,
+            color_match=False,
+            enable_super_clarity=False,
+            enable_dehaze=False,
+            enable_golden_hour=False,
+            sharpen_amount=0.0,
         )
         elapsed_ms = (time.time() - t0) * 1000.0
 
@@ -252,10 +292,13 @@ def run_evaluation(
             category=sample.category,
             latency_ms=round(elapsed_ms, 2),
             notes=sample.notes,
+            face_count=pipeline.last_face_count,
         )
 
         if sample.reference_path and sample.reference_path.is_file():
             img_ref = cv2.imread(str(sample.reference_path))
+            if img_ref is None:
+                raise ValueError(f"Unreadable benchmark reference: {sample.reference_path}")
             if img_ref is not None:
                 pair_metrics = evaluator.evaluate_pair(enhanced_bgr, img_ref)
                 metric_entry.psnr = pair_metrics.get("psnr")
@@ -278,6 +321,23 @@ def run_evaluation(
 
     # Compute Aggregate Metrics
     summary = compute_summary(results)
+    summary['manifest_sample_count'] = manifest_count
+    summary['unique_reference_count'] = unique_count
+    summary['provenance'] = provenance
+    summary['manifest_sha256'] = sha256_file(manifest_path)
+    summary['sample_set_sha256'] = __import__('hashlib').sha256('\n'.join(
+        f'{sample.sample_id}:{sha256_file(sample.input_path)}:{sha256_file(sample.reference_path) if sample.reference_path else ""}'
+        for sample in samples).encode()).hexdigest()
+    summary['evaluation'] = {'fidelity': fidelity_w, 'upscale': upscale, 'face_restore': face_restore,
+        'postprocessing': False, 'perceptual_metrics': enable_perceptual,
+        'identity_alignment': 'reference_five_landmarks_112px', 'limit': limit,
+        'scope': 'smoke' if limit is not None else 'full', 'device': device,
+        'python': platform.python_version(), 'torch': torch.__version__,
+        'git_commit': subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=PROJECT_DIR, text=True).strip()}
+    summary['quality_gate'] = 'pending_human_review_and_candidate_comparison'
+    summary['source_sha256'] = {name: sha256_file(PROJECT_DIR / name) for name in (
+        'pipeline.py', 'wink_enhancer.py', 'tools/evaluate_restoration.py',
+        'models/CodeFormer/facelib/utils/face_restoration_helper.py')}
     return results, summary
 
 
@@ -303,6 +363,13 @@ def compute_summary(results: List[SampleMetricResult]) -> Dict[str, Any]:
             "mean_ssim": round(float(np.mean(ssims)), 4) if ssims else None,
             "mean_lpips": round(float(np.mean(lpips_list)), 4) if lpips_list else None,
             "mean_identity_similarity": round(float(np.mean(id_sims)), 4) if id_sims else None,
+            "median_psnr": float(np.median(psnrs)) if psnrs else None,
+            "median_ssim": float(np.median(ssims)) if ssims else None,
+            "median_lpips": float(np.median(lpips_list)) if lpips_list else None,
+            "median_identity_similarity": float(np.median(id_sims)) if id_sims else None,
+            "identity_sample_count": len(id_sims),
+            "median_latency_ms": float(np.median([r.latency_ms for r in group_items])) if count else None,
+            "p95_latency_ms": float(np.percentile([r.latency_ms for r in group_items], 95)) if count else None,
         }
 
     summary: Dict[str, Any] = {
@@ -350,10 +417,13 @@ def main() -> None:
     parser.add_argument("--dry-run", action="store_true", help="Validate manifest structure and paths without running model inference.")
     parser.add_argument("--limit", type=int, default=None, help="Limit evaluation to first N samples.")
     parser.add_argument("--device", type=str, default="cpu", help="Device to execute evaluation on ('cpu' or 'cuda').")
-    parser.add_argument("--preset", type=str, default="portrait", choices=["default", "portrait", "old_photo", "game_character"], help="Pipeline preset mode.")
+    parser.add_argument("--preset", type=str, default="model_only", choices=["model_only"], help="Pipeline preset mode.")
     parser.add_argument("--w", type=float, default=0.6, help="Fidelity weight (0.0 to 1.0).")
     parser.add_argument("--save-images", type=Path, default=None, help="Directory to save enhanced output images.")
     parser.add_argument("--output-json", type=Path, default=PROJECT_DIR / "benchmarks" / "baseline_report.json", help="Path to save output JSON metrics report.")
+    parser.add_argument('--model', type=Path, help='Explicit baseline/candidate .pth or .onnx')
+    parser.add_argument('--no-perceptual', action='store_true', help='Explicitly disable LPIPS/ArcFace; report will record missing metrics')
+    parser.add_argument('--preserve-face', action='store_true', help='Measure the non-reconstructive path')
     args = parser.parse_args()
 
     if args.dry_run:
@@ -371,6 +441,9 @@ def main() -> None:
         save_images_dir=args.save_images,
         preset=args.preset,
         fidelity_w=args.w,
+        model_path=args.model,
+        enable_perceptual=not args.no_perceptual,
+        face_restore=not args.preserve_face,
     )
     
     print_markdown_report(summary)
@@ -380,7 +453,8 @@ def main() -> None:
             "summary": summary,
             "results": [asdict(r) for r in results],
         }
-        with open(args.output_json, "w", encoding="utf-8") as f:
+        args.output_json.parent.mkdir(parents=True, exist_ok=True)
+        with open(args.output_json, "x", encoding="utf-8") as f:
             json.dump(report_data, f, indent=2)
         print(f"Saved complete evaluation report to: {args.output_json}")
 

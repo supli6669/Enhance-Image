@@ -1,113 +1,82 @@
-import os
-import glob
-import sys
+"""Static QDQ INT8 calibration with explicit, real image inputs and provenance."""
 import argparse
+import json
+import random
+from pathlib import Path
+import sys
 import cv2
 import numpy as np
-import onnx
-from onnxruntime.quantization import quantize_static, CalibrationDataReader, QuantType
+from onnxruntime.quantization import quantize_static, CalibrationDataReader, QuantType, QuantFormat
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+from tools.model_artifacts import describe_model, model_files
+
 
 class CodeFormerCalibrationDataReader(CalibrationDataReader):
-    """Calibration Data Reader for ONNX Runtime static quantization of CodeFormer."""
-    def __init__(self, calibration_folder: str, w_val: float = 0.5, max_samples: int = 5):
-        super().__init__()
-        valid_exts = ('.png', '.jpg', '.jpeg', '.webp')
-        self.image_paths = [
-            os.path.join(calibration_folder, f) for f in os.listdir(calibration_folder)
-            if f.lower().endswith(valid_exts)
-        ] if os.path.exists(calibration_folder) else []
-
+    def __init__(self, calibration_folder, w_val=0.5, max_samples=100, min_samples=32, image_manifest=None):
+        root = Path(calibration_folder)
+        paths = sorted(p for p in root.rglob('*') if p.is_file() and p.suffix.lower() in {'.png', '.jpg', '.jpeg', '.webp'})
+        if image_manifest is not None:
+            root = root.resolve()
+            paths = [(root / name).resolve() for name in Path(image_manifest).read_text(encoding='utf-8').splitlines() if name.strip()]
+            if any(not path.is_relative_to(root) or not path.is_file() for path in paths):
+                raise ValueError('Invalid calibration manifest path')
+        random.Random(42).shuffle(paths)
+        self.image_paths = paths[:max_samples]
+        if len(self.image_paths) < min_samples:
+            raise ValueError(f'Need at least {min_samples} real calibration images; found {len(self.image_paths)}')
         self.w_val = np.array([w_val], dtype=np.float32)
-        self.enum_data_dicts = []
-        self._preprocess(max_samples)
-
-    def _preprocess(self, max_samples: int):
-        print(f"[Calib] Preprocessing up to {max_samples} calibration images...")
-        count = 0
-        for img_path in self.image_paths:
-            if count >= max_samples:
-                break
-            img = cv2.imread(img_path)
-            if img is None:
-                continue
-            img = cv2.resize(img, (512, 512), interpolation=cv2.INTER_LANCZOS4)
-            img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB).astype(np.float32) / 255.0
-            # Normalize to [-1, 1] range matching CodeFormer inputs
-            img_norm = (img_rgb - 0.5) / 0.5
-            tensor = np.transpose(img_norm, (2, 0, 1))[np.newaxis, ...].astype(np.float32)
-            self.enum_data_dicts.append({
-                "input": tensor,
-                "w": self.w_val
-            })
-            count += 1
-
-        if len(self.enum_data_dicts) == 0:
-            print("[Calib] No calibration images found. Generating 10 synthetic calibration samples...")
-            np.random.seed(42)
-            for _ in range(10):
-                dummy_tensor = np.random.uniform(-1.0, 1.0, (1, 3, 512, 512)).astype(np.float32)
-                self.enum_data_dicts.append({
-                    "input": dummy_tensor,
-                    "w": self.w_val
-                })
-
-        print(f"[Calib] Prepared {len(self.enum_data_dicts)} calibration samples.")
-        self.enum_data = iter(self.enum_data_dicts)
+        self.rewind()
 
     def get_next(self):
-        return next(self.enum_data, None)
+        path = next(self.iterator, None)
+        if path is None:
+            return None
+        image = cv2.imread(str(path))
+        if image is None:
+            raise ValueError(f'Unreadable calibration image: {path}')
+        image = cv2.resize(image, (512, 512), interpolation=cv2.INTER_AREA)
+        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB).astype(np.float32) / 127.5 - 1.0
+        return {'input': image.transpose(2, 0, 1)[None], 'w': self.w_val}
 
     def rewind(self):
-        self.enum_data = iter(self.enum_data_dicts)
+        self.iterator = iter(self.image_paths)
 
-def quantize_static_model(model_path: str, output_path: str, calibration_folder: str):
-    if not os.path.isfile(model_path):
-        raise FileNotFoundError(f"Model file not found: {model_path}")
 
-    dr = CodeFormerCalibrationDataReader(calibration_folder)
-    if dr.datasize == 0 if hasattr(dr, 'datasize') else len(dr.enum_data_dicts) == 0:
-        print(f"[ERROR] Calibration folder is empty or invalid: {calibration_folder}")
-        sys.exit(1)
+def quantize_static_model(model_path, output_path, calibration_folder, max_samples=100, image_manifest=None):
+    output = Path(output_path)
+    if output.exists() or output.with_name(output.name + '.data').exists():
+        raise FileExistsError('Choose a new output filename; active model files are never overwritten')
+    source = describe_model(Path(model_path))
+    reader = CodeFormerCalibrationDataReader(calibration_folder, max_samples=max_samples, image_manifest=image_manifest)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    quantize_static(model_input=str(model_path), model_output=str(output),
+                    calibration_data_reader=reader, quant_format=QuantFormat.QDQ,
+                    activation_type=QuantType.QUInt8, weight_type=QuantType.QInt8,
+                    use_external_data_format=True)
+    model_files(output)
+    import onnxruntime as ort
+    options = ort.SessionOptions()
+    options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
+    session = ort.InferenceSession(str(output), sess_options=options, providers=['CPUExecutionProvider'])
+    reader.rewind()
+    result = session.run(None, reader.get_next())[0]
+    if result.shape != (1, 3, 512, 512) or not np.isfinite(result).all():
+        raise ValueError('Quantized model returned invalid inference output')
+    metadata = {'quantization': 'static_QDQ_INT8', 'source': source,
+                'calibration_count': len(reader.image_paths), 'seed': 42,
+                'model': describe_model(output), 'quality_status': 'requires_FP32_comparison'}
+    output.with_suffix('.manifest.json').write_text(json.dumps(metadata, indent=2), encoding='utf-8')
+    print(f'Static INT8 verified on {len(reader.image_paths)} calibration inputs: {output}')
 
-    print(f"[Static Quant] Quantizing {model_path} -> {output_path}")
-    try:
-        quantize_static(
-            model_input=model_path,
-            model_output=output_path,
-            calibration_data_reader=dr,
-            quant_format=QuantType.QInt8,
-            activation_type=QuantType.QUInt8,
-            weight_type=QuantType.QInt8,
-            use_external_data_format=True
-        )
-        # Verify the quantized model can be loaded cleanly by ONNX Runtime
-        import onnxruntime as ort
-        opts = ort.SessionOptions()
-        opts.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
-        test_session = ort.InferenceSession(output_path, sess_options=opts, providers=['CPUExecutionProvider'])
-        print(f"[Static Quant] Verification passed! Model loaded successfully: {output_path}")
-    except Exception as e:
-        print(f"[Static Quant] Static quantization verification failed: {e}")
-        print(f"[Static Quant] Falling back to dynamic INT8 quantization...")
-        from onnxruntime.quantization import quantize_dynamic
-        quantize_dynamic(
-            model_input=model_path,
-            model_output=output_path,
-            weight_type=QuantType.QInt8,
-            use_external_data_format=True
-        )
-        print(f"[Static Quant] Dynamic INT8 quantization fallback completed: {output_path}")
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Static INT8 quantization for CodeFormer ONNX with calibration.")
-    parser.add_argument("--model", type=str, default="weights/CodeFormer/codeformer.onnx", help="Path to input ONNX model.")
-    parser.add_argument("--output", type=str, default="weights/CodeFormer/codeformer_int8_v2.onnx", help="Path to save output static quantized model.")
-    parser.add_argument("--calib-dir", type=str, default="models/CodeFormer/datasets/ffhq/ffhq_512", help="Calibration images directory.")
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--model', type=Path, required=True)
+    parser.add_argument('--output', type=Path, required=True)
+    parser.add_argument('--calib-dir', type=Path, required=True, help='Representative aligned face crops, not benchmark holdout')
+    parser.add_argument('--calib-manifest', type=Path, required=True, help='Reviewed training split manifest; never use benchmark holdout')
+    parser.add_argument('--max-samples', type=int, default=100)
     args = parser.parse_args()
-
-    project_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    model_p = os.path.join(project_dir, args.model) if not os.path.isabs(args.model) else args.model
-    out_p = os.path.join(project_dir, args.output) if not os.path.isabs(args.output) else args.output
-    calib_p = os.path.join(project_dir, args.calib_dir) if not os.path.isabs(args.calib_dir) else args.calib_dir
-
-    quantize_static_model(model_p, out_p, calib_p)
+    quantize_static_model(args.model, args.output, args.calib_dir, args.max_samples, args.calib_manifest)

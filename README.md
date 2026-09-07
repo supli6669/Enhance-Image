@@ -24,6 +24,86 @@ This project is configured to run out-of-the-box both **locally** on your CPU/GP
 - **Multiple Face Detectors:** Choose between highly accurate detectors (RetinaFace) or faster detectors for groups (YOLOv5).
 - **Dark Mode UI:** Designed with custom glassmorphism and modern Outfit typography.
 
+## Reliability recovery (2026-09-07)
+
+The runtime now honors model selection and shares processing settings across
+photo, video and batch. Lanczos remains the default CPU upscaler. Fidelity and
+image heuristics are controls/measurements, not guarantees of facial identity.
+See [VERIFICATION_REPORT.md](VERIFICATION_REPORT.md) for verified results and
+remaining quality gates.
+
+The default checkpoint is the original `weights/CodeFormer/codeformer.pth`.
+A local `codeformer_baseline.onnx` is preferred only when its manifest verifies
+source/output hashes and numerical parity. Export it explicitly:
+
+```bash
+python tools/export_onnx.py --checkpoint weights/CodeFormer/codeformer.pth --output weights/CodeFormer/codeformer_baseline.onnx
+```
+
+Exports refuse to overwrite existing models. Local candidate models are marked
+unvalidated; malformed graphs and mismatched sidecars are excluded. Generated
+ONNX files are not included in the Docker build, so the hosted default remains
+PyTorch unless deployment packaging is explicitly updated.
+
+Run the complete local checks (pretrained weights required), or the two offline
+regression suites used in CI:
+
+```bash
+python tools/test_all.py
+python tools/test_reliability.py
+python tools/test_workflow_guards.py
+```
+
+### Reproducible data and evaluation
+
+Create a new split directory from the real `faces` and `pinterest` domains.
+Exact decoded-pixel duplicates and benchmark images are excluded. Unreadable
+images cause an error unless explicitly recorded as exclusions:
+
+```bash
+python tools/prepare_training_split.py --output benchmarks/splits/real_portraits_v1 --exclude-unreadable
+python train_custom.py --preflight --dataset-dir models/CodeFormer/datasets/ffhq/ffhq_512 --split-dir benchmarks/splits/real_portraits_v1
+python tools/evaluate_restoration.py --model weights/CodeFormer/codeformer.pth --output-json benchmarks/reports/baseline_full.json
+```
+
+Preflight verifies data hashes, disjoint splits and required pretrained weights;
+it does not train or approve a split. Review identities and near-duplicates before
+setting `review_status` to `approved` in the split metadata. Production training
+also requires a full baseline report covering the same held-out benchmark:
+
+```bash
+python train_custom.py --fresh --dataset-dir models/CodeFormer/datasets/ffhq/ffhq_512 --split-dir benchmarks/splits/real_portraits_v1 --baseline-report benchmarks/reports/baseline_full.json
+```
+
+Run training on a GPU environment with the same data/split/weights. Do not resume
+the old toy-data run. For Kaggle, provide explicit dataset sources and the notebook
+environment paths `TRAINING_DATA_DIR`, `TRAINING_SPLIT_DIR`, `BASELINE_REPORT` and,
+after checkpoint review, `APPROVED_CHECKPOINT`.
+
+Use the same evaluator settings for a candidate and compare reports:
+
+```bash
+python tools/evaluate_restoration.py --model artifacts/candidate.onnx --output-json benchmarks/reports/candidate_full.json
+python tools/compare_evaluations.py --baseline benchmarks/reports/baseline_full.json --candidate benchmarks/reports/candidate_full.json --output benchmarks/reports/comparison.json
+python tools/quantize_onnx_static.py --model artifacts/candidate.onnx --output artifacts/candidate_int8.onnx --calib-dir models/CodeFormer/datasets/ffhq/ffhq_512 --calib-manifest benchmarks/splits/real_portraits_v1/train.txt --max-samples 100
+```
+
+`--limit 3` creates a smoke evaluation, which cannot satisfy the production gate.
+LPIPS/ArcFace dependencies fail explicitly; `--no-perceptual` records missing
+metrics and cannot satisfy that gate. Reports record model hashes, sample hashes,
+metric medians and latency. Static INT8 uses real calibration inputs and requires
+a separate quality comparison with FP32; there is no automatic promotion.
+
+### Credentials and artifacts
+
+Kaggle tools read `KAGGLE_USERNAME` and `KAGGLE_KEY` from the environment. A key
+previously committed in this repository must be revoked in the Kaggle account;
+removing it from source does not revoke it or remove Git history. Never commit
+replacement credentials. Downloads are staged under `artifacts/`, preserve
+partial downloads and existing weights, and require review before activation.
+Private splits, generated reports and staged artifacts are Git/Docker ignored.
+GitHub CPU checks gate the automatic Hugging Face sync workflow.
+
 ---
 
 ## Local Execution Instructions

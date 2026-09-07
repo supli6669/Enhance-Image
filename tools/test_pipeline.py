@@ -2,6 +2,9 @@ import os
 import cv2
 import sys
 import numpy as np
+from pathlib import Path
+import torch
+torch.set_num_threads(8)
 
 # Add project root to sys.path
 tools_dir = os.path.dirname(os.path.abspath(__file__))
@@ -44,13 +47,18 @@ def main():
         w=0.85,
         detection_model='retinaface_mobile0.25',
         upscale=2,
-        preset_mode='Pure Quality',
+        preset_mode='Custom',
         enable_super_clarity=True,
         clarity_strength=0.45
     )
     assert res_face is not None, "Face enhancement returned None"
     print(f"  [OK] Enhanced portrait shape: {res_face.shape}")
-    cv2.imwrite(os.path.join(project_dir, "test_output_face.png"), res_face)
+    assert res_face.shape == (img_face.shape[0] * 2, img_face.shape[1] * 2, 3)
+    helper = pipeline._face_helper_cache['retinaface_mobile0.25']
+    assert len(helper.restored_faces) > 0, 'Fixture must exercise real face restoration'
+    output_dir = Path(project_dir) / 'benchmarks/reports/integration'
+    output_dir.mkdir(parents=True, exist_ok=True)
+    cv2.imwrite(str(output_dir / 'face.png'), res_face)
 
     # -------------------------------------------------------------
     # TEST 2: Universal Non-Face Image (Scenery/Pattern with 0 faces)
@@ -76,7 +84,7 @@ def main():
     expected_shape = (512, 512, 3)
     assert res_non_face.shape == expected_shape, f"Non-face output mismatch: got {res_non_face.shape}, expected {expected_shape}"
     print(f"  [OK] Universal Non-Face output shape: {res_non_face.shape} (2x Super-Resolution Verified)")
-    cv2.imwrite(os.path.join(project_dir, "test_output_non_face.png"), res_non_face)
+    cv2.imwrite(str(output_dir / "non_face.png"), res_non_face)
 
     # -------------------------------------------------------------
     # TEST 3: Available Model & Upscaler Discovery

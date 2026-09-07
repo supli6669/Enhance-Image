@@ -34,6 +34,12 @@ def main():
     
     print("Instantiating Stage II CodeFormerIdxModel architecture...")
     model = build_model(config)
+    teacher = model.hq_vqgan_fix
+    assert not any(param.requires_grad for param in teacher.parameters())
+    checkpoint = torch.load(os.path.join(project_dir, 'weights/facelib/vqgan_code1024.pth'), map_location='cpu')
+    expected = checkpoint.get('params_ema', checkpoint.get('params'))
+    key = next(iter(teacher.state_dict()))
+    assert torch.equal(teacher.state_dict()[key].cpu(), expected[key]), 'Teacher did not load pretrained parameters'
     print(f"Model type '{model.__class__.__name__}' successfully built on device '{model.device}'.")
     
     print("\nSUCCESS: Phase 6 Stage II Transformer Configuration verified with exit code 0!")

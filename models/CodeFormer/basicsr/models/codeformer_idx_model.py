@@ -1,3 +1,4 @@
+from basicsr.utils.training_guards import teacher_options
 import torch
 from collections import OrderedDict
 from os import path as osp
@@ -46,7 +47,7 @@ class CodeFormerIdxModel(SRModel):
         if self.opt['datasets']['train'].get('latent_gt_path', None) is not None:
             self.generate_idx_gt = False
         elif self.opt.get('network_vqgan', None) is not None:
-            self.hq_vqgan_fix = build_network(self.opt['network_vqgan']).to(self.device)
+            self.hq_vqgan_fix = build_network(teacher_options(self.opt)).to(self.device)
             self.hq_vqgan_fix.eval()
             self.generate_idx_gt = True
             for param in self.hq_vqgan_fix.parameters():
@@ -155,13 +156,13 @@ class CodeFormerIdxModel(SRModel):
             self.test()
 
             visuals = self.get_current_visuals()
-            sr_img = tensor2img([visuals['result']])
+            sr_img = tensor2img([visuals['result']], min_max=(-1, 1))
             if 'gt' in visuals:
-                gt_img = tensor2img([visuals['gt']])
+                gt_img = tensor2img([visuals['gt']], min_max=(-1, 1))
                 del self.gt
 
             # tentative for out of GPU memory
-            del self.lq
+            del self.input
             del self.output
             torch.cuda.empty_cache()
 

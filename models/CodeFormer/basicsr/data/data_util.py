@@ -235,8 +235,42 @@ def paths_from_folder(folder):
         list[str]: Returned path list.
     """
 
-    paths = list(scandir(folder))
+    suffixes = ('.jpg', '.jpeg', '.png', '.webp', '.bmp', '.tif', '.tiff')
+    paths = sorted(path for path in scandir(folder, recursive=True)
+                   if path.lower().endswith(suffixes))
     paths = [osp.join(folder, path) for path in paths]
+    return paths
+
+
+def training_paths(folder, opt):
+    """Select explicit domains/splits, then exclude held-out source images."""
+    from pathlib import Path
+    root = Path(folder).resolve()
+    manifest = opt.get('image_manifest')
+    if manifest:
+        lines = Path(manifest).read_text(encoding='utf-8').splitlines()
+        paths = []
+        for name in lines:
+            if not name.strip():
+                continue
+            path = (root / name.strip()).resolve()
+            if not path.is_relative_to(root) or not path.is_file():
+                raise ValueError(f'Invalid training manifest entry: {name}')
+            paths.append(str(path))
+        if len(paths) != len(set(paths)):
+            raise ValueError('Duplicate training manifest entries')
+    else:
+        paths = paths_from_folder(str(root))
+    allowed = opt.get('include_folders')
+    if allowed:
+        paths = [p for p in paths if Path(p).relative_to(root).parts[0] in allowed]
+    excluded = set()
+    if opt.get('exclude_manifest'):
+        excluded = {line.strip().replace('\\', '/') for line in
+                    Path(opt['exclude_manifest']).read_text(encoding='utf-8').splitlines() if line.strip()}
+    paths = [p for p in paths if Path(p).relative_to(root).as_posix() not in excluded]
+    if not paths:
+        raise ValueError('No training images remain after domain/split/holdout selection')
     return paths
 
 
