@@ -1814,3 +1814,18 @@ Immediate priority is data review plus baseline, not indiscriminate data expansi
 No new training, full evaluation, dataset upload or model promotion was started.
 GitHub CPU CI for f7c0974 passed; HF sync failed and local push reported invalid
 authentication. HF credentials still require repair before deployment.
+
+## Task 44 — Implement dataset review and baseline gates (2026-09-08)
+
+Implemented local review generation with pHash and aligned ArcFace suggestions,
+per-image feature checkpoints/resume, HTML thumbnails, explicit CSV decisions,
+and a separate localhost Streamlit reviewer. Frozen splits require all review
+decisions, preserve holdout, exclude transitive cross-split identity groups, and
+retain original files. Baseline and production training require a review receipt.
+See DATASET_REVIEW_WORKFLOW.md for commands and validation evidence.
+
+Master regression passed 10/10 suites; dedicated review/UI tests passed 11/11.
+The real pending split correctly blocks baseline. Initial scan was interrupted;
+its directory is retained. New resumable scan uses dataset_review_v2. Human review,
+full baseline, GPU training and promotion remain pending; do not mark P1/P2 complete.
+Private review artifacts and pre-existing Real-ESRGAN edits are not committed.

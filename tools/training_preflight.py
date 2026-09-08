@@ -6,6 +6,8 @@ from pathlib import Path
 
 
 def validate_quality_gate(split_report, baseline_path):
+    from tools.prepare_baseline import require_reviewed_split
+    require_reviewed_split(split_report)
     if split_report.get('review_status') != 'approved':
         raise ValueError('Review identity and near-duplicate separation, then approve the split before production training')
     if baseline_path is None:
@@ -80,4 +82,5 @@ def configure_training(config, dataset_root, split_dir, holdout):
     return config, {'train_count': len(groups['train']), 'validation_count': len(groups['validation']),
                     'benchmark_unique_count': len(heldout), 'exact_pixel_overlap': 0,
                     'teacher': str(teacher), 'review_status': split.get('review_status', 'pending'),
+                    'lifecycle': split.get('lifecycle'), 'review_receipt': split.get('review_receipt'),
                     'benchmark_manifest_sha256': split.get('benchmark_manifest_sha256')}

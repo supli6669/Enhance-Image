@@ -67,12 +67,12 @@ python tools/evaluate_restoration.py --model weights/CodeFormer/codeformer.pth -
 ```
 
 Preflight verifies data hashes, disjoint splits and required pretrained weights;
-it does not train or approve a split. Review identities and near-duplicates before
-setting `review_status` to `approved` in the split metadata. Production training
-also requires a full baseline report covering the same held-out benchmark:
+it does not train or approve a split. Use the review workflow below to freeze a
+split with a review receipt. Editing `review_status` alone cannot pass the gate.
+Production training also requires a full baseline report covering the same held-out benchmark:
 
 ```bash
-python train_custom.py --fresh --dataset-dir models/CodeFormer/datasets/ffhq/ffhq_512 --split-dir benchmarks/splits/real_portraits_v1 --baseline-report benchmarks/reports/baseline_full.json
+python train_custom.py --fresh --dataset-dir models/CodeFormer/datasets/ffhq/ffhq_512 --split-dir benchmarks/splits/real_portraits_reviewed_v1 --baseline-report benchmarks/reports/baseline_reviewed_v1/report.json
 ```
 
 Run training on a GPU environment with the same data/split/weights. Do not resume
@@ -103,6 +103,55 @@ replacement credentials. Downloads are staged under `artifacts/`, preserve
 partial downloads and existing weights, and require review before activation.
 Private splits, generated reports and staged artifacts are Git/Docker ignored.
 GitHub CPU checks gate the automatic Hugging Face sync workflow.
+
+### Human review and frozen baseline
+
+```bash
+python tools/review_dataset.py generate --split-dir benchmarks/splits/real_portraits_v1 --output benchmarks/reports/dataset_review_v1
+```
+
+Open `index.html` in the generated directory. All thumbnails and decisions remain
+local. ArcFace scores and perceptual hashes suggest pairs; they do not identify
+a person or certify that the rest of the dataset is free of leakage. Review every
+individual image as well as pairs. Multi-face, small-face and undetected-face
+images are flagged for review. `--skip-identity` creates a preview that cannot freeze.
+The scan saves each completed feature atomically. If interrupted during feature
+extraction, repeat the same command with `--resume`. Input hashes, configuration,
+ArcFace weights and scanner code must match. Completed review directories cannot
+be resumed or overwritten. Feature vectors are private local artifacts too.
+
+For an interactive local reviewer with pending/cross-split filters and explicit
+per-item saves, run the separate review UI (never deploy this private-data UI):
+
+```bash
+streamlit run tools/dataset_review_app.py --server.address 127.0.0.1 --server.port 8502
+```
+
+Edit only `decision` and `reviewer` in `decisions.csv`, preserving row order:
+
+- Individual rows: `keep` or `exclude`.
+- Pairs: `distinct`, `same_group`, `exclude_left`, `exclude_right`, `exclude_both`.
+- Unresolved rows remain `pending`; they block freezing.
+
+`same_group` links are transitive. Groups spanning splits retain holdout members
+first, otherwise validation members, and exclude lower-priority members from the
+new manifests. Original files are preserved. Excluding a holdout image requires a
+separate benchmark revision; this tool rejects it. Groups missed by suggestions
+must still be reviewed manually; exclude implicated training images if uncertain.
+
+After review, create a new split and start its full baseline:
+
+```bash
+python tools/review_dataset.py freeze --split-dir benchmarks/splits/real_portraits_v1 --review-dir benchmarks/reports/dataset_review_v1 --reviewer "REVIEWER_NAME" --output benchmarks/splits/real_portraits_reviewed_v1
+python tools/prepare_baseline.py --split-dir benchmarks/splits/real_portraits_reviewed_v1 --output benchmarks/reports/baseline_reviewed_v1 --execute
+```
+
+These commands refuse existing output directories. The baseline command checks
+the review receipt, rehashes the data, confirms the holdout matches benchmark
+reference pixels and records model/code/data provenance in `run.json`. Omit
+`--execute` to prepare a run manifest only; use a new output directory when later
+executing. Quality-evaluation latency is not a substitute for a controlled CPU
+benchmark. Keep original review evidence with the frozen split.
 
 ---
 

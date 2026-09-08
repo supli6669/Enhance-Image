@@ -1,6 +1,8 @@
 # Kế hoạch cải thiện Custom AI Enhancer — 2026-09-08
 
 Trạng thái: kế hoạch đề xuất cho đợt tiếp theo; chưa khởi chạy training.
+Người dùng đã yêu cầu triển khai. Đợt P1/P2: công cụ review và đóng băng split
+đang được triển khai; chưa hoàn thành review thủ công hoặc baseline đầy đủ.
 Phạm vi: phục hồi ảnh người thật, giữ nhận dạng, chạy ổn định trên CPU.
 Kế hoạch recovery trong IMPLEMENTATION_PLAN.md đã hoàn thành; tài liệu này nối
 tiếp phần benchmark và review dữ liệu còn thiếu, trước khi cải thiện model.
