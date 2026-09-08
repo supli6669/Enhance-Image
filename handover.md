@@ -1839,3 +1839,19 @@ changing decisions. GitHub CPU CI passed and automatic HF sync succeeded at
 26efe9c; HF API reports the matching SHA and RUNNING. Local direct push still lacks
 credentials. Next required action: human review in localhost:8502, then freeze and
 full baseline; never treat the suggestions as confirmed identity labels.
+
+## Task 45 — Technical image audits, without identity adjudication
+
+Reviewed 91 cross-split pairs for image-level duplication only (pixel equality
+and ORB geometric alignment): no pair met the conservative duplicate-image
+threshold. This does not establish different identities or absence of leakage.
+Results and comparison gallery: ignored dataset_review_v2/image_pair_audit/.
+
+On user continuation, checked all 119 multiple-face-flagged images for readability,
+dimensions, whole-image sharpness and clipped dark/bright areas. One heuristic
+flag (R000778, bright area 21.62%) was visually checked: mostly bright background
+and paper, with visible foreground detail; not grounds for automatic exclusion.
+No other image triggered these technical thresholds; this is not a full facial
+quality certification. Results/gallery: ignored dataset_review_v2/quality_audit/.
+Decision file hashes verified unchanged. No face identity matching was performed,
+no human review was fabricated, and split freeze/training remain pending.
