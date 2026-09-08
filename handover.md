@@ -1829,3 +1829,13 @@ The real pending split correctly blocks baseline. Initial scan was interrupted;
 its directory is retained. New resumable scan uses dataset_review_v2. Human review,
 full baseline, GPU training and promotion remain pending; do not mark P1/P2 complete.
 Private review artifacts and pre-existing Real-ESRGAN edits are not committed.
+
+Task 44 completion evidence: dataset_review_v2 scan finished with exit 0, producing
+3,109 path entries, 3,663 pending review items and 62 HTML pages. There are 119
+multi-face flags, 140 near-duplicate suggestions and 414 possible-same-person
+suggestions; 91 distinct suggested pairs cross split boundaries. None are human
+confirmed. Real report rendering and cross-split filtering passed AppTest without
+changing decisions. GitHub CPU CI passed and automatic HF sync succeeded at
+26efe9c; HF API reports the matching SHA and RUNNING. Local direct push still lacks
+credentials. Next required action: human review in localhost:8502, then freeze and
+full baseline; never treat the suggestions as confirmed identity labels.

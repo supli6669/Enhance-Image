@@ -22,6 +22,13 @@
 Lượt quét đầu bị ngắt trước khi tạo report; thư mục đó được giữ nguyên.
 Lượt có checkpoint tiến độ dùng `benchmarks/reports/dataset_review_v2`:
 
+Lượt này đã hoàn tất, exit 0: 3.109 đường dẫn ảnh (gồm 500 đường dẫn holdout,
+chưa gộp 391 ảnh holdout có pixel duy nhất), 3.663 mục và 62 trang HTML.
+Trong đó có 119 ảnh được detector gắn cờ nhiều mặt, 140 gợi ý ảnh gần trùng,
+414 gợi ý cùng người; 91 cặp gợi ý cùng người nằm ở hai tập khác nhau.
+Đây là gợi ý chưa xác nhận; cả 3.663 mục vẫn pending. Nên bật bộ lọc cặp khác
+tập để duyệt 91 cặp đó trước, sau đó hoàn tất những mục còn lại.
+
 ```powershell
 .venv/Scripts/python.exe -B -u tools/review_dataset.py generate --output benchmarks/reports/dataset_review_v2 --resume
 .venv/Scripts/python.exe -m streamlit run tools/dataset_review_app.py --server.address 127.0.0.1 --server.port 8502
@@ -52,6 +59,10 @@ Nếu loại ảnh khiến train <1.000 hoặc validation <20 thì cần bổ su
 - Kiểm tra trực tiếp split thật đang pending: baseline bị chặn trước khi nạp model
   và trước khi tạo thư mục output.
 - Giao diện tiến độ trên scan thật đã render bằng AppTest không có exception.
+- Giao diện trên toàn bộ report thật và bộ lọc cặp khác tập đã qua AppTest;
+  không thay đổi quyết định thật trong quá trình kiểm thử.
+- CPU CI GitHub đã pass; HF tự động đồng bộ đúng commit 26efe9c và Space báo
+  RUNNING. Push trực tiếp từ máy vẫn chưa có credential, nhưng đường CI hoạt động.
 
 Chưa hoàn tất review thủ công, chưa đóng băng split, chưa chạy baseline đầy đủ,
 chưa khởi chạy GPU training và chưa đổi model production. Ảnh, embedding và quyết
