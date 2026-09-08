@@ -33,6 +33,7 @@ def main():
     print("==================================================")
     
     test_scripts = [
+        "test_experimental_split.py",
         "test_dataset_review.py",
         "test_reliability.py",
         "test_workflow_guards.py",

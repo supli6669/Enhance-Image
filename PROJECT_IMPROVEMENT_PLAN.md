@@ -6,6 +6,12 @@ Người dùng đã yêu cầu triển khai. Đợt P1/P2: công cụ review và
 Tiến độ mới nhất: công cụ và quét dữ liệu đã hoàn tất; 3.663 mục chờ duyệt, gồm
 91 cặp gợi ý khác tập. CPU CI và đồng bộ HF đã thành công. Xem
 DATASET_REVIEW_WORKFLOW.md; P1/P2 vẫn chờ review thủ công và baseline đầy đủ.
+
+Điều chỉnh được người dùng yêu cầu: triển khai nhánh thử nghiệm bảo thủ, không
+bắt duyệt hàng nghìn mục. Đã tạo split 2.427/122 bằng cách tạm loại 60 ảnh liên quan
+cặp khác tập, giữ holdout và ảnh gốc. Review mẫu tùy chọn; baseline được phép chạy
+với nhãn experimental, không đồng nghĩa đạt gate production. Không đánh dấu nhánh
+review danh tính đầy đủ hoàn thành. Chi tiết: DATASET_REVIEW_WORKFLOW.md.
 Phạm vi: phục hồi ảnh người thật, giữ nhận dạng, chạy ổn định trên CPU.
 Kế hoạch recovery trong IMPLEMENTATION_PLAN.md đã hoàn thành; tài liệu này nối
 tiếp phần benchmark và review dữ liệu còn thiếu, trước khi cải thiện model.

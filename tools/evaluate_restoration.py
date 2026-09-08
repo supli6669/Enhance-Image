@@ -424,6 +424,7 @@ def main() -> None:
     parser.add_argument('--model', type=Path, help='Explicit baseline/candidate .pth or .onnx')
     parser.add_argument('--no-perceptual', action='store_true', help='Explicitly disable LPIPS/ArcFace; report will record missing metrics')
     parser.add_argument('--preserve-face', action='store_true', help='Measure the non-reconstructive path')
+    parser.add_argument('--experimental-data', action='store_true', help='Label this report as experimental, not production approval')
     args = parser.parse_args()
 
     if args.dry_run:
@@ -447,6 +448,8 @@ def main() -> None:
     )
     
     print_markdown_report(summary)
+    if args.experimental_data:
+        summary['evaluation']['data_review'] = 'experimental'
     
     if args.output_json:
         report_data = {

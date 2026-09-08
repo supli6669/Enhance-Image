@@ -2,6 +2,7 @@
 from pathlib import Path
 import csv
 import json
+import hashlib
 import os
 import sys
 
@@ -46,6 +47,12 @@ def main():
     st.title('Duyệt dataset trước training')
     st.caption('Chạy cục bộ. Điểm tương đồng là gợi ý; không xác nhận danh tính. Không tự phê duyệt split.')
     reports = Path(os.environ.get('DATASET_REVIEW_ROOT', str(ROOT / 'benchmarks/reports')))
+    experiments = sorted((reports.parent / 'splits').glob('*/quality.json'))
+    if experiments:
+        mode = st.radio('Cách xem', ['Duyệt nhanh — split thử nghiệm', 'Review chi tiết cũ'], horizontal=True)
+        if mode.startswith('Duyệt nhanh'):
+            quick_review(experiments)
+            return
     directories = sorted(p.parent for p in reports.glob('*/review.json'))
     if not directories:
         st.info('Chưa có bộ review hoàn chỉnh. Chờ quét xong rồi tải lại trang.')
@@ -93,6 +100,38 @@ def main():
             st.error(str(error))
         else:
             st.rerun()
+
+
+def quick_review(experiments):
+    quality_path = st.selectbox('Split thử nghiệm', experiments, format_func=lambda p: p.parent.name)
+    directory = quality_path.parent
+    report = json.loads(quality_path.read_text(encoding='utf-8'))
+    split = json.loads((directory / 'split.json').read_text(encoding='utf-8'))
+    if digest(quality_path) != split['mitigation']['quality_sha256']:
+        st.error('Báo cáo kỹ thuật đã thay đổi; cần tạo split mới.')
+        return
+    a,b,c = st.columns(3)
+    a.metric('Ảnh train', report['train_count'])
+    b.metric('Ảnh validation', report['validation_count'])
+    c.metric('Tạm loại khỏi split', report['quarantined_count'])
+    st.success('Không cần bấm duyệt hàng nghìn mục. Split thử nghiệm đã được tạo bằng quy tắc bảo thủ.')
+    st.info('Chưa chứng nhận tách theo người. Có thể dùng để đo baseline thử nghiệm; chưa đủ để tự phát hành model production.')
+    st.caption('Ảnh gốc và holdout được giữ nguyên. Xem mẫu là tùy chọn, không phải 40 quyết định bắt buộc.')
+    sample_tab, exceptions_tab, excluded_tab = st.tabs(['Ảnh mẫu', 'Ngoại lệ kỹ thuật', 'Danh sách tạm loại'])
+    for tab, rows in [(sample_tab, report['sample']), (exceptions_tab, report['shortlist'])]:
+        with tab:
+            if not rows:
+                st.write('Không có ngoại lệ kỹ thuật cần hiển thị.')
+            columns = st.columns(4)
+            for index, row in enumerate(rows):
+                name = hashlib.sha256(row['path'].encode()).hexdigest()+'.jpg'
+                columns[index % 4].image(str(directory/'thumbnails'/name),
+                    caption=f"{row['split']} · {row['path']} · {', '.join(row['flags'])}", width=192)
+    with exceptions_tab:
+        st.caption(f"Hiển thị tối đa 12/{report['quality_flag_count']} ảnh có cờ kỹ thuật. Đây là gợi ý xem lại, không tự kết luận ảnh kém chất lượng.")
+    with excluded_tab:
+        st.dataframe([{'path':name,'reason':reason} for name,reason in split['mitigation']['excluded'].items()], hide_index=True)
+    st.code(f'python tools/prepare_baseline.py --experimental --split-dir "{directory}" --output benchmarks/reports/experiment_baseline_v1 --execute')
 
 
 if __name__ == '__main__':

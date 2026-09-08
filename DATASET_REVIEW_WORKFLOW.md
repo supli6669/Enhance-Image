@@ -1,5 +1,44 @@
 # Duyệt dataset và chuẩn bị baseline
 
+## Luồng mặc định mới: duyệt nhanh cho thử nghiệm
+
+Người dùng đã yêu cầu giảm khối lượng duyệt thủ công. Không cần hoàn thành 3.663
+quyết định để dùng luồng thử nghiệm này. Giữ luồng review đầy đủ phía dưới làm
+lựa chọn riêng; không tự điền quyết định thay người dùng.
+
+Đã tạo `benchmarks/splits/portraits_experiment_v1`: 2.427 train, 122 validation,
+giữ nguyên 500 đường dẫn holdout (391 ảnh có pixel duy nhất). Tạm loại 60 ảnh
+(52 train, 8 validation) liên quan tới các cặp khác tập đã được gợi ý. Đây là loại
+bảo thủ khỏi manifest, không phải kết luận cùng người và không xóa ảnh gốc.
+
+Kiểm tra kỹ thuật trên 3.109 đường dẫn gồm khả năng đọc ảnh, hash, kích thước,
+trùng pixel, độ sắc nét toàn ảnh và vùng sáng/tối cực trị. 93 ảnh còn lại có cờ
+heuristic, không tự bị loại vì cờ đó. Giao diện hiển thị 40 ảnh mẫu cố định và tối
+đa 12 ngoại lệ để xem tùy chọn, không bắt bấm duyệt từng ảnh. Danh sách đầy đủ nằm
+trong `quality.json`; danh sách ảnh tạm loại nằm trong `split.json`.
+
+Tại localhost:8502, chọn **Duyệt nhanh — split thử nghiệm**. Split này có trạng thái
+`experimental`, không được chứng nhận tách theo người. Ảnh trùng người chưa được
+gợi ý vẫn có thể tồn tại; không dùng kết quả thử nghiệm để tự promote production.
+
+```powershell
+python tools/prepare_experimental_split.py --output benchmarks/splits/portraits_experiment_v1
+python tools/prepare_baseline.py --experimental --split-dir benchmarks/splits/portraits_experiment_v1 --model weights/CodeFormer/codeformer_baseline.onnx --output benchmarks/reports/experiment_baseline_run_v1 --execute
+```
+
+Lệnh tạo split từ chối ghi đè thư mục đã có. Đã chuẩn bị run manifest riêng tại
+`benchmarks/reports/experiment_baseline_prepared_v1` (không chạy inference đầy đủ).
+Khi chạy thật hãy dùng một output mới như ví dụ. Báo cáo mang nhãn experimental;
+production training/promotion gate vẫn từ chối nó. Baseline thử nghiệm không yêu
+cầu phê duyệt thủ công toàn bộ danh sách cũ.
+
+Kiểm chứng bổ sung: 6 kiểm thử offline cho quarantine/gate/UI và 11 kiểm thử
+review cũ pass. AppTest trên dữ liệu thật hiển thị 2.427/122/60 và không có nút
+quyết định bắt buộc. Holdout byte-identical; tất cả ảnh tạm loại còn trên đĩa.
+Master regression cuối: 11/11 suite pass, exit 0 (`experiment_regression.log`).
+Chuẩn bị baseline thử nghiệm exit 0 (`experiment_baseline_prepare.log`), chưa chạy
+inference toàn benchmark.
+
 ## Đã triển khai
 
 - `tools/review_dataset.py generate`: xác minh dữ liệu nguồn, quét perceptual hash

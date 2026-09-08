@@ -12,6 +12,8 @@ def compare_reports(baseline, candidate):
         if b['evaluation'].get(key) != c['evaluation'].get(key):
             raise ValueError(f'Evaluation settings differ: {key}')
     deltas, reasons = {}, []
+    if any(s['evaluation'].get('data_review') == 'experimental' for s in (b, c)):
+        reasons.append('experimental data split; production promotion not eligible')
     for key, direction in (('median_psnr', 1), ('median_ssim', 1),
                            ('median_lpips', -1), ('median_identity_similarity', 1)):
         before, after = b['overall'].get(key), c['overall'].get(key)

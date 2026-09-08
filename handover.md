@@ -1855,3 +1855,24 @@ No other image triggered these technical thresholds; this is not a full facial
 quality certification. Results/gallery: ignored dataset_review_v2/quality_audit/.
 Decision file hashes verified unchanged. No face identity matching was performed,
 no human review was fabricated, and split freeze/training remain pending.
+
+## Task 46 — User-approved lightweight experimental workflow
+
+User requested replacing thousands of required manual decisions with conservative
+quarantine and optional quality sampling. Added prepare_experimental_split.py and
+default quick mode in the localhost review UI. Uses existing candidate rows only;
+does not calculate new identity matches or assign same/different-person labels.
+Quarantines every non-holdout endpoint of a cross-split candidate and checks image
+hashes/readability/dimensions/exact duplicates/whole-image quality.
+
+Created portraits_experiment_v1: 2,427 train, 122 validation; 60 paths quarantined
+(52 train, 8 validation), originals preserved and holdout byte-identical. 40 sample
+images and up to 12 of 93 heuristic quality exceptions are optional viewing, with
+zero mandatory manual decisions. Existing manual review decisions are unchanged.
+prepare_baseline.py --experimental permits this frozen experimental split and
+labels its report. Production training/promotion still rejects experimental data.
+No full baseline inference or GPU training launched. See DATASET_REVIEW_WORKFLOW.md.
+Final verification: master regression 11/11 suites passed (exit 0); experimental
+baseline preparation passed (exit 0); real quick UI AppTest passed. Local reviewer
+health endpoint returned HTTP 200. This closes the requested lightweight workflow
+implementation, not the remaining full evaluation or model-training stages.

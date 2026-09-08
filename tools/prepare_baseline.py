@@ -21,9 +21,22 @@ def require_reviewed_split(split):
         raise ValueError('Baseline blocked: freeze an explicitly reviewed split first')
 
 
-def prepare(root, split_dir, manifest, model, output, execute=False):
+def require_experimental_split(split, split_dir):
+    mitigation = split.get('mitigation') or {}
+    if (split.get('review_status') != 'experimental' or split.get('lifecycle') != 'frozen'
+            or split.get('identity_separation_verified') is not False
+            or mitigation.get('policy') != 'quarantine_all_non_holdout_cross_split_endpoints_v1'
+            or mitigation.get('technical_checks_complete') is not True
+            or mitigation.get('quality_sha256') != digest(split_dir/'quality.json')):
+        raise ValueError('Invalid experimental split or technical report')
+
+
+def prepare(root, split_dir, manifest, model, output, execute=False, experimental=False):
     split = json.loads((split_dir / 'split.json').read_text(encoding='utf-8'))
-    require_reviewed_split(split)
+    if experimental:
+        require_experimental_split(split, split_dir)
+    else:
+        require_reviewed_split(split)
     if output.exists():
         raise FileExistsError('Choose a new baseline run directory')
     if digest(manifest) != split.get('benchmark_manifest_sha256'):
@@ -47,11 +60,14 @@ def prepare(root, split_dir, manifest, model, output, execute=False):
     command = [sys.executable, '-B', '-u', str(ROOT / 'tools/evaluate_restoration.py'),
                '--manifest', str(manifest.resolve()), '--model', str(model.resolve()),
                '--output-json', str(output.resolve() / 'report.json')]
+    if experimental:
+        command.append('--experimental-data')
     record = {'status': 'ready', 'split_sha256': digest(split_dir / 'split.json'),
               'manifest_sha256': digest(manifest), 'dataset_verification': verified,
               'model': describe_model(model), 'command': command,
               'code_commit': subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip(),
-              'scope': 'full', 'timing_note': 'Measure controlled CPU latency separately from quality evaluation'}
+              'scope': 'full', 'data_review': 'experimental' if experimental else 'reviewed',
+              'timing_note': 'Measure controlled CPU latency separately from quality evaluation'}
     output.mkdir(parents=True)
     path = output / 'run.json'
     path.write_text(json.dumps(record, indent=2), encoding='utf-8')
@@ -61,6 +77,12 @@ def prepare(root, split_dir, manifest, model, output, execute=False):
         with (output / 'evaluation.log').open('x', encoding='utf-8') as log:
             result = subprocess.run(command, cwd=ROOT, stdout=log, stderr=subprocess.STDOUT)
         record['status'] = 'completed' if result.returncode == 0 else 'failed'
+        if result.returncode == 0:
+            report_path = output/'report.json'
+            report = json.loads(report_path.read_text(encoding='utf-8'))
+            report['summary']['evaluation']['data_review'] = record['data_review']
+            report['summary']['evaluation']['split_sha256'] = record['split_sha256']
+            report_path.write_text(json.dumps(report, indent=2), encoding='utf-8')
         record['exit_code'] = result.returncode
         path.write_text(json.dumps(record, indent=2), encoding='utf-8')
         if result.returncode:
@@ -77,5 +99,6 @@ if __name__ == '__main__':
     parser.add_argument('--model', type=Path, default=ROOT / 'weights/CodeFormer/codeformer.pth')
     parser.add_argument('--output', type=Path, required=True)
     parser.add_argument('--execute', action='store_true')
+    parser.add_argument('--experimental', action='store_true', help='Allow conservative experimental split; report is not production approval')
     args = parser.parse_args()
-    prepare(args.root, args.split_dir, args.manifest, args.model, args.output, args.execute)
+    prepare(args.root, args.split_dir, args.manifest, args.model, args.output, args.execute, args.experimental)

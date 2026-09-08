@@ -14,6 +14,8 @@ def validate_quality_gate(split_report, baseline_path):
         raise ValueError('A full --baseline-report is required before production training')
     report = json.loads(Path(baseline_path).read_text(encoding='utf-8'))
     summary = report.get('summary', {})
+    if summary.get('evaluation', {}).get('data_review') == 'experimental':
+        raise ValueError('Experimental baseline does not satisfy the production training gate')
     if summary.get('evaluation', {}).get('scope') != 'full':
         raise ValueError('Smoke evaluation cannot satisfy the baseline gate')
     if summary.get('total_samples', 0) < 300 or summary.get('total_samples') != summary.get('unique_reference_count'):

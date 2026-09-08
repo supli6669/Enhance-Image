@@ -106,6 +106,22 @@ GitHub CPU checks gate the automatic Hugging Face sync workflow.
 
 ### Human review and frozen baseline
 
+For the lighter experimental workflow, use the separate local UI's **Duyệt nhanh**
+mode. It shows optional samples and a short exception list instead of requiring
+thousands of decisions. The tool conservatively quarantines non-holdout endpoints
+of existing cross-split candidate pairs without making identity judgments:
+
+```bash
+python tools/prepare_experimental_split.py --output benchmarks/splits/portraits_experiment_v1
+python tools/prepare_baseline.py --experimental --split-dir benchmarks/splits/portraits_experiment_v1 --output benchmarks/reports/experiment_baseline_run_v1 --execute
+```
+
+Original images and holdout are preserved. The split and reports are explicitly
+experimental; unflagged identity overlap may remain. These reports cannot satisfy
+production training or promotion gates. See DATASET_REVIEW_WORKFLOW.md for the
+prepared local split, samples and evidence. The full manual-review path below
+remains available separately.
+
 ```bash
 python tools/review_dataset.py generate --split-dir benchmarks/splits/real_portraits_v1 --output benchmarks/reports/dataset_review_v1
 ```
