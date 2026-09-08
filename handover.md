@@ -1876,3 +1876,16 @@ Final verification: master regression 11/11 suites passed (exit 0); experimental
 baseline preparation passed (exit 0); real quick UI AppTest passed. Local reviewer
 health endpoint returned HTTP 200. This closes the requested lightweight workflow
 implementation, not the remaining full evaluation or model-training stages.
+
+## Task 47 — Full experimental baseline launched
+
+User explicitly requested running the baseline. Launched prepare_baseline.py
+--experimental --execute on 2026-09-08 at 12:27 Asia/Saigon, using
+portraits_experiment_v1 and weights/CodeFormer/codeformer_baseline.onnx.
+Output: benchmarks/reports/experiment_baseline_run_v1 (new directory, no overwrite).
+Detached hidden process metadata is in experiment_baseline_run_v1.process.json;
+launcher stdout/stderr logs sit beside that metadata. Once preflight completes,
+run.json and evaluation.log are written inside the run directory. Check run.json
+status and the process/log before launching another run; do not duplicate it.
+This entry records launch only, not completion or quality conclusions. Full
+evaluation should cover 391 unique references and remain labeled experimental.
