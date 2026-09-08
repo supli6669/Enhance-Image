@@ -191,6 +191,9 @@ def train_pipeline(root_path):
             # training
             model.feed_data(train_data)
             model.optimize_parameters(current_iter)
+            if opt.get('verification_only'):
+                from tools.kaggle_verify_config import check_finite_step
+                check_finite_step(model)
             iter_time = time.time() - iter_time
             # log
             if current_iter % opt['logger']['print_freq'] == 0:

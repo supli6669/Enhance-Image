@@ -33,6 +33,7 @@ def main():
     print("==================================================")
     
     test_scripts = [
+        "test_kaggle_verify_bundle.py",
         "test_experimental_split.py",
         "test_dataset_review.py",
         "test_reliability.py",

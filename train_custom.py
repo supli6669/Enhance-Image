@@ -58,6 +58,7 @@ def main():
     parser.add_argument('--baseline-report', type=Path, help='Full baseline evaluation JSON required before production training')
     parser.add_argument('--holdout-manifest', type=Path, help='Portable holdout list; defaults to split directory')
     parser.add_argument('--preflight', action='store_true', help='Validate inputs without training')
+    parser.add_argument('--require-gpu', action='store_true', help='Fail instead of running verification on CPU')
     args = parser.parse_args()
 
     project_dir = os.path.dirname(os.path.abspath(__file__))
@@ -80,6 +81,8 @@ def main():
             num_gpus = 0
     print(f"Device detected: {device.upper()}")
     print(f"Number of GPUs available: {num_gpus}")
+    if args.require_gpu and device != 'cuda':
+        raise RuntimeError('This verification requires a working CUDA GPU; enable the Kaggle accelerator')
     
     # Production runs never bootstrap toy data or launch long CPU training.
     dataset_dir = str((args.dataset_dir or Path(codeformer_dir) / 'datasets/ffhq/ffhq_512').resolve())
@@ -172,6 +175,11 @@ def main():
         else:
             print(f"    Training from scratch to {config.get('train', {}).get('total_iter', 20000)}...")
     
+    if args.verify:
+        from tools.kaggle_verify_config import configure_verify
+        verification_directory = configure_verify(config, project_dir)
+        print(f'Verification run: {config["name"]}; evidence: {verification_directory}')
+
     # 5. Write runtime config to a TEMP yml file — NEVER modify the original.
     #
     # Strategy: write all runtime overrides (num_gpu, prefetch_mode, resume_state,
@@ -215,7 +223,7 @@ def main():
             env["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
             env["CUDA_VISIBLE_DEVICES"] = "0"
             env["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
-        env["PYTHONPATH"] = os.path.pathsep.join([codeformer_dir, env.get("PYTHONPATH", "")])
+        env["PYTHONPATH"] = os.path.pathsep.join([codeformer_dir, project_dir, env.get("PYTHONPATH", "")])
 
         print("\nStarting training process. Command:")
         print(" ".join(cmd))

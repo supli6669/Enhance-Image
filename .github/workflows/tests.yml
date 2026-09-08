@@ -22,3 +22,4 @@ jobs:
       - run: python tools/test_workflow_guards.py
       - run: python tools/test_dataset_review.py
       - run: python tools/test_experimental_split.py
+      - run: python tools/test_kaggle_verify_bundle.py

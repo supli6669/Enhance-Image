@@ -1889,3 +1889,27 @@ run.json and evaluation.log are written inside the run directory. Check run.json
 status and the process/log before launching another run; do not duplicate it.
 This entry records launch only, not completion or quality conclusions. Full
 evaluation should cover 391 unique references and remain labeled experimental.
+
+## Task 48 — Portable Kaggle GPU verification preparation
+
+Baseline run completed with exit 0 and all 391 rows have finite metrics. Mean
+PSNR 27.4403, SSIM 0.6874, LPIPS 0.3762; median CPU latency 7409.92 ms, p95
+14422.145 ms. Remains experimental, not a production gate approval.
+
+Added a private portable bundle builder and generated verification-only notebook.
+Includes manifest-selected real images, split, baseline, three pretrained weights
+and working source with hashes. Notebook validates extraction, requires CUDA and
+runs exactly two iterations. train_custom --verify now uses a unique experiment,
+batch 1, two validation images, per-step logs and iteration-2 checkpoint saving;
+verification-only finite loss/gradient guard added to the training loop.
+No full training/pilot is started by this notebook. Checkpoint state readability
+is checked, not actual resumed execution. See KAGGLE_VERIFY_GUIDE.md.
+
+Kaggle upload/dispatch is not performed: no auth environment and the local Kaggle
+JSON file is invalid. No exposed credential was reused. GPU execution remains an
+external prerequisite; local CPU tests cannot claim that it passed.
+Bundle completed: artifacts/kaggle_verify_bundle_v1, 3,222 files, 2,312,194,347
+archive bytes. Extracted and verified all hashes in a separate local directory,
+then ran the bundled code's preflight using bundled data and weights: exit 0,
+2,427 train / 122 validation / 391 unique holdout, zero exact-pixel overlap.
+Master regression passed 12/12 suites. CPU --require-gpu guard fails as intended.
