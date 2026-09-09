@@ -1913,3 +1913,34 @@ archive bytes. Extracted and verified all hashes in a separate local directory,
 then ran the bundled code's preflight using bundled data and weights: exit 0,
 2,427 train / 122 validation / 391 unique holdout, zero exact-pixel overlap.
 Master regression passed 12/12 suites. CPU --require-gpu guard fails as intended.
+
+## Task 49 — Automated Kaggle GPU Verification Gate Passed (Phase P3 Complete)
+
+Automated end-to-end cloud runner `tools/run_kaggle_verify.py` executed successfully
+against Kaggle GPU infrastructure using user `suplo6669`.
+
+1. **Credentials & Artifact Upload**:
+   - Resolved local `~/.kaggle/kaggle.json` formatting.
+   - Performed chunked resumable GCS upload of `artifacts/kaggle_verify_bundle_v1`
+     (2.31 GB payload.zip + manifest.json) in 550s.
+   - Private dataset `suplo6669/kaggle-verify-bundle-v1` created and reached state `READY`.
+
+2. **Kernel Push & Execution**:
+   - Pushed `custom-ai-enhancer-gpu-verify` notebook configured with `machineShape: "NvidiaTeslaT4"`.
+   - Kaggle runner completed execution (Kernel Version 7, status `COMPLETE`).
+   - Verified live execution log evidence:
+     * CUDA Conv2D smoke test passed on Nvidia Tesla T4.
+     * PyTorch version: `2.10.0+cu128`.
+     * 2 training iterations executed with finite generator and discriminator losses and gradients.
+     * Iteration 2 checkpoints generated:
+       - `net_g_2.pth` (sha256: `8b209a73d93f4644451a7f8aacc31604043e73bcc85599ea3f32971495b0c72f`)
+       - `net_d_2.pth` (sha256: `324777a9628cfb446ec958caa22be229749578cfe7d833c63d19faffe41471dc`)
+       - `2.state` (sha256: `e4e318362088fb0e78475c8d95ba08bb7b817adc372f26ac493957ef22e92227`)
+     * State checkpoint verified readable via `torch.load()`.
+     * Status reported: `"gpu_two_iteration_check_passed"`.
+
+3. **Local Artifact Retrieval & Gate Verification**:
+   - `tools/run_kaggle_verify.py --action download` fetched and verified
+     `artifacts/kaggle_verify_bundle_v1/verification_output/gpu_verify_report.json` (exit code 0).
+   - Phase P3 gate criteria officially SATISFIED.
+   - Codebase advances to Phase P4 (Fresh Stage III Fine-Tuning Pilot on Kaggle GPU).

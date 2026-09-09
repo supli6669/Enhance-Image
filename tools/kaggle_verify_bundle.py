@@ -54,20 +54,47 @@ def extract_verified(archive, manifest, destination):
                 raise ValueError('Extracted file hash mismatch; do not use partial extraction')
 
 
+def unpack_or_copy_verified(dataset_root, manifest, destination):
+    destination = Path(destination).resolve()
+    if destination.exists():
+        raise FileExistsError('Use a new extraction directory')
+    zip_candidates = list(dataset_root.glob('kaggle_verify_payload.zip'))
+    dir_candidates = list(dataset_root.glob('kaggle_verify_payload'))
+    if zip_candidates:
+        extract_verified(zip_candidates[0], manifest, destination)
+    elif dir_candidates:
+        source_dir = dir_candidates[0]
+        destination.mkdir(parents=True)
+        import shutil
+        for row in manifest['files']:
+            name = row['name']
+            src = source_dir / name
+            if not src.is_file() or src.stat().st_size != row['bytes']:
+                raise ValueError(f'Missing or truncated file in dataset: {name}')
+            target = destination / name
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(src, target)
+            if hash_file(target) != row['sha256']:
+                raise ValueError(f'File hash mismatch: {name}')
+    else:
+        raise RuntimeError('Neither kaggle_verify_payload.zip nor kaggle_verify_payload directory found')
+
+
 def notebook():
     bootstrap = '''import json, hashlib, zipfile, sys, subprocess, os, uuid
 from pathlib import Path
 import torch
 if not torch.cuda.is_available():
     raise RuntimeError('Enable a Kaggle GPU accelerator before running this notebook')
-candidates = list(Path('/kaggle/input').rglob('kaggle_verify_payload.zip'))
-if len(candidates) != 1:
+manifest_candidates = list(Path('/kaggle/input').rglob('bundle_manifest.json'))
+if len(manifest_candidates) != 1:
     raise RuntimeError('Attach exactly one private verification bundle dataset')
-archive = candidates[0]
-manifest = json.loads((archive.parent/'bundle_manifest.json').read_text())
+manifest_file = manifest_candidates[0]
+dataset_root = manifest_file.parent
+manifest = json.loads(manifest_file.read_text())
 work = Path('/kaggle/working') / ('enhancer_verify_' + uuid.uuid4().hex[:10])
 '''
-    extract = inspect.getsource(hash_file)+'\n'+inspect.getsource(extract_verified)+'''\nextract_verified(archive, manifest, work)
+    extract = inspect.getsource(hash_file)+'\n'+inspect.getsource(extract_verified)+'\n'+inspect.getsource(unpack_or_copy_verified)+'''\nunpack_or_copy_verified(dataset_root, manifest, work)
 code = work/'code'
 for path in (work/'weights').rglob('*.pth'):
     target = code/'weights'/path.relative_to(work/'weights')
@@ -92,7 +119,7 @@ with (work/'gpu_verify.log').open('x') as log:
     result = subprocess.run(command, stdout=log, stderr=subprocess.STDOUT)
 if result.returncode:
     raise RuntimeError(f'GPU verification failed: inspect {work / "gpu_verify.log"}')
-experiments = list((code/'models/CodeFormer/experiments').glob('CodeFormer_gpu_verify_*'))
+experiments = list((code/'models/CodeFormer/experiments').glob('*CodeFormer_gpu_verify_*'))
 if len(experiments) != 1:
     raise RuntimeError('Expected exactly one isolated verification experiment')
 experiment = experiments[0]
@@ -109,6 +136,7 @@ report = {'status':'gpu_two_iteration_check_passed', 'gpu':torch.cuda.get_device
           'bundle_sha256':manifest['archive_sha256'],
           'checkpoint_files':[{'name':p.name,'sha256':hash_file(p)} for p in required]}
 (work/'gpu_verify_report.json').write_text(json.dumps(report, indent=2))
+(Path('/kaggle/working')/'gpu_verify_report.json').write_text(json.dumps(report, indent=2))
 print(json.dumps(report, indent=2))
 print('Evidence:', work)
 '''
