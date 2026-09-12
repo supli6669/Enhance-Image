@@ -40,6 +40,14 @@ image-processing modules, then reselect a preset; saved custom presets retain
 their previous settings. Run `python tools/test_reliability.py` for the filter
 and preset regressions, and `python tools/test_pipeline.py` for model integration.
 
+The UI defers CodeFormer allocation until AI restoration is requested. Python
+callers can opt in with `LocalAIEnhancerPipeline(lazy_load=True)`. For controlled
+experiments, `process_image(..., w=0.85, source_blend=0.4)` keeps 40% source pixels
+independently of model fidelity; omitting `source_blend` preserves the legacy
+coupling to `w`. This example is not a recommended quality preset: the measured
+perceptual gain came with excessive distortion. See
+[enhance findings and optimization plan](ENHANCE_OPTIMIZATION_REPORT.md).
+
 ## Reliability recovery (2026-09-07)
 
 The runtime now honors model selection and shares processing settings across

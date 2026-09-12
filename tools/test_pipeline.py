@@ -29,7 +29,9 @@ def main():
     print("  Comprehensive Universal AI Enhancer Pipeline Test Harness")
     print("=" * 60)
     
-    pipeline = LocalAIEnhancerPipeline(device='cpu')
+    pipeline = LocalAIEnhancerPipeline(device='cpu', lazy_load=True)
+    assert pipeline.net is None and pipeline.ort_session_cf is None
+    assert not pipeline._onnx_session_cache and not pipeline._torch_model_cache
 
     # -------------------------------------------------------------
     # TEST 1: Face Portrait Image Enhancement (High Likeness w=0.85)

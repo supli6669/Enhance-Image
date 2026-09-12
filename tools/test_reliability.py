@@ -3,10 +3,11 @@ import ast
 import os
 import sys
 import tempfile
+import threading
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
@@ -94,7 +95,64 @@ class ClarityFidelityTests(unittest.TestCase):
             self.assertTrue(settings['default_super_clarity'])
 
 
+class SourceBlendTests(unittest.TestCase):
+    def test_public_api_forwards_blend_without_changing_model_fidelity(self):
+        pipe = LocalAIEnhancerPipeline.__new__(LocalAIEnhancerPipeline)
+        pipe._default_progress_callback = None
+        pipe._processing_lock = threading.RLock()
+        image = np.zeros((32, 32, 3), np.uint8)
+        pipe._process_image = Mock(return_value=image)
+        self.assertIs(pipe.process_image(image, w=0.6, source_blend=0.25), image)
+        self.assertEqual(pipe._process_image.call_args.args[1], 0.6)
+        self.assertEqual(pipe._process_image.call_args.kwargs['source_blend'], 0.25)
+
+    def test_blend_endpoints_and_legacy_behavior_at_both_scales(self):
+        pipe = LocalAIEnhancerPipeline.__new__(LocalAIEnhancerPipeline)
+        original = np.full((64, 64, 3), 40, np.uint8)
+        restored = np.full_like(original, 200)
+        for scale in (1, 2):
+            helper = SimpleNamespace(input_img=original, face_size=(64, 64),
+                cropped_faces=[original], restored_faces=[restored], use_parse=False,
+                inverse_affine_matrices=[np.array([[scale, 0, 0], [0, scale, 0]], np.float32)])
+            outputs = {}
+            for blend, expected in ((0, 200), (0.25, 160), (1, 40), (None, 80)):
+                result = pipe.paste_faces_custom_blend(helper, upscale=scale,
+                    blend_softness=0.5, w=0.75, source_blend=blend)
+                outputs[blend] = result
+                self.assertEqual(result.shape, (64 * scale, 64 * scale, 3))
+                # Existing soft-mask arithmetic truncates the final float image;
+                # even a constant interior can round down by one intensity level.
+                np.testing.assert_allclose(result[32 * scale, 32 * scale], [expected] * 3, atol=1)
+            explicit_legacy = pipe.paste_faces_custom_blend(helper, upscale=scale,
+                blend_softness=0.5, w=0.2, source_blend=0.75)
+            np.testing.assert_array_equal(outputs[None], explicit_legacy)
+            np.testing.assert_array_equal(helper.restored_faces[0], restored)
+
+    def test_invalid_blend_is_rejected_before_processing(self):
+        pipe = LocalAIEnhancerPipeline.__new__(LocalAIEnhancerPipeline)
+        for blend in (-0.1, 1.1, float('nan'), float('inf')):
+            with self.subTest(blend=blend), self.assertRaisesRegex(ValueError, 'source_blend'):
+                pipe._process_image(np.zeros((32, 32, 3), np.uint8), source_blend=blend)
+
+
 class ReliabilityTests(unittest.TestCase):
+    def test_lazy_pipeline_skips_model_for_pure_and_loads_on_explicit_use(self):
+        for suffix, loader, attribute in (('.pth', '_get_torch_model', 'net'),
+                                           ('.onnx', '_get_onnx_session', 'ort_session_cf')):
+            with self.subTest(suffix=suffix), tempfile.TemporaryDirectory() as tmp:
+                model = Path(tmp) / ('model' + suffix)
+                model.write_bytes(b'x' * 128)
+                with patch('pipeline.model_files'), patch.object(LocalAIEnhancerPipeline, loader) as load:
+                    pipe = LocalAIEnhancerPipeline(device='cpu', model_path_override=str(model), lazy_load=True)
+                    image = np.full((32, 32, 3), 80, np.uint8)
+                    output = pipe.process_image(image, upscale=1, preset_mode='Pure Quality')
+                    np.testing.assert_array_equal(output, image)
+                    load.assert_not_called()
+                    self.assertIsNone(getattr(pipe, attribute))
+                    pipe._resolve_model('Auto')
+                    load.assert_called_once_with(str(model.resolve()))
+                    self.assertIs(getattr(pipe, attribute), load.return_value)
+
     def test_face_mask_keeps_semantic_classes(self):
         logits = torch.zeros(1, 19, 16, 16)
         logits[:, 1] = 1

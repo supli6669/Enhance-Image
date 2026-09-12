@@ -84,13 +84,14 @@ def get_available_models(weights_dir=None):
 _active_progress_callback = ContextVar("active_progress_callback", default=None)
 
 class LocalAIEnhancerPipeline:
-    def __init__(self, device=None, progress_callback=None, model_path_override=None):
+    def __init__(self, device=None, progress_callback=None, model_path_override=None, lazy_load=False):
         """Initialize the CodeFormer model and helper pipeline.
         
         Args:
             device: torch device ('cuda' or 'cpu')
             progress_callback: Optional callback function(stage, progress, message) for progress reporting
             model_path_override: Optional path to specific ONNX or PyTorch model
+            lazy_load: Defer CodeFormer allocation until face restoration is used.
         """
         if device is None:
             self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -103,7 +104,7 @@ class LocalAIEnhancerPipeline:
         self.wink_enhancer = WinkQualityEnhancer()
             
         print(f"[Pipeline] Initializing pipeline on device: {self.device}")
-        self._report_progress("initialization", 0.1, "Loading CodeFormer model...")
+        self._report_progress("initialization", 0.1, "Preparing enhancement pipeline...")
         
         # Auto uses the known pretrained baseline; local candidates are explicit.
         selected_path = model_path_override or preferred_baseline(os.path.join(project_dir, 'weights', 'CodeFormer'))
@@ -118,9 +119,9 @@ class LocalAIEnhancerPipeline:
         if self.use_onnx:
             if not HAS_ONNX:
                 raise RuntimeError('ONNX Runtime is required for the selected model')
-            self.ort_session_cf = self._get_onnx_session(selected_path)
+            self.ort_session_cf = None if lazy_load else self._get_onnx_session(selected_path)
             self.codeformer_onnx_path = selected_path
-        self.net = None if self.use_onnx else self._get_torch_model(selected_path)
+        self.net = None if self.use_onnx or lazy_load else self._get_torch_model(selected_path)
 
         re_dir = os.path.join(project_dir, "weights", "realesrgan")
         re_candidates = [
@@ -172,6 +173,15 @@ class LocalAIEnhancerPipeline:
         return self.cancel_flag
 
     @staticmethod
+    def _validate_source_blend(value):
+        if value is None:
+            return None
+        value = float(value)
+        if not np.isfinite(value) or not 0.0 <= value <= 1.0:
+            raise ValueError('source_blend must be finite and between 0 and 1')
+        return value
+
+    @staticmethod
     def _parse_labels(logits):
         if logits.ndim == 4 and logits.shape[0] == 1:
             logits = logits.squeeze(0)
@@ -204,9 +214,15 @@ class LocalAIEnhancerPipeline:
             raise ValueError(f'Unknown model selection: {selection}')
         self.active_model_path = path
         if path.endswith('.onnx'):
-            return self._get_onnx_session(path), None
+            session = self._get_onnx_session(path)
+            if path == self.default_model_path:
+                self.ort_session_cf = session
+            return session, None
         if path.endswith('.pth'):
-            return None, self._get_torch_model(path)
+            net = self._get_torch_model(path)
+            if path == self.default_model_path:
+                self.net = net
+            return None, net
         raise ValueError(f'Unsupported model format: {path}')
     
     def _get_onnx_session(self, path, providers=None):
@@ -334,6 +350,10 @@ class LocalAIEnhancerPipeline:
     def run_onnx_batch(self, faces_np, w_val, session_override=None):
         """Helper to run ONNX batch inference."""
         session = session_override if session_override is not None else self.ort_session_cf
+        if session is None:
+            if not self.use_onnx:
+                raise ValueError('The selected default model is not ONNX')
+            session, _ = self._resolve_model('Auto')
         w_np = np.full((faces_np.shape[0],), w_val, dtype=np.float32)
         ort_inputs = {
             session.get_inputs()[0].name: faces_np,
@@ -343,12 +363,15 @@ class LocalAIEnhancerPipeline:
             ort_outs = session.run(None, ort_inputs)
         return ort_outs[0]
 
-    def process_image(self, img, w=0.85, detection_model='retinaface_mobile0.25', upscale=2, blend_softness=0.5, bg_upsampler=None, det_threshold=0.5, sharpen_amount=0.0, face_upsample=False, batch_size=0, parallel=False, face_restore=True, wink_mode=False, eye_enhancement=True, skin_grain=0.15, color_match=True, enable_eyes=True, enable_lips=True, enable_skin=True, enable_teeth=True, enable_tone_glow=True, enable_dark_circles=True, enable_catchlight=True, catchlight_strength=0.55, enable_hair=True, hair_clarity=0.35, hair_sheen=0.25, enable_relighting=True, relighting_rim=0.25, relighting_tzone=0.20, enable_anti_glare=True, anti_glare_strength=0.50, enable_makeup=True, blush_strength=0.30, eyebrow_boost=0.35, enable_crystal_skin=True, crystal_skin_strength=0.45, enable_glossy_lips=True, lip_gloss=0.40, lip_vibrance=0.25, enable_doll_eye=True, doll_eye_depth=0.45, enable_golden_hour=False, golden_warmth=0.25, golden_bloom=0.20, enable_super_clarity=True, clarity_strength=0.35, enable_deblur=False, deblur_strength=0.35, enable_dehaze=False, dehaze_strength=0.25, color_lut="None", lut_intensity=1.0, bokeh_strength=0.0, preset_mode='Custom', chromatic_aberration=False, model_version='Auto', bg_upsampler_model=None, progress_callback=None):
+    def process_image(self, img, w=0.85, detection_model='retinaface_mobile0.25', upscale=2, blend_softness=0.5, bg_upsampler=None, det_threshold=0.5, sharpen_amount=0.0, face_upsample=False, batch_size=0, parallel=False, face_restore=True, wink_mode=False, eye_enhancement=True, skin_grain=0.15, color_match=True, enable_eyes=True, enable_lips=True, enable_skin=True, enable_teeth=True, enable_tone_glow=True, enable_dark_circles=True, enable_catchlight=True, catchlight_strength=0.55, enable_hair=True, hair_clarity=0.35, hair_sheen=0.25, enable_relighting=True, relighting_rim=0.25, relighting_tzone=0.20, enable_anti_glare=True, anti_glare_strength=0.50, enable_makeup=True, blush_strength=0.30, eyebrow_boost=0.35, enable_crystal_skin=True, crystal_skin_strength=0.45, enable_glossy_lips=True, lip_gloss=0.40, lip_vibrance=0.25, enable_doll_eye=True, doll_eye_depth=0.45, enable_golden_hour=False, golden_warmth=0.25, golden_bloom=0.20, enable_super_clarity=True, clarity_strength=0.35, enable_deblur=False, deblur_strength=0.35, enable_dehaze=False, dehaze_strength=0.25, color_lut="None", lut_intensity=1.0, bokeh_strength=0.0, preset_mode='Custom', chromatic_aberration=False, model_version='Auto', bg_upsampler_model=None, progress_callback=None, source_blend=None):
 
         """Enhance one image without sharing request-specific state.
 
         ``progress_callback`` is scoped to this call.  The constructor callback
         remains supported as a legacy default for code that already uses it.
+        ``source_blend`` independently controls the original face contribution:
+        0 uses the restored crop, 1 uses the original crop, and None uses ``w``.
+        Fidelity inside CodeFormer remains controlled by ``w``.
         """
         callback = self._default_progress_callback if progress_callback is None else progress_callback
         with self._processing_lock:
@@ -374,12 +397,12 @@ class LocalAIEnhancerPipeline:
                     enable_dehaze, dehaze_strength,
                     color_lut, lut_intensity, bokeh_strength,
                     preset_mode, chromatic_aberration,
-                    model_version, bg_upsampler_model
+                    model_version, bg_upsampler_model, source_blend=source_blend
                 )
             finally:
                 _active_progress_callback.reset(callback_token)
 
-    def _process_image(self, img, w=0.85, detection_model='retinaface_mobile0.25', upscale=2, blend_softness=0.5, bg_upsampler=None, det_threshold=0.5, sharpen_amount=0.0, face_upsample=False, batch_size=0, parallel=False, face_restore=True, wink_mode=False, eye_enhancement=True, skin_grain=0.15, color_match=True, enable_eyes=True, enable_lips=True, enable_skin=True, enable_teeth=True, enable_tone_glow=True, enable_dark_circles=True, enable_catchlight=True, catchlight_strength=0.55, enable_hair=True, hair_clarity=0.35, hair_sheen=0.25, enable_relighting=True, relighting_rim=0.25, relighting_tzone=0.20, enable_anti_glare=True, anti_glare_strength=0.50, enable_makeup=True, blush_strength=0.30, eyebrow_boost=0.35, enable_crystal_skin=True, crystal_skin_strength=0.45, enable_glossy_lips=True, lip_gloss=0.40, lip_vibrance=0.25, enable_doll_eye=True, doll_eye_depth=0.45, enable_golden_hour=False, golden_warmth=0.25, golden_bloom=0.20, enable_super_clarity=True, clarity_strength=0.35, enable_deblur=False, deblur_strength=0.35, enable_dehaze=False, dehaze_strength=0.25, color_lut="None", lut_intensity=1.0, bokeh_strength=0.0, preset_mode='Custom', chromatic_aberration=False, model_version='Auto', bg_upsampler_model=None):
+    def _process_image(self, img, w=0.85, detection_model='retinaface_mobile0.25', upscale=2, blend_softness=0.5, bg_upsampler=None, det_threshold=0.5, sharpen_amount=0.0, face_upsample=False, batch_size=0, parallel=False, face_restore=True, wink_mode=False, eye_enhancement=True, skin_grain=0.15, color_match=True, enable_eyes=True, enable_lips=True, enable_skin=True, enable_teeth=True, enable_tone_glow=True, enable_dark_circles=True, enable_catchlight=True, catchlight_strength=0.55, enable_hair=True, hair_clarity=0.35, hair_sheen=0.25, enable_relighting=True, relighting_rim=0.25, relighting_tzone=0.20, enable_anti_glare=True, anti_glare_strength=0.50, enable_makeup=True, blush_strength=0.30, eyebrow_boost=0.35, enable_crystal_skin=True, crystal_skin_strength=0.45, enable_glossy_lips=True, lip_gloss=0.40, lip_vibrance=0.25, enable_doll_eye=True, doll_eye_depth=0.45, enable_golden_hour=False, golden_warmth=0.25, golden_bloom=0.20, enable_super_clarity=True, clarity_strength=0.35, enable_deblur=False, deblur_strength=0.35, enable_dehaze=False, dehaze_strength=0.25, color_lut="None", lut_intensity=1.0, bokeh_strength=0.0, preset_mode='Custom', chromatic_aberration=False, model_version='Auto', bg_upsampler_model=None, source_blend=None):
 
         """
         Enhance an image using the local CodeFormer pipeline.
@@ -400,6 +423,8 @@ class LocalAIEnhancerPipeline:
         Returns:
             numpy.ndarray: Enhanced output image in BGR format.
         """
+        source_blend = self._validate_source_blend(source_blend)
+
         # Apply Chromatic Aberration Correction if requested
         if chromatic_aberration and hasattr(self, 'wink_enhancer'):
             img = self.wink_enhancer.correct_chromatic_aberration(img)
@@ -726,6 +751,7 @@ class LocalAIEnhancerPipeline:
             sharpen_amount=sharpen_amount,
             face_upsample=face_upsample,
             w=w,
+            source_blend=source_blend,
             wink_mode=wink_mode,
             eye_enhancement=eye_enhancement,
             skin_grain=skin_grain,
@@ -794,8 +820,10 @@ class LocalAIEnhancerPipeline:
         
         return enhanced_img
 
-    def paste_faces_custom_blend(self, face_helper, upscale, blend_softness, bg_img=None, sharpen_amount=0.0, face_upsample=False, w=0.85, wink_mode=False, eye_enhancement=True, skin_grain=0.15, color_match=True, enable_eyes=True, enable_lips=True, enable_skin=True, enable_teeth=True, enable_tone_glow=True, enable_dark_circles=True, enable_catchlight=True, catchlight_strength=0.55, enable_hair=True, hair_clarity=0.35, hair_sheen=0.25, enable_relighting=True, relighting_rim=0.25, relighting_tzone=0.20, enable_anti_glare=True, anti_glare_strength=0.50, enable_makeup=True, blush_strength=0.30, eyebrow_boost=0.35, enable_crystal_skin=True, crystal_skin_strength=0.45, enable_glossy_lips=True, lip_gloss=0.40, lip_vibrance=0.25, enable_doll_eye=True, doll_eye_depth=0.45, enable_golden_hour=False, golden_warmth=0.25, golden_bloom=0.20, enable_super_clarity=True, clarity_strength=0.35, enable_deblur=False, deblur_strength=0.35, enable_dehaze=False, dehaze_strength=0.25):
-        """Custom implementation of face pasting with adjustable soft blending mask."""
+    def paste_faces_custom_blend(self, face_helper, upscale, blend_softness, bg_img=None, sharpen_amount=0.0, face_upsample=False, w=0.85, wink_mode=False, eye_enhancement=True, skin_grain=0.15, color_match=True, enable_eyes=True, enable_lips=True, enable_skin=True, enable_teeth=True, enable_tone_glow=True, enable_dark_circles=True, enable_catchlight=True, catchlight_strength=0.55, enable_hair=True, hair_clarity=0.35, hair_sheen=0.25, enable_relighting=True, relighting_rim=0.25, relighting_tzone=0.20, enable_anti_glare=True, anti_glare_strength=0.50, enable_makeup=True, blush_strength=0.30, eyebrow_boost=0.35, enable_crystal_skin=True, crystal_skin_strength=0.45, enable_glossy_lips=True, lip_gloss=0.40, lip_vibrance=0.25, enable_doll_eye=True, doll_eye_depth=0.45, enable_golden_hour=False, golden_warmth=0.25, golden_bloom=0.20, enable_super_clarity=True, clarity_strength=0.35, enable_deblur=False, deblur_strength=0.35, enable_dehaze=False, dehaze_strength=0.25, source_blend=None):
+        """Paste faces; source_blend=None preserves legacy coupling to fidelity w."""
+        source_blend = self._validate_source_blend(source_blend)
+        original_weight = w if source_blend is None else source_blend
         h, w_img, _ = face_helper.input_img.shape
         h_up, w_up = int(h * upscale), int(w_img * upscale)
         
@@ -885,10 +913,10 @@ class LocalAIEnhancerPipeline:
                     # Fallback to Lanczos if no Real-ESRGAN instance loaded or face_upsample is disabled
                     restored_face_up = cv2.resize(restored_face, (raw_face_size[0] * upscale, raw_face_size[1] * upscale), interpolation=cv2.INTER_LANCZOS4)
                 
-                # Blend with original cropped face to preserve original high-resolution details when w > 0
-                if w > 0.0:
+                # Blend source pixels independently of model fidelity when specified.
+                if original_weight > 0.0:
                     original_face_up = cv2.resize(cropped_face, (raw_face_size[0] * upscale, raw_face_size[1] * upscale), interpolation=cv2.INTER_LANCZOS4)
-                    restored_face_up = cv2.addWeighted(original_face_up, w, restored_face_up, 1.0 - w, 0.0)
+                    restored_face_up = cv2.addWeighted(original_face_up, original_weight, restored_face_up, 1.0 - original_weight, 0.0)
                 
                 inv_aff /= upscale
                 inv_aff[:, 2] *= upscale
@@ -898,9 +926,9 @@ class LocalAIEnhancerPipeline:
                 except Exception:
                     inv_restored = None
             else:
-                # Blend with original cropped face to preserve original high-resolution details when w > 0
-                if w > 0.0:
-                    restored_face = cv2.addWeighted(cropped_face, w, restored_face, 1.0 - w, 0.0)
+                # Match the same source contribution at native output scale.
+                if original_weight > 0.0:
+                    restored_face = cv2.addWeighted(cropped_face, original_weight, restored_face, 1.0 - original_weight, 0.0)
                 
                 # Add an offset to inverse affine matrix, for more precise back alignment
                 extra_offset = 0

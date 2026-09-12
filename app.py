@@ -299,7 +299,7 @@ for key, default in [
 # ── Load Pipeline Resource ──────────────────────────────────────────────────────
 @st.cache_resource(show_spinner=False)
 def get_pipeline():
-    return LocalAIEnhancerPipeline()
+    return LocalAIEnhancerPipeline(lazy_load=True)
 
 # The dashboard must not initialise the heavy model while CPU training is live.
 pipeline = None

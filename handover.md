@@ -1944,3 +1944,42 @@ against Kaggle GPU infrastructure using user `suplo6669`.
      `artifacts/kaggle_verify_bundle_v1/verification_output/gpu_verify_report.json` (exit code 0).
    - Phase P3 gate criteria officially SATISFIED.
    - Codebase advances to Phase P4 (Fresh Stage III Fine-Tuning Pilot on Kaggle GPU).
+
+## Task 50 — Enhance diagnostics and deferred UI model loading (2026-09-12)
+
+User chose continued enhance quality work, asked for conclusions, a plan and
+optimization research. Existing source-preserving changes are commit 7a6485d.
+See ENHANCE_OPTIMIZATION_REPORT.md for evidence, citations, scope and next steps.
+
+Implemented independent optional source_blend (None preserves legacy w coupling)
+and optional lazy_load constructor behavior. Streamlit now enables lazy loading;
+Pure avoids CodeFormer allocation and first AI use loads the requested model.
+External constructor default remains eager. Added tools/diagnose_face_detail.py
+with explicit model, validation-only inputs, immutable outputs/source snapshots,
+raw aligned crop metrics, fidelity/blend grid and case selection for recovery.
+
+Nine synthetic cases from three validation references completed across two runs.
+At w=.85, 40% source blend improved median relative LPIPS 22.13% versus Pure but
+lost 1.415 dB PSNR, .0261 SSIM and .0102 ArcFace; worst ArcFace delta -.0791.
+This fails the proposed quality limits. Raw AI also worsened mild-blur crops.
+No stronger preset, model, production warp or training change was selected.
+Local evidence remains ignored under artifacts/enhance_quality_check; first E1
+run status is still running because it was interrupted after seven completed
+cases. e1_blend_remaining completed the final two; e1_combined.json preserves
+both provenances. There is no active diagnostic process at session completion.
+
+Isolated deployment_env uses Python 3.11.9 / torch 2.3.1+cpu / cv2 4.10 / ORT
+1.18.1 on Windows. One actual PTH comparison passed: Pure pixel-identical to
+local; AI mean pixel difference .06392/255, max 3. It is not Linux deployment
+parity. Actual local E0 report records ORT 1.27.0, superseding earlier notes.
+
+Validation: 18 reliability tests in local and target environments; real pipeline
+integration (lazy load, four faces, Pure, non-face SR, discovery) exit 0; Streamlit
+AppTest switches Wink/Natural/Pure successfully. No warmed CPU benchmark yet.
+Synthetic one-pass cubic warp improved round-trip PSNR but remains experimental.
+
+Next: expand/freeze diagnostic data, test parsing-masked detail fusion and real
+warp/mask changes independently, then fixed quality/A-B and CPU/RAM gates.
+Pre-existing Kaggle pilot edits in train_custom.py, tools/test_all.py,
+tools/training_preflight.py, tools/run_kaggle_pilot.py and
+tools/test_pilot_workflow.py were preserved and excluded from this commit.
