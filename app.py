@@ -388,7 +388,7 @@ with st.sidebar:
         default_face_restore = False
         default_wink = False
         default_grain = 0.0
-        default_sharpen = 0.25
+        default_sharpen = 0.0
         default_color = True
         default_eye = False
         default_lip = False
@@ -413,11 +413,11 @@ with st.sidebar:
         default_golden_hour = False
         default_golden_warmth = 0.0
         default_super_clarity = True
-        default_clarity_val = 0.45
-        default_deblur = True
-        default_deblur_val = 0.35
-        default_dehaze = True
-        default_dehaze_val = 0.25
+        default_clarity_val = 0.35
+        default_deblur = False
+        default_deblur_val = 0.0
+        default_dehaze = False
+        default_dehaze_val = 0.0
         default_bokeh = 0.0
         default_lut = "None"
         default_chromatic = False
@@ -588,31 +588,31 @@ with st.sidebar:
         default_face_restore = True
         pipeline_preset_mode = 'Game / Anime Character'
     else: # Natural Likeness
-        default_w = 0.65
+        default_w = 0.85
         default_upscale = 2
-        default_wink = True
+        default_wink = False
         default_grain = 0.1
-        default_sharpen = 0.15
+        default_sharpen = 0.0
         default_color = True
-        default_eye = True
-        default_lip = True
-        default_skin = True
-        default_teeth = True
-        default_tone_glow = True
-        default_dark_circles = True
-        default_catchlight = True
-        default_hair = True
+        default_eye = False
+        default_lip = False
+        default_skin = False
+        default_teeth = False
+        default_tone_glow = False
+        default_dark_circles = False
+        default_catchlight = False
+        default_hair = False
         default_relighting = False
-        default_anti_glare = True
+        default_anti_glare = False
         default_makeup = False
         default_blush = 0.0
         default_eyebrow = 0.20
-        default_crystal_skin = True
+        default_crystal_skin = False
         default_crystal_skin_val = 0.35
         default_glossy_lips = False
         default_lip_gloss = 0.0
         default_lip_vibrance = 0.0
-        default_doll_eye = True
+        default_doll_eye = False
         default_doll_eye_depth = 0.30
         default_golden_hour = False
         default_golden_warmth = 0.0
@@ -620,13 +620,13 @@ with st.sidebar:
         default_clarity_val = 0.35
         default_deblur = False
         default_deblur_val = 0.0
-        default_dehaze = True
+        default_dehaze = False
         default_dehaze_val = 0.20
         default_bokeh = 0.0
         default_lut = "None"
         default_chromatic = False
         default_detector = "retinaface_mobile0.25"
-        default_face_restore = True
+        default_face_restore = False
         pipeline_preset_mode = 'Custom'
 
     # Discovery must work before the heavy pipeline is initialized.
@@ -687,7 +687,7 @@ with st.sidebar:
         )
     else:
         w_val = 1.0
-        st.caption("Bỏ qua CodeFormer. Mức thay đổi chi tiết phụ thuộc bộ upscale và các hiệu ứng đã chọn.")
+        st.caption("Bỏ qua CodeFormer, tăng độ rõ của chi tiết sẵn có. Upscale và hiệu ứng vẫn có thể đổi ảnh; phóng lớn không tự khôi phục chi tiết đã mất.")
 
     upscale_val = st.select_slider(
         "Output Resolution Scale",
@@ -710,7 +710,7 @@ with st.sidebar:
         color_match = st.checkbox("Auto Skin Tone Alignment", value=default_color)
 
         st.markdown("**🔬 Razor-Sharp & Super-Clarity Engine**")
-        enable_super_clarity = st.checkbox("🔬 Laplacian Multi-Scale Super-Clarity", value=default_super_clarity, help="Tăng nét vi chi tiết đa tầng (lỗ chân lông, sợi mi, kẽ tóc) không quầng sáng")
+        enable_super_clarity = st.checkbox("🔬 Laplacian Multi-Scale Super-Clarity", value=default_super_clarity, help="Tăng độ rõ của chi tiết sẵn có, hạn chế nhiễu và viền sáng; không tạo lại chi tiết đã mất.")
         clarity_val = st.slider("Micro-Texture Boost", 0.0, 1.0, default_clarity_val, 0.05) if enable_super_clarity else 0.0
         enable_deblur = st.checkbox("🌊 Optical De-Blur (Khử Nhòe Rung Tay & Out Nét)", value=default_deblur, help="Tái tạo viền nét sắc nhọn cho ảnh mờ out nét")
         deblur_val = st.slider("De-Blur Strength", 0.0, 1.0, default_deblur_val, 0.05) if enable_deblur else 0.0

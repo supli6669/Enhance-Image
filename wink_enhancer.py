@@ -1278,9 +1278,9 @@ class WinkQualityEnhancer:
 
     def apply_laplacian_pyramid_clarity(self, img: np.ndarray, strength: float = 0.40) -> np.ndarray:
         """
-        Multi-Scale Laplacian Pyramid Super-Clarity:
-        Decomposes image into 3 frequency octaves (high, medium, low) and enhances
-        micro-textures (pores, eyelashes, fabric, hair follicles) without halo clipping artifacts.
+        Boost existing luminance detail with bounded, noise-cored increments.
+        Preserve the input base and channel differences instead of independently
+        sharpening color channels or compressing the original pyramid detail.
         """
         if strength <= 0.0 or img is None:
             return img
@@ -1291,26 +1291,33 @@ class WinkQualityEnhancer:
                 return img
 
             img_f = img.astype(np.float32)
+            luminance = cv2.cvtColor(img_f, cv2.COLOR_BGR2GRAY)
             
             # Level 1
-            g1 = cv2.pyrDown(img_f)
+            g1 = cv2.pyrDown(luminance)
             g1_up = cv2.pyrUp(g1, dstsize=(w, h))
-            l0 = img_f - g1_up # Highest frequency (micro-textures: pores, eyelashes)
+            l0 = luminance - g1_up
 
             # Level 2
             g2 = cv2.pyrDown(g1)
             g2_up = cv2.pyrUp(g2, dstsize=(g1.shape[1], g1.shape[0]))
             l1 = g1 - g2_up # Medium frequency (hair strands, lip ridges)
 
-            # Soft non-linear coring (boost fine details without harsh halo blowouts)
-            l0_boost = l0 * (1.0 + strength * 1.8) / (1.0 + np.abs(l0) / 160.0)
-            l1_boost = l1 * (1.0 + strength * 1.2) / (1.0 + np.abs(l1) / 180.0)
+            # Suppress small fluctuations rather than amplifying flat-area noise.
+            fine = np.sign(l0) * np.maximum(np.abs(l0) - 1.5, 0.0)
+            medium = np.sign(l1) * np.maximum(np.abs(l1) - 1.5, 0.0)
+            amount = float(np.clip(strength, 0.0, 1.0))
+            delta = amount * (0.8 * fine + 0.4 * cv2.pyrUp(medium, dstsize=(w, h)))
+            delta = np.clip(delta, -16.0 * amount, 16.0 * amount)
 
-            # Pyramid Reconstruction
-            recon1 = g2_up + l1_boost
-            recon0 = cv2.pyrUp(recon1, dstsize=(w, h)) + l0_boost
-
-            return np.clip(recon0, 0, 255).astype(np.uint8)
+            # Keep edges inside local luminance bounds and avoid channel clipping.
+            kernel = np.ones((3, 3), np.uint8)
+            lower = np.maximum(cv2.erode(luminance, kernel) - luminance, -img_f.min(axis=2))
+            upper = np.minimum(cv2.dilate(luminance, kernel) - luminance, 255.0 - img_f.max(axis=2))
+            delta = np.clip(delta, lower, upper)
+            # Round the shared increment once: rounding each output channel can
+            # break color differences at half-integer ties (round-to-even).
+            return (img_f + np.rint(delta)[:, :, None]).clip(0, 255).astype(np.uint8)
         except Exception as e:
             print(f"[WinkEnhancer] Laplacian clarity warning: {e}")
             return img
@@ -1402,7 +1409,11 @@ class WinkQualityEnhancer:
             l_contrast = clahe.apply(l_dehazed)
 
             dehazed_lab = cv2.merge([l_contrast, a.astype(np.uint8), b.astype(np.uint8)])
-            return cv2.cvtColor(dehazed_lab, cv2.COLOR_LAB2BGR)
+            dehazed = cv2.cvtColor(dehazed_lab, cv2.COLOR_LAB2BGR)
+            # CLAHE itself has a nonzero effect even as strength approaches zero.
+            # Blend the complete effect so the control also scales that contrast.
+            amount = float(np.clip(strength, 0.0, 1.0))
+            return cv2.addWeighted(img, 1.0 - amount, dehazed, amount, 0)
         except Exception as e:
             print(f"[WinkEnhancer] De-haze warning: {e}")
             return img

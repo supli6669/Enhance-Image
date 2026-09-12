@@ -60,6 +60,21 @@ def main():
     output_dir.mkdir(parents=True, exist_ok=True)
     cv2.imwrite(str(output_dir / 'face.png'), res_face)
 
+    # Exercise the source-preserving preset on a real portrait through the public
+    # API, at the same scale as the UI. The reference here is input fidelity,
+    # not a claim that this blurry fixture is sharp ground truth.
+    natural = pipeline.process_image(img_face, preset_mode='Pure Quality', upscale=2)
+    reference = cv2.resize(img_face, (img_face.shape[1] * 2, img_face.shape[0] * 2),
+                           interpolation=cv2.INTER_LANCZOS4)
+    assert natural.shape == reference.shape
+    delta = natural.astype(np.int16) - reference.astype(np.int16)
+    assert np.abs(delta).max() <= 6, 'Default clarity must stay bounded'
+    assert np.any(delta), 'Real portrait must exercise detail enhancement'
+    np.testing.assert_array_equal(delta[:, :, 0], delta[:, :, 1])
+    np.testing.assert_array_equal(delta[:, :, 1], delta[:, :, 2])
+    cv2.imwrite(str(output_dir / 'natural.png'), natural)
+    print('  [OK] Natural portrait preserves color differences and bounds detail changes')
+
     # -------------------------------------------------------------
     # TEST 2: Universal Non-Face Image (Scenery/Pattern with 0 faces)
     # -------------------------------------------------------------

@@ -24,6 +24,22 @@ This project is configured to run out-of-the-box both **locally** on your CPU/GP
 - **Multiple Face Detectors:** Choose between highly accurate detectors (RetinaFace) or faster detectors for groups (YOLOv5).
 - **Dark Mode UI:** Designed with custom glassmorphism and modern Outfit typography.
 
+## Source-preserving enhancement (2026-09-12)
+
+The UI's Pure Quality and Natural Likeness presets now skip face reconstruction,
+beauty effects, dehaze and assumed-kernel deconvolution by default. They use one
+bounded luminance clarity pass with Lanczos resizing. Clarity preserves channel
+differences, suppresses tiny fluctuations and limits edge overshoot; dehaze now
+scales its complete contrast effect with the strength control. Direct pipeline
+calls default to `w=0.85`, `wink_mode=False`, and `enable_dehaze=False`; face
+reconstruction remains available and enabled for those direct calls.
+
+These defaults favor resemblance and modest sharpening of existing detail.
+They cannot recover detail absent from the input. Restart the app to reload the
+image-processing modules, then reselect a preset; saved custom presets retain
+their previous settings. Run `python tools/test_reliability.py` for the filter
+and preset regressions, and `python tools/test_pipeline.py` for model integration.
+
 ## Reliability recovery (2026-09-07)
 
 The runtime now honors model selection and shares processing settings across
