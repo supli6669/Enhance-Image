@@ -63,3 +63,11 @@ sharpening with a stronger Pure default; see SHARPENING_UPDATE.md.
 - [x] Verify synthetic edges, flat fields/noise, color preservation, real model
   integration, and warmed CPU timing.
 - [ ] Complete broad restoration/A-B/production CPU and RAM gates described above.
+
+## Detailed structure-preserving sharpening plan — 2026-09-13
+
+User requested a detailed plan to sharpen images without deforming them.
+See DETAIL_PRESERVING_SHARPEN_PLAN.md for P0–P6, data separation, regional maps,
+conditional parsing/deblur, frozen acceptance criteria and runtime verification.
+This is planning only. Begin with P0–P2; no new algorithm or default is changed
+by this documentation update. Existing failed quality gates remain open.

@@ -2017,3 +2017,11 @@ Version-label correction: HF API confirmed runtime commit 922a7cf was RUNNING,
 but app.py still displayed the hardcoded v3.0.1 / 2026.09.07 label. Updated both
 existing UI locations through APP_VERSION to v3.0.2 (Build 2026.09.13). This is
 a label-only correction; the sharpening implementation was already deployed.
+
+2026-09-13 detailed planning request: added DETAIL_PRESERVING_SHARPEN_PLAN.md.
+P0–P2 freeze data/baseline and test regional noise/detail maps with one luminance
+increment; P3/P4 parsing and deblur are conditional, followed by independent
+quality/CPU/A-B gates and release SHA verification. Prior 12-image checks are
+explicitly treated as observed regression data. No algorithm or default changed
+in this planning task. Acceptance targets are proposed and must be locked before
+candidate evaluation, not relaxed after failure.
