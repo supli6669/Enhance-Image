@@ -19,6 +19,7 @@ jobs:
       - run: pip install torch==2.3.1 torchvision==0.18.1 --index-url https://download.pytorch.org/whl/cpu
       - run: pip install -r requirements.txt
       - run: python tools/test_reliability.py
+      - run: python tools/test_regional_sharpen.py
       - run: python tools/test_workflow_guards.py
       - run: python tools/test_dataset_review.py
       - run: python tools/test_experimental_split.py

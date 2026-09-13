@@ -71,3 +71,11 @@ See DETAIL_PRESERVING_SHARPEN_PLAN.md for P0–P6, data separation, regional map
 conditional parsing/deblur, frozen acceptance criteria and runtime verification.
 This is planning only. Begin with P0–P2; no new algorithm or default is changed
 by this documentation update. Existing failed quality gates remain open.
+
+P0–P2 experiment update: froze 24 development / 24 check / 55 reserve images,
+excluding 19 previously observed references. Local noise/structure maps and
+three experimental filters implemented outside production. Pixel screening and
+LPIPS follow-up each completed 168 development cases; candidates failed the
+perceptual gates. Five synthetic tests pass and are included in CPU CI. See
+REGIONAL_SHARPEN_PROGRESS.md. Check-set evaluation and promotion remain pending;
+do not claim P2's quality exit criterion passed. Coverage annotation remains open.

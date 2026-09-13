@@ -2025,3 +2025,23 @@ quality/CPU/A-B gates and release SHA verification. Prior 12-image checks are
 explicitly treated as observed regression data. No algorithm or default changed
 in this planning task. Acceptance targets are proposed and must be locked before
 candidate evaluation, not relaxed after failure.
+
+## Regional sharpening development experiment
+
+User requested continuing the detailed plan. Added prepare_sharpen_experiment,
+regional_sharpen, evaluate_regional_sharpen and five dedicated synthetic tests.
+Frozen private artifacts/regional_sharpen_v1 has 24 development, 24 untouched
+check and 55 reserve references; 19 observed references excluded. Real-image
+coverage remains portrait-only and is not identity-reviewed. CI runs the new tests.
+
+Both long evaluations finished despite turn interruptions: development_pixel
+and development_lpips reports are completed with 168 cases each. Guided variant
+failed pixel screening; both other variants at .50 failed LPIPS improvement on
+mild blur and noise/JPEG. They protect clean images by reducing processing but
+do not deliver the desired extra clarity. See REGIONAL_SHARPEN_PROGRESS.md for
+numbers and the proposed next bounded source-only blur experiment. No candidate
+was promoted; app.py/pipeline.py/wink_enhancer.py remain unchanged. No ArcFace,
+check-set/A-B/CPU gate was run or claimed passed for these rejected candidates.
+
+Preserve unrelated Kaggle edits and the newly observed .gitignore modification;
+neither belongs to this experiment's commit. No new training run was started.
