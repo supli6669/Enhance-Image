@@ -2045,3 +2045,22 @@ check-set/A-B/CPU gate was run or claimed passed for these rejected candidates.
 
 Preserve unrelated Kaggle edits and the newly observed .gitignore modification;
 neither belongs to this experiment's commit. No new training run was started.
+
+## Bounded deblur investigation
+
+Continued conditional P4 with tools/bounded_deblur.py and a frozen-development
+runner. Four fixed Gaussian inverse filters screened on 168 cases; selected
+sigma .9/reg .02 LPIPS follow-up completed 168/168 in perceptual_v2. Rejected:
+blur LPIPS improvements .80–3.36% miss 5%; clean absolute LPIPS +.00575;
+noise/JPEG LPIPS +.72%. No production default, UI version or model changed.
+See BOUNDED_DEBLUR_PROGRESS.md for controls, results and next decision gates.
+
+The old isolated Python 3.11 environment is absent. Baseline and candidates were
+rerun together using .venv Python 3.13.7/OpenCV 5.0.0; deployment validation remains
+pending. First LPIPS run failed on infinite exact-match PSNR JSON serialization;
+fixed with explicit null/psnr_exact_match flag and finite-pair coverage. Its failed
+directory remains. Six deblur tests plus five regional tests pass; deblur test
+added to CI. Check24 remains untouched, identity disabled, no A/B/CPU gate claimed.
+Artifacts: artifacts/bounded_deblur_v1/{screening,perceptual_v2}/report.json.
+Preserve unrelated Kaggle/.gitignore changes. Use explicit PowerShell shell path
+if tool default process creation fails; no new training run was started.

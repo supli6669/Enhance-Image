@@ -79,3 +79,10 @@ LPIPS follow-up each completed 168 development cases; candidates failed the
 perceptual gates. Five synthetic tests pass and are included in CPU CI. See
 REGIONAL_SHARPEN_PROGRESS.md. Check-set evaluation and promotion remain pending;
 do not claim P2's quality exit criterion passed. Coverage annotation remains open.
+
+Conditional P4 update: implemented bounded source-only Gaussian inverse filtering
+outside production. Four fixed configurations screened on 168 development cases;
+LPIPS follow-up for sigma .9/reg .02 completed another 168 cases. Blur improvements
+of .80–3.36% miss the 5% gate; clean LPIPS +.00575 and noise/JPEG regression reject
+promotion. Six deblur tests and five regional tests pass. See
+BOUNDED_DEBLUR_PROGRESS.md. Check data, identity/A-B and CPU/RAM gates remain open.

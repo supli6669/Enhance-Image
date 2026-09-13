@@ -20,6 +20,7 @@ jobs:
       - run: pip install -r requirements.txt
       - run: python tools/test_reliability.py
       - run: python tools/test_regional_sharpen.py
+      - run: python tools/test_bounded_deblur.py
       - run: python tools/test_workflow_guards.py
       - run: python tools/test_dataset_review.py
       - run: python tools/test_experimental_split.py
