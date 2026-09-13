@@ -304,7 +304,7 @@ def get_pipeline():
 # The dashboard must not initialise the heavy model while CPU training is live.
 pipeline = None
 
-APP_VERSION = "v3.0.1 (Build 2026.09.07)"
+APP_VERSION = "v3.0.2 (Build 2026.09.13)"
 
 # ── Sidebar Controls (Minimalist & Clean) ───────────────────────────────────────
 with st.sidebar:

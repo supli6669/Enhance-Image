@@ -2012,3 +2012,8 @@ values regressed. No peak RAM or Linux latency claim.
 Artifacts: adaptive_sharpen_final, adaptive_cpu.json, adaptive_reliability_v2.log,
 adaptive_integration.log under artifacts/enhance_quality_check. Earlier reports
 are retained, including the pre-halo-fix check. Kaggle pilot edits remain separate.
+
+Version-label correction: HF API confirmed runtime commit 922a7cf was RUNNING,
+but app.py still displayed the hardcoded v3.0.1 / 2026.09.07 label. Updated both
+existing UI locations through APP_VERSION to v3.0.2 (Build 2026.09.13). This is
+a label-only correction; the sharpening implementation was already deployed.
