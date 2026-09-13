@@ -1983,3 +1983,32 @@ warp/mask changes independently, then fixed quality/A-B and CPU/RAM gates.
 Pre-existing Kaggle pilot edits in train_custom.py, tools/test_all.py,
 tools/training_preflight.py, tools/run_kaggle_pilot.py and
 tools/test_pilot_workflow.py were preserved and excluded from this commit.
+
+## Task 51 — Stronger source-scale sharpening (2026-09-13)
+
+User emphasized that the app must sharpen images, rejecting near-unchanged
+results. Added apply_adaptive_sharpen in wink_enhancer.py: two luminance detail
+bands in source coordinates, diagonal noise estimate, coring, noise-dependent
+gain and local bounds before/after resize. Shared integer increments preserve
+channel differences. The final output clamp fixes a one-level halo caught by
+the new edge test. No generic exception fallback in the new function.
+
+Non-AI Lanczos processing uses it unless dehaze/deblur is explicitly enabled;
+the old output clarity pass is skipped in that branch. UI Pure strength is .50,
+Natural .35; labels are Adaptive Sharpness / Sharpness Strength. Existing AI,
+neural SR and explicit deblur paths retain output-stage clarity.
+
+See SHARPENING_UPDATE.md for full metrics and limitations. Final 60-case check
+completed on 12 disjoint validation references, with source/code hashes and
+same-size outputs. Soft/severe/motion PSNR improved; LPIPS improved slightly in
+those groups but worsened for noise and clean inputs. Identity coverage 60/60,
+worst paired ArcFace -.0033. Synthetic edge slope 21 -> 26 without overshoot.
+This is stronger sharpening, NOT completion of missing-detail reconstruction or
+the prior broad quality gate. CPU median improved at 2x/4x but 1x and some p95
+values regressed. No peak RAM or Linux latency claim.
+
+23 reliability tests, preset-switch AppTest and real pipeline integration passed in deployment_env
+(Python 3.11/OpenCV 4.10). Fixed validation tool: tools/validate_sharpening.py.
+Artifacts: adaptive_sharpen_final, adaptive_cpu.json, adaptive_reliability_v2.log,
+adaptive_integration.log under artifacts/enhance_quality_check. Earlier reports
+are retained, including the pre-halo-fix check. Kaggle pilot edits remain separate.

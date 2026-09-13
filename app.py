@@ -413,7 +413,7 @@ with st.sidebar:
         default_golden_hour = False
         default_golden_warmth = 0.0
         default_super_clarity = True
-        default_clarity_val = 0.35
+        default_clarity_val = 0.50
         default_deblur = False
         default_deblur_val = 0.0
         default_dehaze = False
@@ -710,8 +710,8 @@ with st.sidebar:
         color_match = st.checkbox("Auto Skin Tone Alignment", value=default_color)
 
         st.markdown("**🔬 Razor-Sharp & Super-Clarity Engine**")
-        enable_super_clarity = st.checkbox("🔬 Laplacian Multi-Scale Super-Clarity", value=default_super_clarity, help="Tăng độ rõ của chi tiết sẵn có, hạn chế nhiễu và viền sáng; không tạo lại chi tiết đã mất.")
-        clarity_val = st.slider("Micro-Texture Boost", 0.0, 1.0, default_clarity_val, 0.05) if enable_super_clarity else 0.0
+        enable_super_clarity = st.checkbox("🔬 Adaptive Sharpness", value=default_super_clarity, help="Làm nét chi tiết ở kích thước ảnh gốc trước khi phóng lớn, giảm lực theo mức nhiễu. Khi dùng AI hoặc hiệu ứng khử mờ, tăng nét nhẹ ở đầu ra.")
+        clarity_val = st.slider("Sharpness Strength", 0.0, 1.0, default_clarity_val, 0.05) if enable_super_clarity else 0.0
         enable_deblur = st.checkbox("🌊 Optical De-Blur (Khử Nhòe Rung Tay & Out Nét)", value=default_deblur, help="Tái tạo viền nét sắc nhọn cho ảnh mờ out nét")
         deblur_val = st.slider("De-Blur Strength", 0.0, 1.0, default_deblur_val, 0.05) if enable_deblur else 0.0
         enable_dehaze = st.checkbox("✨ Crystal De-Haze & Deep Contrast (Khử Màng Sương Mờ)", value=default_dehaze, help="Khử lớp màng mờ xám giúp ảnh trong veo và tương phản sâu")

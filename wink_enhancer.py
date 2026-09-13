@@ -1276,6 +1276,49 @@ class WinkQualityEnhancer:
             print(f"[WinkEnhancer] Golden hour glow warning: {e}")
             return img
 
+    def apply_adaptive_sharpen(self, img: np.ndarray, strength: float = 0.5, upscale: int = 1) -> np.ndarray:
+        """Sharpen source-scale luminance edges, then resize the shared increment.
+
+        Noise coring and local extrema limit amplification and overshoot. Keeping
+        the increment separate from BGR resizing preserves channel differences.
+        This filter strengthens observed edges; it does not reconstruct faces.
+        """
+        amount = float(strength)
+        if not np.isfinite(amount) or not 0 <= amount <= 1:
+            raise ValueError('strength must be finite and between 0 and 1')
+        if not isinstance(upscale, (int, np.integer)) or upscale < 1:
+            raise ValueError('upscale must be a positive integer')
+        h, w = img.shape[:2]
+        output = cv2.resize(img, (w * upscale, h * upscale), interpolation=cv2.INTER_LANCZOS4) if upscale != 1 else img
+        if amount == 0 or min(h, w) < 4:
+            return output
+
+        source = img.astype(np.float32)
+        luminance = cv2.cvtColor(source, cv2.COLOR_BGR2GRAY)
+        # Diagonal high-pass response: its kernel has unit noise variance gain.
+        diagonal = cv2.filter2D(luminance, -1, np.array([[1, -1], [-1, 1]], np.float32) / 2)
+        noise = float(np.median(np.abs(diagonal[1:-1, 1:-1]))) / 0.6745
+        smooth = cv2.GaussianBlur(luminance, (0, 0), 0.7)
+        detail = smooth - cv2.GaussianBlur(smooth, (0, 0), 1.2)
+        fine = luminance - smooth
+        detail = np.sign(detail) * np.maximum(np.abs(detail) - max(0.25, noise * 0.35), 0)
+        fine = np.sign(fine) * np.maximum(np.abs(fine) - max(0.5, noise * 1.5), 0)
+        delta = amount / (1 + noise) * (2.8 * detail + 0.8 * fine)
+        delta = np.clip(delta, -24 * amount, 24 * amount)
+        kernel = np.ones((3, 3), np.uint8)
+        delta = np.clip(delta, cv2.erode(luminance, kernel) - luminance,
+                        cv2.dilate(luminance, kernel) - luminance)
+        if upscale != 1:
+            delta = cv2.resize(delta, (w * upscale, h * upscale), interpolation=cv2.INTER_LINEAR)
+        out_f = output.astype(np.float32)
+        # Interpolating a bounded increment can still leak onto a flat plateau;
+        # constrain it again in output coordinates to prevent a one-pixel halo.
+        out_y = cv2.cvtColor(out_f, cv2.COLOR_BGR2GRAY)
+        lower = np.maximum(cv2.erode(out_y, kernel) - out_y, -out_f.min(axis=2))
+        upper = np.minimum(cv2.dilate(out_y, kernel) - out_y, 255 - out_f.max(axis=2))
+        delta = np.clip(delta, lower, upper)
+        return (out_f + np.rint(delta)[:, :, None]).astype(np.uint8)
+
     def apply_laplacian_pyramid_clarity(self, img: np.ndarray, strength: float = 0.40) -> np.ndarray:
         """
         Boost existing luminance detail with bounded, noise-cored increments.

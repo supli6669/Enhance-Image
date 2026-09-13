@@ -95,6 +95,62 @@ class ClarityFidelityTests(unittest.TestCase):
             self.assertTrue(settings['default_super_clarity'])
 
 
+class AdaptiveSharpenTests(unittest.TestCase):
+    def setUp(self):
+        self.enhancer = WinkQualityEnhancer()
+
+    def test_soft_edge_is_sharper_than_previous_default_without_halos(self):
+        sharp = np.full((97, 99, 3), (50, 70, 90), np.uint8)
+        sharp[:, 50:] = (170, 190, 210)
+        soft = cv2.GaussianBlur(sharp, (0, 0), 1.2)
+        original = soft.copy()
+        base = cv2.resize(soft, (198, 194), interpolation=cv2.INTER_LANCZOS4)
+        old = self.enhancer.apply_laplacian_pyramid_clarity(base, .35)
+        new = self.enhancer.apply_adaptive_sharpen(soft, .5, upscale=2)
+        self.assertGreater(np.max(np.diff(new[80, :, 1].astype(float))),
+                           np.max(np.diff(old[80, :, 1].astype(float))))
+        np.testing.assert_array_equal(soft, original)
+        delta = new.astype(int) - base.astype(int)
+        np.testing.assert_array_equal(delta[:, :, 0], delta[:, :, 1])
+        np.testing.assert_array_equal(delta[:, :, 1], delta[:, :, 2])
+        for c in range(3):
+            self.assertGreaterEqual(new[:, :, c].min(), sharp[:, :, c].min())
+            self.assertLessEqual(new[:, :, c].max(), sharp[:, :, c].max())
+
+    def test_flat_fields_and_already_sharp_step_are_unchanged(self):
+        for color in ((0, 0, 255), (60, 100, 150), (255, 255, 255)):
+            image = np.full((65, 67, 3), color, np.uint8)
+            np.testing.assert_array_equal(self.enhancer.apply_adaptive_sharpen(image, 1), image)
+        step = np.full((65, 67, 3), 60, np.uint8)
+        step[:, 33:] = 190
+        np.testing.assert_array_equal(self.enhancer.apply_adaptive_sharpen(step, 1), step)
+
+    def test_flat_noise_is_not_materially_amplified(self):
+        rng = np.random.default_rng(19)
+        for sigma in (2, 8):
+            image = np.clip(120 + rng.normal(0, sigma, (129, 131, 3)), 0, 255).astype(np.uint8)
+            output = self.enhancer.apply_adaptive_sharpen(image, .5)
+            self.assertLessEqual(output.std(), image.std() * 1.03)
+
+    def test_disabled_and_small_images_keep_resize_behavior(self):
+        for shape in ((1, 1, 3), (2, 3, 3), (65, 67, 3)):
+            image = np.random.default_rng(7).integers(0, 256, shape, dtype=np.uint8)
+            for scale in (1, 2, 4):
+                output = self.enhancer.apply_adaptive_sharpen(image, 0, upscale=scale)
+                reference = cv2.resize(image, (shape[1] * scale, shape[0] * scale), interpolation=cv2.INTER_LANCZOS4)
+                np.testing.assert_array_equal(output, reference)
+                self.assertEqual(self.enhancer.apply_adaptive_sharpen(image, .5, upscale=scale).shape, reference.shape)
+
+    def test_invalid_controls_fail_explicitly(self):
+        image = np.zeros((32, 32, 3), np.uint8)
+        for value in (-1, 1.1, np.nan, np.inf):
+            with self.assertRaises(ValueError):
+                self.enhancer.apply_adaptive_sharpen(image, value)
+        for value in (0, -1, 1.5):
+            with self.assertRaises(ValueError):
+                self.enhancer.apply_adaptive_sharpen(image, upscale=value)
+
+
 class SourceBlendTests(unittest.TestCase):
     def test_public_api_forwards_blend_without_changing_model_fidelity(self):
         pipe = LocalAIEnhancerPipeline.__new__(LocalAIEnhancerPipeline)

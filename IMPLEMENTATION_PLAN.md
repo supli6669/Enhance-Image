@@ -48,3 +48,18 @@ work. Evidence and next experiments: ENHANCE_OPTIMIZATION_REPORT.md.
 - [ ] Run fixed quality evaluation and blinded A/B before selecting a new default.
 
 Training and final model promotion still follow PROJECT_IMPROVEMENT_PLAN.md.
+
+## User priority: visible sharpening — 2026-09-13
+
+The user explicitly rejected nearly unchanged outputs and reiterated the need
+to sharpen images. The bounded implementation scope is source-scale adaptive
+sharpening with a stronger Pure default; see SHARPENING_UPDATE.md.
+
+- [x] Compare source-scale filters on development references and select one.
+- [x] Implement noise-cored luminance detail before upscaling, with output halo
+  constraints and no extra default face reconstruction.
+- [x] Validate on 12 separate references / 60 cases; record both improvements
+  and regressions. This does not pass the broader restoration-quality gate.
+- [x] Verify synthetic edges, flat fields/noise, color preservation, real model
+  integration, and warmed CPU timing.
+- [ ] Complete broad restoration/A-B/production CPU and RAM gates described above.

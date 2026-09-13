@@ -537,13 +537,18 @@ class LocalAIEnhancerPipeline:
 
         if not face_restore or preset_mode == 'Pure Quality':
             self._report_progress("enhancement", 0.3, "Enhancing image without face reconstruction...")
+            source_clarity_applied = False
             if bg_img is not None:
                 enhanced_img = bg_img
             elif self.use_re_onnx and bg_upsampler == 'realesrgan':
                 enhanced_img = self.enhance_realesrgan_onnx(img, upscale, model_path=bg_upsampler_model)
             else:
-                h, w_img, _ = img.shape
-                enhanced_img = cv2.resize(img, (w_img * upscale, h * upscale), interpolation=cv2.INTER_LANCZOS4)
+                if enable_super_clarity and clarity_strength > 0 and not enable_dehaze and not enable_deblur:
+                    enhanced_img = self.wink_enhancer.apply_adaptive_sharpen(img, strength=clarity_strength, upscale=upscale)
+                    source_clarity_applied = True
+                else:
+                    h, w_img, _ = img.shape
+                    enhanced_img = cv2.resize(img, (w_img * upscale, h * upscale), interpolation=cv2.INTER_LANCZOS4)
 
             self._report_progress("enhancement", 0.7, "Enhancing existing image detail...")
             if hasattr(self, 'wink_enhancer'):
@@ -551,7 +556,7 @@ class LocalAIEnhancerPipeline:
                     enhanced_img = self.wink_enhancer.apply_dehaze_and_dynamic_contrast(enhanced_img, strength=dehaze_strength)
                 if enable_deblur and deblur_strength > 0.0:
                     enhanced_img = self.wink_enhancer.apply_deblur_deconvolution(enhanced_img, strength=deblur_strength)
-                if enable_super_clarity and clarity_strength > 0.0:
+                if enable_super_clarity and clarity_strength > 0.0 and not source_clarity_applied:
                     enhanced_img = self.wink_enhancer.apply_laplacian_pyramid_clarity(enhanced_img, strength=clarity_strength)
                 if sharpen_amount > 0.0:
                     enhanced_img = self.wink_enhancer.unsharp_mask(enhanced_img, amount=sharpen_amount)

@@ -26,9 +26,17 @@ This project is configured to run out-of-the-box both **locally** on your CPU/GP
 
 ## Source-preserving enhancement (2026-09-12)
 
+Update 2026-09-13: Pure Quality now defaults to **Adaptive Sharpness, strength
+0.50**. With Lanczos and no dehaze/deblur, the filter extracts edge detail at
+the source resolution before upscaling, attenuates its response to estimated
+noise, and constrains output edges to avoid added halos. Natural Likeness uses
+0.35. Reselect Pure after the app updates to load the new default. This is a
+stronger sharpening path, not a new model or recovery of missing face detail.
+See [measured results and limitations](SHARPENING_UPDATE.md).
+
 The UI's Pure Quality and Natural Likeness presets now skip face reconstruction,
 beauty effects, dehaze and assumed-kernel deconvolution by default. They use one
-bounded luminance clarity pass with Lanczos resizing. Clarity preserves channel
+bounded luminance sharpening pass with Lanczos resizing. Sharpening preserves channel
 differences, suppresses tiny fluctuations and limits edge overshoot; dehaze now
 scales its complete contrast effect with the strength control. Direct pipeline
 calls default to `w=0.85`, `wink_mode=False`, and `enable_dehaze=False`; face

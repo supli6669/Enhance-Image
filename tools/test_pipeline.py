@@ -65,12 +65,12 @@ def main():
     # Exercise the source-preserving preset on a real portrait through the public
     # API, at the same scale as the UI. The reference here is input fidelity,
     # not a claim that this blurry fixture is sharp ground truth.
-    natural = pipeline.process_image(img_face, preset_mode='Pure Quality', upscale=2)
+    natural = pipeline.process_image(img_face, preset_mode='Pure Quality', upscale=2, clarity_strength=0.5)
     reference = cv2.resize(img_face, (img_face.shape[1] * 2, img_face.shape[0] * 2),
                            interpolation=cv2.INTER_LANCZOS4)
     assert natural.shape == reference.shape
     delta = natural.astype(np.int16) - reference.astype(np.int16)
-    assert np.abs(delta).max() <= 6, 'Default clarity must stay bounded'
+    assert np.abs(delta).max() <= 12, 'Default adaptive sharpness must stay bounded'
     assert np.any(delta), 'Real portrait must exercise detail enhancement'
     np.testing.assert_array_equal(delta[:, :, 0], delta[:, :, 1])
     np.testing.assert_array_equal(delta[:, :, 1], delta[:, :, 2])
