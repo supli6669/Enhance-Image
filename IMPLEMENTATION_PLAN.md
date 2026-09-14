@@ -86,3 +86,8 @@ LPIPS follow-up for sigma .9/reg .02 completed another 168 cases. Blur improveme
 of .80–3.36% miss the 5% gate; clean LPIPS +.00575 and noise/JPEG regression reject
 promotion. Six deblur tests and five regional tests pass. See
 BOUNDED_DEBLUR_PROGRESS.md. Check data, identity/A-B and CPU/RAM gates remain open.
+
+2026-09-14: scalar edge-width router audit detects 6/120 development blur variants
+while triggering one noisy control. Do not wire this rule into production.
+BLUR_ROUTING_RESEARCH.md specifies matched/mismatched PSF feasibility before
+blind estimation and adds the outstanding real-blur coverage requirement.

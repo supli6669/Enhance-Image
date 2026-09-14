@@ -2064,3 +2064,11 @@ added to CI. Check24 remains untouched, identity disabled, no A/B/CPU gate claim
 Artifacts: artifacts/bounded_deblur_v1/{screening,perceptual_v2}/report.json.
 Preserve unrelated Kaggle/.gitignore changes. Use explicit PowerShell shell path
 if tool default process creation fails; no new training run was started.
+
+2026-09-14 follow-up: audited current edge-width routing with leave-one-source-out
+development folds (all seven variants grouped). Threshold above training clean/
+noise maximum detects only 6/120 blur cases and incorrectly triggers 1/24 noise
+cases. Reject this scalar conservative router; not an independent check result.
+Added tools/audit_blur_routing.py and BLUR_ROUTING_RESEARCH.md with primary research
+links and a matched/mismatched PSF feasibility experiment specification. Existing
+24-image check remains untouched. No production changes or model training.
